@@ -13,7 +13,7 @@ where it stopped, so a run split in two equals one unbroken run.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from decimal import Decimal
+from decimal import ROUND_FLOOR, Decimal
 
 import numpy as np
 import pandas as pd
@@ -21,6 +21,7 @@ import pandas as pd
 from trading.risk.sizing import InstrumentRules, RiskProfile, SizingAllowances, plan_entry, round_take_profit
 from trading.shadow.ledger import ShadowLedger
 from trading.shadow.risk_state import RiskState
+from trading.shadow.spot_ledger import SpotLedger
 from trading.simulator.bar_backtest import CostModel, ExitParams
 from trading.strategies.trend_breakout_v1 import STRATEGY_ID
 
@@ -42,6 +43,7 @@ class ShadowConfig:
     decision_delay: pd.Timedelta = pd.Timedelta(seconds=1)      # signal available -> decision done
     validation_delay: pd.Timedelta = pd.Timedelta(0)
     network_delay: pd.Timedelta = pd.Timedelta(milliseconds=100)
+    instrument_type: str = "PERP_FUTURE"                         # or "SPOT": long only, cash-funded, no funding
     daily_operating_cost: Decimal = Decimal(0)                  # USDT-equivalent, booked as each UTC day ends
 
     def describe(self) -> dict:
@@ -53,6 +55,7 @@ class ShadowConfig:
                 "allowances": {k: str(v) for k, v in asdict(self.allowances).items()},
                 "decision_delay": str(self.decision_delay), "validation_delay": str(self.validation_delay),
                 "network_delay": str(self.network_delay), "daily_operating_cost": str(self.daily_operating_cost),
+                "instrument_type": self.instrument_type,
                 "halt_followup": "ABSORBING_UNTIL_ENDPOINT"}
 
 
@@ -60,11 +63,17 @@ def _iso(t) -> str:
     return pd.Timestamp(t).isoformat()
 
 
+LEDGERS: dict[str, type[ShadowLedger]] = {"PERP_FUTURE": ShadowLedger, "SPOT": SpotLedger}
+
+
 class ShadowPortfolio:
     def __init__(self, config: ShadowConfig = ShadowConfig(), state: dict | None = None):
         self.cfg = config
+        if config.instrument_type not in LEDGERS:
+            raise ValueError(f"instrument type {config.instrument_type} is not supported by the shadow book")
+        ledger_cls = LEDGERS[config.instrument_type]
         if state is None:
-            self.ledger = ShadowLedger()
+            self.ledger = ledger_cls()
             self.risk = RiskState()
             self.pos: dict | None = None
             self.cooldown_until: str | None = None
@@ -79,7 +88,7 @@ class ShadowPortfolio:
         else:
             if state.get("book") != BOOK_VERSION or state.get("config") != config.describe():
                 raise ValueError("state belongs to another book version or config")
-            self.ledger = ShadowLedger.from_dict(state["ledger"])
+            self.ledger = ledger_cls.from_dict(state["ledger"])
             self.risk = RiskState.from_dict(state["risk"])
             for k in ("pos", "cooldown_until", "halt_flatten_pending", "last_bar", "last_close", "trades",
                       "candidates", "events", "daily", "incomplete_bars_in_position"):
@@ -266,6 +275,9 @@ class ShadowPortfolio:
             return "NOT_EVALUATED_POSITION_OPEN"
         if self.cooldown_until is not None and t < pd.Timestamp(self.cooldown_until):
             return "NOT_EVALUATED_COOLDOWN"
+        spot = cfg.instrument_type == "SPOT"
+        if spot and cand["side"] != "LONG":
+            return "REJECT_NO_SHORT_ON_SPOT"
         sign = 1 if cand["side"] == "LONG" else -1
         est = self._adverse(o, sign, cfg.costs.entry_slip_bps, True)
         tr_eq, ec_eq = self.equity()
@@ -276,6 +288,12 @@ class ShadowPortfolio:
         if "reject" in plan:
             return plan["reject"]
         qty, stop = plan["qty"], plan["stop"]
+        if spot:   # pay cost and fee from cash: floor to the step, never round up
+            afford = self.ledger.bal("cash") / (D(est) * (1 + D(cfg.costs.taker_fee)))
+            step = cfg.rules.qty_step
+            qty = min(qty, (afford / step).to_integral_value(rounding=ROUND_FLOOR) * step)
+            if qty <= 0 or qty * D(est) < cfg.rules.min_notional:
+                return "REJECT_INSUFFICIENT_CASH"
         fee = self._fill(f"{cand['cand_id']}:entry", t, sign, qty, est, o)
         fill = D(est)
         risk_px = abs(fill - stop)
