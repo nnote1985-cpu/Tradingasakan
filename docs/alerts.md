@@ -29,3 +29,12 @@ Data comes only from data.binance.vision (the Binance REST API refuses this
 environment with HTTP 451). A closed UTC day appears there about 8 hours
 after midnight UTC. Current-month funding is estimated from premium-index
 klines (error ~0.002% per print, checked on 2025-09).
+
+## Paper trading (forward, simulated money)
+
+`scripts/paper_trade.py` runs a 10,000 USDT simulated book that holds
+`suggested_btc_weight` of BTC, next to a BTC buy & hold book with the same
+costs (0.10% fee + 2 bps). Each weight is frozen in the ledger at the close it
+was decided on and traded at the next day's open; no exchange orders are sent.
+State and journal: `/mnt/project-files/paper-trading/{state.json,journal.md}`.
+Opened on the 2026-10-13 close at 100% BTC; the first fill is the 2026-10-14 open.
