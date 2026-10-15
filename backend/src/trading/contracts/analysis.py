@@ -80,6 +80,33 @@ class ReasonCode(StrEnum):
     NOT_EVALUATED_PORTFOLIO_INELIGIBLE = "NOT_EVALUATED_PORTFOLIO_INELIGIBLE"
 
 
+REASON_CODES_VERSION = "reason_codes.v1"
+
+
+class ReasonKind(StrEnum):
+    """Keeps market judgements apart from system failures in every report (§7.4)."""
+    MARKET = "market"                      # a view about the market context, given by the model or synthesis
+    SYSTEM = "system"                      # reliability: deadline, budget, invalid output, provider down
+    ELIGIBILITY = "eligibility"            # not evaluated at all; never counted as a VETO
+
+
+REASON_KIND: dict[ReasonCode, ReasonKind] = {
+    ReasonCode.SUPPORTED_CONTEXT: ReasonKind.MARKET,
+    ReasonCode.CONTEXT_CONFLICT: ReasonKind.MARKET,
+    ReasonCode.UNCERTAIN_CONTEXT: ReasonKind.MARKET,
+    ReasonCode.UNRESOLVED_CONTEXT: ReasonKind.MARKET,
+    ReasonCode.INSUFFICIENT_EVIDENCE: ReasonKind.MARKET,
+    ReasonCode.EXPIRED_DECISION: ReasonKind.SYSTEM,
+    ReasonCode.BUDGET_UNAVAILABLE: ReasonKind.SYSTEM,
+    ReasonCode.INVALID_RESPONSE: ReasonKind.SYSTEM,
+    ReasonCode.INVALID_REPORT_SET: ReasonKind.SYSTEM,
+    ReasonCode.INVALID_SYNTHESIS: ReasonKind.SYSTEM,
+    ReasonCode.REQUIRED_ROLE_UNAVAILABLE: ReasonKind.SYSTEM,
+    ReasonCode.OPTIONAL_ROLE_REQUIRED_BY_POLICY: ReasonKind.SYSTEM,
+    ReasonCode.PROVIDER_UNAVAILABLE: ReasonKind.SYSTEM,
+    ReasonCode.NOT_EVALUATED_PORTFOLIO_INELIGIBLE: ReasonKind.ELIGIBILITY,
+}
+
 # Reasons a model may give itself; the rest are assigned by the backend.
 MODEL_REASON_CODES = frozenset({ReasonCode.SUPPORTED_CONTEXT, ReasonCode.CONTEXT_CONFLICT,
                                 ReasonCode.UNCERTAIN_CONTEXT, ReasonCode.INSUFFICIENT_EVIDENCE})
@@ -332,7 +359,8 @@ class AnalysisRequest(_Strict):
 
 
 class FilterResponse(_Strict):
-    """v1 filter output exactly as §7.2; metadata about the call is recorded by the backend."""
+    """v1 filter output as §7.2 plus a schema_version; call metadata is recorded by the backend."""
+    schema_version: Literal["filter_response.v1"] = "filter_response.v1"
     proposal_id: Id
     snapshot_id: Id
     decision: FilterDecision
@@ -434,6 +462,8 @@ class AttemptRecord(_Strict):
 
 class PolicyDecision(_Strict):
     """Final decision envelope; the backend owns scope and timestamps."""
+    schema_version: Literal["policy_decision.v1"] = "policy_decision.v1"
+    reason_codes_version: Literal["reason_codes.v1"] = "reason_codes.v1"
     run_id: Id
     proposal_id: Id | None
     decision: FilterDecision
@@ -445,6 +475,16 @@ class PolicyDecision(_Strict):
     validated_at: AwareDatetime
     partial_context: bool = False
     missing_roles: tuple[str, ...] = ()
+
+    @property
+    def reason_kind(self) -> ReasonKind:
+        return REASON_KIND[self.reason_code]
+
+    @model_validator(mode="after")
+    def _system_reasons_abstain(self) -> Self:
+        if self.reason_kind is not ReasonKind.MARKET and self.decision is not FilterDecision.ABSTAIN:
+            raise ValueError("system and eligibility reasons must ABSTAIN; they are never a market VETO or ALLOW")
+        return self
 
 
 class AnalysisRun(_Strict):

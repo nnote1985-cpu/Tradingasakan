@@ -336,3 +336,14 @@ def test_backend_missing_inputs_override_model(mock_multi):
     assert d.reason_code is ReasonCode.INVALID_SYNTHESIS          # synthesis claimed nothing was missing
     d = decide_multi_filter(request(mock_multi), mock_multi, full(), synth("SUPPORT", missing_inputs=["funding"]), rt)
     assert d.reason_code is ReasonCode.UNRESOLVED_CONTEXT
+
+
+def test_every_reason_code_is_classified_and_system_reasons_abstain(mock_filter):
+    from trading.contracts.analysis import REASON_KIND, PolicyDecision, ReasonKind
+    assert set(REASON_KIND) == set(ReasonCode)
+    base = dict(run_id="run-1", proposal_id="prop-1", graph_hash=mock_filter.graph_hash(), policy_version="p1",
+                validation_state="VALID", validated_at=T0)
+    with pytest.raises(ValidationError, match="never a market VETO"):
+        PolicyDecision(decision="VETO", reason_code="PROVIDER_UNAVAILABLE", **base)
+    d = PolicyDecision(decision="ABSTAIN", reason_code="BUDGET_UNAVAILABLE", **base)
+    assert d.reason_kind is ReasonKind.SYSTEM and d.reason_codes_version == "reason_codes.v1"
