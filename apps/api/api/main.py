@@ -12,11 +12,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from api.auth import AuthError, Principal, RoleStore, TokenVerifier, authenticate
+from api.portfolios import NoPortfolios, PortfolioStore, overview_items
 from trading.config import Settings
 from trading.contracts.enums import OperatorRole
 
 
-def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore) -> FastAPI:
+def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
+               portfolios: PortfolioStore | None = None) -> FastAPI:
+    store: PortfolioStore = portfolios or NoPortfolios()
     app = FastAPI(title="asakantrading API", version="0.1.0")
     if settings.allowed_origins:
         app.add_middleware(CORSMiddleware, allow_origins=list(settings.allowed_origins),
@@ -55,7 +58,8 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore) ->
 
     @app.get("/api/v1/overview")
     async def overview(p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
-        return {"mode": settings.trading_mode.value, "live_enabled": settings.live_enabled, "portfolios": []}
+        return {"mode": settings.trading_mode.value, "live_enabled": settings.live_enabled,
+                "portfolios": overview_items(await store.overview_rows())}
 
     return app
 
@@ -64,13 +68,14 @@ def app_from_env() -> FastAPI:   # uvicorn --factory api.main:app_from_env
     from psycopg_pool import AsyncConnectionPool
 
     from api.auth import PgRoleStore, SupabaseJwtVerifier
+    from api.portfolios import PgPortfolioStore
     from trading.config import load_settings
 
     s = load_settings()
     if not s.supabase_url or not s.database_url:
         raise RuntimeError("SUPABASE_URL and DATABASE_URL are required")
     pool = AsyncConnectionPool(s.database_url, open=False)
-    app = create_app(s, SupabaseJwtVerifier(s.supabase_url), PgRoleStore(pool))
+    app = create_app(s, SupabaseJwtVerifier(s.supabase_url), PgRoleStore(pool), PgPortfolioStore(pool))
     app.router.on_startup.append(pool.open)
     app.router.on_shutdown.append(pool.close)
     return app

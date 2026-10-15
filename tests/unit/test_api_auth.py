@@ -93,3 +93,28 @@ def test_revoked_user_is_refused_even_with_a_valid_token():
     roles.table[VIEWER] = set()                     # role set active = false
     r = _get(c, "/api/v1/overview", tok)
     assert r.status_code == 403 and r.json()["code"] == "not_allowlisted"
+
+
+def test_overview_lists_portfolios_with_latest_equity_and_stale_flag():
+    from datetime import UTC, datetime, timedelta
+
+    from api.portfolios import overview_items
+
+    class _Store:
+        async def overview_rows(self):
+            now = datetime.now(UTC)
+            return [("pathA-v1.1", "SHADOW", "USDT", "10000", now - timedelta(hours=3), "10012.5", "10012.5", "10020", "ok"),
+                    ("old-book", "SHADOW", "USDT", "10000", now - timedelta(days=3), "9900", "9890", "10000", "ok"),
+                    ("new-book", "SHADOW", "USDT", "10000", None, None, None, None, None)]
+
+    app = create_app(Settings(), SupabaseJwtVerifier(URL, jwks_client=_Jwks()), _Roles({VIEWER: {OperatorRole.VIEWER}}), _Store())
+    body = _get(TestClient(app), "/api/v1/overview", _token(VIEWER)).json()
+    assert [p["label"] for p in body["portfolios"]] == ["pathA-v1.1", "old-book", "new-book"]
+    assert [p["stale"] for p in body["portfolios"]] == [False, True, True]
+    assert body["portfolios"][0]["economic_equity"] == "10012.5"           # decimal strings, not floats
+    assert overview_items([]) == []
+
+
+def test_overview_rows_need_a_viewer(client):
+    assert _get(client, "/api/v1/overview").status_code == 401
+    assert _get(client, "/api/v1/overview", _token(STRANGER)).status_code == 403

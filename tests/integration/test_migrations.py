@@ -241,3 +241,16 @@ def test_revoked_role_is_not_returned_by_the_api_role_query(db):
         assert db.execute(ACTIVE_ROLES_SQL, (uid,)).fetchall() == []
     finally:
         db.execute("rollback")
+
+
+def test_overview_sql_takes_each_portfolios_latest_snapshot(db):
+    from api.portfolios import OVERVIEW_SQL
+
+    pid = _portfolio(db)
+    db.execute("insert into trading.equity_snapshots (portfolio_id, at, trading_equity, economic_equity, high_water_mark) "
+               "values (%s, '2026-10-01', '10000', '10000', '10000'), (%s, '2026-10-02', '10050.5', '10050.25', '10050.25')",
+               (pid, pid))
+    rows = {r[0]: r for r in db.execute(OVERVIEW_SQL).fetchall()}
+    label = db.execute("select label from trading.portfolios where id = %s", (pid,)).fetchone()[0]
+    r = rows[label]
+    assert str(r[4].date()) == "2026-10-02" and r[5].startswith("10050.5") and r[6].startswith("10050.25")
