@@ -44,7 +44,7 @@ class CostModel:
 @dataclass(frozen=True)
 class ExitParams:
     stop_atr_mult: float = 2.0
-    take_profit_r: float = 2.0
+    take_profit_r: float | None = 2.0   # None: no take profit (trailing/channel exits only)
     time_exit: pd.Timedelta = pd.Timedelta(hours=24)
     cooldown: pd.Timedelta = pd.Timedelta(hours=2)
 
@@ -86,6 +86,7 @@ class Position:
     initial_risk: float
     entry_fee: float
     funding: float = 0.0
+    entry_k: int = -1
 
 
 @dataclass
@@ -146,6 +147,14 @@ class BarBacktester:
         self.h4_close = np.where(valid_k, h4c["close"].to_numpy()[np.clip(k, 0, None)], np.nan) if len(h4c) else np.full(len(self.t_ns), np.nan)
         self.h4_ema = np.where(valid_k, h4c["ema_slow"].to_numpy()[np.clip(k, 0, None)], np.nan) if len(h4c) else np.full(len(self.t_ns), np.nan)
 
+        # Optional channel-exit flags (v1.1): latest closed 4h bar at each exec open.
+        self.exit_k = np.full(len(self.t_ns), -1)
+        self.long_exit_at = self.short_exit_at = None
+        if "long_exit" in h4.columns and len(h4):
+            self.exit_k = np.searchsorted(_ns(h4["close_time"]), self.t_ns, side="right") - 1
+            self.long_exit_at = h4["long_exit"].fillna(False).to_numpy(bool)
+            self.short_exit_at = h4["short_exit"].fillna(False).to_numpy(bool)
+
         self.funding_at: dict[int, list[float]] = {}
         self.funding_supplied = funding is not None
         if funding is not None and len(funding):
@@ -185,6 +194,11 @@ class BarBacktester:
         if np.isfinite(c4) and np.isfinite(e4) and i > pos.entry_idx:
             if (pos.sign > 0 and c4 < e4) or (pos.sign < 0 and c4 > e4):
                 return "TREND_EXIT"
+        k = self.exit_k[i]
+        if self.long_exit_at is not None and k >= 0 and k > pos.entry_k:
+            flag = self.long_exit_at[k] if pos.sign > 0 else self.short_exit_at[k]
+            if flag:
+                return "CHANNEL_EXIT"
         return None
 
     def _gap_exit(self, pos: Position, i: int) -> tuple[float, str] | None:
@@ -315,15 +329,18 @@ class BarBacktester:
                         qty = float(plan["qty"])
                         stop = float(plan["stop"])
                         risk_px = abs(est - stop)
-                        tp_raw = est + sign * cfg.exits.take_profit_r * risk_px
-                        tp = float(round_take_profit(Decimal(str(float(tp_raw))), cfg.rules.tick, cand.side))
+                        if cfg.exits.take_profit_r is None:
+                            tp = sign * np.inf
+                        else:
+                            tp_raw = est + sign * cfg.exits.take_profit_r * risk_px
+                            tp = float(round_take_profit(Decimal(str(float(tp_raw))), cfg.rules.tick, cand.side))
                         fee = est * qty * cfg.costs.taker_fee
                         cash -= fee
                         pos = Position(
                             cand_id=cand.cand_id, side=cand.side, sign=sign, qty=qty,
                             entry_price=est, stop=stop, tp=tp, entry_idx=i, entry_time=t,
                             signal_time=cand.available_at, initial_risk=qty * risk_px,
-                            entry_fee=fee,
+                            entry_fee=fee, entry_k=int(self.exit_k[i]),
                         )
                         status = "OPENED"
                 cand_log.append({"cand_id": cand.cand_id, "side": cand.side,
