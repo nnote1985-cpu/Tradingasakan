@@ -15,6 +15,7 @@
 | R3 | `trend_regime_v2` (v2) | ถือเต็มเมื่อปิดเหนือ SMA100 ไม่งั้นถือเงินสด | BTC+ETH+SOL พอร์ตแบบ spot (เงินสด+เหรียญ, ค่าธรรมเนียม spot, ไม่คิด funding) แต่ใช้ราคา perp เป็นตัวแทน |
 | R4 | `funding_overlay_v3` (v3) | ถือ BTC ลดเหลือ 50% เมื่อ funding เฉลี่ย 7 วัน > 0.09%/วัน | BTC พอร์ตแบบ spot ใช้ราคา perp เป็นตัวแทน |
 | R5 | `pathA-v1` | R3 บน BTC × R4 (น้ำหนัก = trend × funding) | BTC พอร์ตแบบ spot ใช้ราคา perp เป็นตัวแทน |
+| R6a / R6b | `run_r6.py` | สัญญาณ v1 เฉพาะ LONG, ไม่มี TP/time exit, ออกด้วย stop / trend exit / channel exit 10 แท่ง 4h; R6a เสี่ยง 0.5%, R6b ใช้เงินทั้งหมด | BTCUSDT **spot** (ราคา spot จริง) |
 
 `pathA-v1` ยังเป็นชื่อของพอร์ตจำลองที่ตรึงไว้ เปลี่ยนไม่ได้โดยไม่เปิดพอร์ตใหม่
 
@@ -51,6 +52,8 @@ R1 ใช้ fill แบบ conservative/absorbing ส่วน R2 ใช้ rec
 | R4 | val | 10,000 USDT | spot 0.10% + 2 bps | +109.5% | 1.58 | 24.8% | +102.0% / 1.43 / 26.3% | 22 | ลดน้ำหนัก 5.6% ของวัน |
 | R5 | dev+val | 10,000 USDT | spot 0.10% + 2 bps | +188.6% | ไม่ได้บันทึก | 35.1% | +165.0% / ไม่ได้บันทึก / 62.0% | 65 | ไม่อยู่ใน BTC 42.7% ของวัน |
 | R5 | holdout | 10,000 USDT | spot 0.10% + 2 bps | −6.9% | −0.32 | 18.0% | −16.5% / −0.47 / 32.0% | 20 | ไม่อยู่ใน BTC 49.3% ของวัน ไม่เคยถือ 50% |
+| R6a | dev (2022-04-12 → 2026-01-01, spot) | 10,000 USDT | spot 0.10% + 2 bps (stop 5 bps) | +10.3% | 0.31 | 13.9% | +121.5% / 0.42 / 62.0% | 156 | อยู่ในตลาด 25% ของเวลา |
+| R6b | dev (เดียวกัน) | 10,000 USDT | เหมือนกัน | +9.3% | 0.09 | 41.8% | +121.5% / 0.42 / 62.0% | 156 | อยู่ในตลาด 25% ของเวลา |
 
 ¹ R1 และ R2 เสี่ยง 0.5% ต่อเทรด จึงถือเฉลี่ยราว 5% ของ equity ตลอดช่วง (`docs/research/v1.1-plan.md`)
 ค่า "ไม่ได้บันทึก" คำนวณเพิ่มได้จาก commit เดิม แต่ยังไม่ได้ทำ
@@ -92,7 +95,10 @@ Sharpe −0.32, DD 18.0%; B&H −16.52% (เดิม −16.51%) ผลแบบ
 | R3 | val | ผ่าน | ไม่ผ่าน | ไม่พอ |
 | R4 | dev | ผ่าน | ไม่ผ่าน | ไม่พอ |
 | R4 | val | ผ่าน | ผ่าน (Sharpe) | ไม่พอ |
+| R6a/R6b | dev | ผ่าน | **ไม่ผ่าน** (Sharpe 0.31 และ 0.09 < 0.42) ³ | ไม่ผ่านตามเกณฑ์ที่ประกาศไว้ จึงไม่ได้ใช้ข้อมูลยืนยัน C1 (2018–2021) และ C2 (ม.ค.–ก.ย. 2026) |
 | R5 | holdout | **ไม่ผ่าน** (−6.9%) | **ผ่าน** ด้าน Sharpe (−0.32 > −0.47); DD 18.0% ไม่ถึงครึ่งของ 32.0% | **ไม่พอ**: ปีเดียว power ราว 46% และกฎที่ไม่มีฝีมือผ่านได้ราว 29% |
+
+³ R6 ใช้เกณฑ์เข้มกว่า: ต้อง Sharpe สูงกว่า B&H เท่านั้น ไม่ใช้ทางเลือก DD (`docs/research/r6-v1-spot-plan.md`) 113 จาก 156 เทรดออกที่ stop 2×ATR(1h)
 
 ² กลยุทธ์ที่ถือแค่ส่วนน้อยของ equity ผ่านเกณฑ์ DD ได้ง่ายโดยไม่ต้องมีฝีมือ เกณฑ์นี้ควรทบทวนก่อนใช้กับ R1/R2 แบบเดิม
 
@@ -109,6 +115,7 @@ R5 ขาดทุนน้อยกว่า B&H ในช่วงตลาด
 | R3 | 32355b1 | `uv run python research/spike/run_v2.py` | `/mnt/project-files/v2-results/` |
 | R4 | 6800dec | `uv run python research/spike/run_v3.py` | `/mnt/project-files/v3-results/` |
 | R5 power | b0de161 | `uv run python research/spike/run_pathA_power.py` | `/mnt/project-files/pathA-power/` |
+| R6 dev | 2cdeb01 | `PYTHONPATH=research/spike uv run python research/spike/run_r6.py development` | `/mnt/project-files/r6-results/` |
 | R5 holdout | d4f77a7 (กฎจาก 42920ba) | `PYTHONPATH=<worktree ของ frozen/pathA-v1>/backend/src:research/spike uv run python research/spike/run_pathA_holdout.py` | `/mnt/project-files/pathA-holdout/` |
 
 ข้อมูลโหลดด้วย `uv run python research/spike/download_data.py` (ต้องใช้ environment ที่อนุญาต data.binance.vision)
