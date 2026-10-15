@@ -76,3 +76,17 @@ def test_clip_trims_monthly_file_to_requested_days():
     assert out.index.max() == pd.Timestamp("2025-03-10 23:00", tz="UTC")
     days = pd.date_range("2025-03-01", periods=5, freq="1D", tz="UTC").delete(2)
     assert missing_days(days, date(2025, 3, 1), date(2025, 3, 5)) == ["2025-03-03"]
+
+
+def test_archive_checksum_mismatch_is_refused(monkeypatch):
+    import hashlib
+
+    from trading.alerts import live_data
+    blob = b"zip-bytes"
+    good = hashlib.sha256(blob).hexdigest().encode() + b"  f.zip"
+    files = {"u": blob, "u.CHECKSUM": good}
+    monkeypatch.setattr(live_data, "_get", lambda url: files.get(url))
+    assert live_data._get_verified("u") == blob
+    files["u.CHECKSUM"] = b"0" * 64 + b"  f.zip"
+    with pytest.raises(live_data.ChecksumError):
+        live_data._get_verified("u")

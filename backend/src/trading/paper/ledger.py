@@ -23,7 +23,12 @@ import pandas as pd
 from trading.strategies.trend_regime_v2 import RegimeCosts
 
 START_EQUITY = 10_000.0
-VERSION = 2
+VERSION = 2                 # ledger file format
+
+# Behaviour of the book under test. Bump it (and tag the commit) whenever any
+# rule that changes what the book would do changes: signals, thresholds, data
+# handling, timing, costs. Each value gets its own book and results.
+RULES_VERSION = "pathA-v1"
 
 
 def _ts(x) -> pd.Timestamp:
@@ -43,6 +48,7 @@ def new_state(decided_on: str, weight: float, received_at: datetime, notes: list
     o = _order(decided_on, weight, received_at, notes)
     return {
         "version": VERSION,
+        "rules_version": RULES_VERSION,
         "start_equity": equity,
         "last_day": decided_on,          # last closed day marked to market (or seen at opening)
         "weight": 0.0,                   # weight currently held

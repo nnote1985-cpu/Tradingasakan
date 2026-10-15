@@ -2,6 +2,12 @@
 
     SSL_CERT_FILE=... uv run python scripts/paper_trade.py [--state PATH]
 
+The book under test runs from a frozen git tag named after RULES_VERSION
+(see docs/alerts.md), so development on the branch never changes its
+behaviour. Each rules version keeps its own state under
+/mnt/project-files/paper-trading/<RULES_VERSION>/; a state file stamped with
+another version is refused.
+
 Live only: every decision is stamped with the time this run received the data,
 so there is no --end for replaying the past. Each run (1) fills the pending
 order if its 1h bar is now in the archive and marks newly closed days, then
@@ -18,10 +24,10 @@ from pathlib import Path
 
 from trading.alerts.live_data import daily_funding, daily_klines, hourly_klines, missing_days
 from trading.alerts.risk_check import events, missing_inputs, signals
-from trading.paper.ledger import VERSION, advance, decide, new_state, performance, render_th
+from trading.paper.ledger import RULES_VERSION, VERSION, advance, decide, new_state, performance, render_th
 
 SYMBOL = "BTCUSDT"
-DEFAULT_STATE = "/mnt/project-files/paper-trading/state.json"
+DEFAULT_STATE = f"/mnt/project-files/paper-trading/{RULES_VERSION}/state.json"
 KINDS = {"open": "เปิดพอร์ต", "decision": "เปลี่ยนเป้า", "trade": "ซื้อขาย", "no_decision": "ข้อมูลไม่พอ"}
 
 
@@ -54,6 +60,11 @@ def main() -> None:
     state = json.loads(state_path.read_text()) if state_path.exists() else None
     if state is not None and state.get("version") != VERSION:
         state = migrate_v1(state, datetime.fromtimestamp(state_path.stat().st_mtime, timezone.utc))
+    if state is not None:
+        state.setdefault("rules_version", "pathA-v1")      # books created before the stamp existed
+        if state["rules_version"] != RULES_VERSION:
+            raise SystemExit(f"state.json belongs to rules {state['rules_version']}, this code is {RULES_VERSION}; "
+                             "run the matching tag or start a new book under a new directory")
 
     start = end - timedelta(days=400)
     daily = daily_klines(SYMBOL, start, end)
@@ -71,6 +82,8 @@ def main() -> None:
     w = sig["suggested_btc_weight"].iloc[-1]
     weight = None if w != w else float(w)
     notes = missing_inputs(sig) if weight is None else (events(sig) or ["ตามสัญญาณ ณ ราคาปิด"])
+    if weight is not None and bool(est.loc[est.index > last - timedelta(days=7)].any()):
+        notes = notes + ["funding บางวันเป็นค่าประมาณ"]
     if state is None:
         if weight is None:
             raise SystemExit("ข้อมูลไม่พอ ยังเปิดพอร์ตไม่ได้: " + ", ".join(notes))
@@ -85,7 +98,7 @@ def main() -> None:
     state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2))
     write_journal(state, state_path.with_name("journal.md"))
     p = performance(state)
-    p.update(run_at=now.isoformat(), data_through=str(last.date()), stale=last.date() < end,
+    p.update(rules_version=RULES_VERSION, run_at=now.isoformat(), data_through=str(last.date()), stale=last.date() < end,
              missing_days=gaps, problems=problems, new_entries=added)
     print(json.dumps(p, ensure_ascii=False, indent=2))
     print()

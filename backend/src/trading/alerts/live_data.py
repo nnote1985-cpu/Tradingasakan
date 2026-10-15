@@ -12,6 +12,7 @@ actual prints for 2025-09: mean absolute error 0.002% per print.
 
 from __future__ import annotations
 
+import hashlib
 import io
 import zipfile
 from datetime import date, timedelta
@@ -23,6 +24,24 @@ from trading.market_data.binance_public import BASE, _get, parse_funding_csv, pa
 
 INTEREST_8H = 0.0001
 CLAMP = 0.0005
+
+
+class ChecksumError(RuntimeError):
+    pass
+
+
+def _get_verified(url: str) -> bytes | None:
+    """Archive file, checked against its published .CHECKSUM (sha256)."""
+    blob = _get(url)
+    if blob is None:
+        return None
+    ref = _get(url + ".CHECKSUM")
+    if ref is None:
+        raise ChecksumError(f"no checksum published for {url}")
+    want = ref.decode().split()[0].lower()
+    if hashlib.sha256(blob).hexdigest() != want:
+        raise ChecksumError(f"checksum mismatch for {url}")
+    return blob
 
 
 def _unzip(blob: bytes) -> bytes:
@@ -50,14 +69,14 @@ def _fetch(kind: str, symbol: str, interval: str | None, start: date, end: date)
     stem = f"{symbol}-{interval}" if interval else f"{symbol}-{kind}"
     out = []
     for y, m in _months(start, end):
-        blob = _get(f"{BASE}/monthly/{sub}/{stem}-{y}-{m:02d}.zip")
+        blob = _get_verified(f"{BASE}/monthly/{sub}/{stem}-{y}-{m:02d}.zip")
         if blob is not None:
             out.append(_unzip(blob))
             continue
         if kind == "fundingRate":
             continue                          # no daily funding files exist
         for d in _month_days(y, m, end):
-            blob = _get(f"{BASE}/daily/{sub}/{stem}-{d.isoformat()}.zip")
+            blob = _get_verified(f"{BASE}/daily/{sub}/{stem}-{d.isoformat()}.zip")
             if blob is not None:
                 out.append(_unzip(blob))
     return out
@@ -130,7 +149,7 @@ def open_interest(symbol: str, start: date, end: date) -> pd.Series:
     vals = []
     d = start
     while d <= end:
-        blob = _get(f"{BASE}/daily/metrics/{symbol}/{symbol}-metrics-{d.isoformat()}.zip")
+        blob = _get_verified(f"{BASE}/daily/metrics/{symbol}/{symbol}-metrics-{d.isoformat()}.zip")
         if blob is not None:
             m = pd.read_csv(io.BytesIO(_unzip(blob)))
             vals.append((pd.Timestamp(d, tz="UTC"), float(m["sum_open_interest_value"].iloc[-1])))
