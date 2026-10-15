@@ -41,3 +41,47 @@ A weaker but still useful outcome is reported separately: Sharpe higher and
 drawdown lower than buy & hold on both partitions, even if neither margin is large.
 
 The holdout (2025-01-25 to 2025-12-31) stays untouched.
+
+## Results (run 2026-10-15, after this plan was committed)
+
+`uv run python research/spike/run_v3.py` → `reports/v3/` (not committed).
+
+| BTC book | Development net | Sharpe | Max DD | Validation net | Sharpe | Max DD |
+| --- | --- | --- | --- | --- | --- | --- |
+| **v3 funding overlay** | **+28.0%** | **0.25** | **62.0%** | **+109.5%** | **1.58** | **24.8%** |
+| BTC buy & hold | +31.0% | 0.27 | 62.0% | +102.0% | 1.43 | 26.3% |
+
+- Funding was elevated on 0.9% of development days and 5.6% of validation
+  days. The 2022 crash came with low funding, so the overlay never reduced
+  exposure before it.
+- Diagnostics (nothing selected): thresholds 0.06%/0.12% per day and weights
+  0%/75% give the same picture: no change to the 62% development drawdown,
+  validation Sharpe 1.42–1.67.
+
+### Verdict
+
+Validation passes (Sharpe 1.58 > 1.43). Development fails (Sharpe 0.25 < 0.27,
+drawdown unchanged). **v3 does not pass.** Holdout untouched.
+
+### Post-hoc check (in-sample, not a test)
+
+After seeing v2 and v3, the obvious combination (BTC only, SMA100 trend state
+× funding overlay) was computed on the same data. It is reported only to show
+whether it is worth spending the holdout on:
+
+| Combination (in-sample) | Net | Sharpe | Max DD |
+| --- | --- | --- | --- |
+| Development | +85.2% | 1.00 | 26.8% |
+| Validation | +55.7% | 1.15 | 35.1% |
+
+It still loses to BTC buy & hold in validation (Sharpe 1.43, DD 26.3%), so
+the holdout is not spent on it.
+
+### What this says
+
+The two signals protect in different regimes: the trend state cut the 2022
+bear drawdown from 62% to 27%; the funding overlay trimmed risk in the
+overheated 2024 bull. Neither, nor both together, beat holding BTC through a
+strong bull year. Under path A they are useful as **alerts with a stated
+cost** (lower return in strong bulls in exchange for a smaller worst case),
+not as a system that beats the market on these years.
