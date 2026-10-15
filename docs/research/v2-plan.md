@@ -61,3 +61,40 @@ If it fails, the result is reported as is.
 v2 changes state rarely (a few times a year per coin), so it gives too few
 decisions to measure an AI filter. If v2 passes, the AI's role has to be
 re-planned with the owner (for example as a risk overlay), not bolted on.
+
+## Results (run 2026-10-15, after this plan was committed)
+
+`uv run python research/spike/run_v2.py` → `reports/v2/` (not committed).
+Portfolio = BTC + ETH + SOL books, 30,000 USDT, spot costs (0.10% + 2 bps).
+
+| Portfolio | Development net | Sharpe | Max DD | Validation net | Sharpe | Max DD |
+| --- | --- | --- | --- | --- | --- | --- |
+| **v2 (SMA100)** | **+47.6%** | **0.56** | **34.7%** | **+8.1%** | **0.18** | **45.5%** |
+| Buy & hold (equal weight) | +13.9% | 0.11 | 72.0% | +80.2% | 1.02 | 34.2% |
+
+Per coin (v2 / buy & hold):
+
+| Coin | Dev net | Dev Sharpe | Val net | Val Sharpe | Val DD |
+| --- | --- | --- | --- | --- | --- |
+| BTC | +89.6% / +31.0% | 1.03 / 0.27 | +50.1% / +102.0% | 0.98 / 1.43 | 36.4% / 26.3% |
+| ETH | +8.3% / -1.2% | 0.10 / -0.01 | -21.8% / +12.2% | -0.55 / 0.19 | 49.2% / 45.4% |
+| SOL | +44.7% / +12.0% | 0.32 / 0.05 | -4.1% / +126.5% | -0.07 / 1.04 | 60.2% / 38.4% |
+
+- Validation SOL result checked with an independent vectorised calculation
+  (gross ~0%, max DD 59%, 34 switches): the choppy 2024 range around the SMA
+  caused repeated buy-high/sell-low switches.
+- Costs matter little: validation net ranges +3.2% to +10.0% across the grid.
+- Perpetual with funding: development +43.7%, validation +7.9%.
+- Diagnostics (nothing selected): SMA50 dev +149.8% / val +32.3% (Sharpe 0.69);
+  SMA150 (from 2022-06-01) dev +114.8% / val +39.4% (Sharpe 0.72). No variant
+  beats buy & hold's validation Sharpe of 1.02.
+
+### Verdict against the pre-declared criteria
+
+Development passes all three conditions. Validation fails: net is positive
+(+8.1%) but Sharpe 0.18 < 1.02 and max drawdown 45.5% > half of 34.2%.
+**v2 does not pass.** Holdout untouched.
+
+The pattern matches the known behaviour of trend filters: they win in bear and
+recovery markets (2022–2023) and lose to buy & hold in a steady bull market
+with sideways chop (2024). The validation window is one strong bull year.
