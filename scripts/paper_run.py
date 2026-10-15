@@ -55,11 +55,17 @@ def verify_chain(log: Path) -> list[str]:
     return problems
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+
     from trading.alerts import live_data
     from trading.paper.ledger import RULES_VERSION
 
-    state = Path(f"/mnt/project-files/paper-trading/{RULES_VERSION}/state.json")
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--state", default=f"/mnt/project-files/paper-trading/{RULES_VERSION}/state.json",
+                    help="book state (a copy for a dry run); runs.jsonl is written beside it")
+    args = ap.parse_args(argv)
+    state = Path(args.state)
     log = state.with_name("runs.jsonl")
     chain_problems = verify_chain(log)
     rec: dict = {"record_version": 1, "book": RULES_VERSION, "started_at": now(),
@@ -76,7 +82,7 @@ def main() -> int:
 
     live_data._get_verified = recording  # type: ignore[assignment]
     out = io.StringIO()
-    sys.argv = ["paper_trade.py"]
+    sys.argv = ["paper_trade.py", "--state", str(state)]
     try:
         with contextlib.redirect_stdout(out):
             runpy.run_path("scripts/paper_trade.py", run_name="__main__")
