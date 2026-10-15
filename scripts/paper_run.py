@@ -6,7 +6,9 @@
 It runs the frozen worktree's own scripts/paper_trade.py unchanged (the book's rules
 and code are the frozen ones) and only observes it: every archive file fetched is
 logged with the time it arrived and its sha256, then the run's output, the state
-hash before and after, and the start and finish times. One JSON line per run is
+hash before and after, and the start and finish times. Each run is checked: a fill
+at or before its decision time, or a decision stamped before its data arrived,
+marks the run simulator_valid = false (the run is not valid evidence). One JSON line per run is
 appended to runs.jsonl beside state.json. Each line carries the previous line's
 hash, so an edited or removed line breaks the chain. The last line printed is SQL
 that writes the line hash into trading.audit_events, whose server-side timestamp is
@@ -101,13 +103,23 @@ def main(argv: list[str] | None = None) -> int:
     rec["result"] = result
     rec["state_sha256_after"] = sha256(state.read_bytes()) if state.exists() else None
     if result:
-        last_fetch = max((f["received_at"] for f in rec["fetched"]), default=None)
-        rec["checks"] = {
-            # a decision stamped before its data had all arrived would allow a fill earlier than possible
-            "decision_stamped_before_last_fetch": [e["at"] for e in result.get("new_entries", [])
-                                                   if e.get("kind") in ("open", "decision") and last_fetch
-                                                   and e["at"] < last_fetch],
+        t = datetime.fromisoformat
+        last_fetch = max((t(f["received_at"]) for f in rec["fetched"]), default=None)
+        entries = result.get("new_entries", [])
+        checks = {
+            # a trade must fill strictly after the decision it executes was computed
+            "fill_not_after_decision": [e["at"] for e in entries if e.get("kind") == "trade"
+                                        and e.get("decided_at") and t(e["at"]) <= t(e["decided_at"])],
+            # decision times must come after every file this run fetched
+            "stamped_before_data_arrived": [e.get("decided_at", e.get("at")) for e in entries
+                                            if e.get("kind") in ("open", "decision", "no_decision") and last_fetch
+                                            and t(e.get("data_ready_at") or e["at"]) < last_fetch],
+            "decided_before_data_ready": [e["decided_at"] for e in entries if e.get("data_ready_at")
+                                          and e.get("decided_at") and t(e["decided_at"]) < t(e["data_ready_at"])],
+            "simulator_errors": [p for p in result.get("problems", []) if "simulator error" in p],
         }
+        rec["checks"] = checks
+        rec["simulator_valid"] = not any(checks.values())
     rec["prev_hash"] = last_hash(log)
     rec["chain_problems_before_append"] = chain_problems
     rec["line_hash"] = sha256(json.dumps(rec, sort_keys=True, ensure_ascii=False).encode())
@@ -117,7 +129,9 @@ def main(argv: list[str] | None = None) -> int:
     print("insert into trading.audit_events (action, target, reason, before_hash, after_hash) values "
           f"('paper_run', '{RULES_VERSION}', 'runs.jsonl line', "
           f"{('null' if rec['prev_hash'] is None else repr(rec['prev_hash']))}, '{rec['line_hash']}');")
-    return 0 if rec["exit"] == "ok" else 1
+    if rec.get("simulator_valid") is False:
+        print("SIMULATOR INVALID for this run: " + json.dumps(rec["checks"], ensure_ascii=False), file=sys.stderr)
+    return 0 if rec["exit"] == "ok" and rec.get("simulator_valid", True) else 1
 
 
 if __name__ == "__main__":

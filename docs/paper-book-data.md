@@ -1,5 +1,14 @@
 # Paper book data: market, funding and timing
 
+**Current book: pathA-v1.1** (owner's decision 2026-10-15). Same strategy rules as pathA-v1;
+the simulator changes: fills, marks and buy & hold use **BTCUSDT spot** bars
+(data.binance.vision/data/spot, checksum-verified); signals still use perp closes and funding;
+each decision records `data_ready_at` (all inputs fetched) and `decided_at` (decision computed),
+and the order fills at the first 1h spot bar starting strictly after `decided_at`. Every entry
+records `funding_source` and `funding_proxy_days`. It starts from 10,000 USDT cash on its first
+forward run with no order carried over. pathA-v1 stays frozen and is no longer run forward;
+its state is a reconstructed replay. The sections below describe pathA-v1 unless noted.
+
 Answers the owner's questions on the pathA-v1 manifest (2026-10-15). Numbers come from
 `research/spike/check_pathA_data.py` (rules and signals from frozen/pathA-v1, nothing tuned);
 output `/mnt/project-files/pathA-data-checks/report.json`.

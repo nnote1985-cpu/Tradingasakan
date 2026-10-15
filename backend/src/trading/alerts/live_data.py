@@ -22,6 +22,7 @@ import pandas as pd
 
 from trading.market_data.binance_public import BASE, _get, parse_funding_csv, parse_klines_csv
 
+SPOT_BASE = "https://data.binance.vision/data/spot"
 INTEREST_8H = 0.0001
 CLAMP = 0.0005
 
@@ -63,20 +64,21 @@ def _month_days(y: int, m: int, end: date):
         d += timedelta(days=1)
 
 
-def _fetch(kind: str, symbol: str, interval: str | None, start: date, end: date) -> list[bytes]:
+def _fetch(kind: str, symbol: str, interval: str | None, start: date, end: date,
+           base: str = BASE) -> list[bytes]:
     """CSV payloads for [start, end], monthly file when published else daily files."""
     sub = f"{kind}/{symbol}/{interval}" if interval else f"{kind}/{symbol}"
     stem = f"{symbol}-{interval}" if interval else f"{symbol}-{kind}"
     out = []
     for y, m in _months(start, end):
-        blob = _get_verified(f"{BASE}/monthly/{sub}/{stem}-{y}-{m:02d}.zip")
+        blob = _get_verified(f"{base}/monthly/{sub}/{stem}-{y}-{m:02d}.zip")
         if blob is not None:
             out.append(_unzip(blob))
             continue
         if kind == "fundingRate":
             continue                          # no daily funding files exist
         for d in _month_days(y, m, end):
-            blob = _get_verified(f"{BASE}/daily/{sub}/{stem}-{d.isoformat()}.zip")
+            blob = _get_verified(f"{base}/daily/{sub}/{stem}-{d.isoformat()}.zip")
             if blob is not None:
                 out.append(_unzip(blob))
     return out
@@ -89,8 +91,8 @@ def clip(obj, start: date, end: date):
     return obj[(obj.index >= lo) & (obj.index < hi)]
 
 
-def _klines(symbol: str, interval: str, start: date, end: date) -> pd.DataFrame:
-    frames = [parse_klines_csv(raw) for raw in _fetch("klines", symbol, interval, start, end)]
+def _klines(symbol: str, interval: str, start: date, end: date, base: str = BASE) -> pd.DataFrame:
+    frames = [parse_klines_csv(raw) for raw in _fetch("klines", symbol, interval, start, end, base)]
     if not frames:
         return pd.DataFrame(columns=["open", "high", "low", "close", "volume"], dtype=float)
     df = pd.concat(frames).sort_index()
@@ -103,6 +105,14 @@ def daily_klines(symbol: str, start: date, end: date) -> pd.DataFrame:
 
 def hourly_klines(symbol: str, start: date, end: date) -> pd.DataFrame:
     return _klines(symbol, "1h", start, end)
+
+
+def spot_daily_klines(symbol: str, start: date, end: date) -> pd.DataFrame:
+    return _klines(symbol, "1d", start, end, SPOT_BASE)
+
+
+def spot_hourly_klines(symbol: str, start: date, end: date) -> pd.DataFrame:
+    return _klines(symbol, "1h", start, end, SPOT_BASE)
 
 
 def missing_days(index: pd.DatetimeIndex, start: date, end: date) -> list[str]:
