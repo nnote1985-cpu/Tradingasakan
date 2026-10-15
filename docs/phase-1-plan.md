@@ -1,9 +1,11 @@
 # Phase 1 plan (rescoped to path A, runs alongside the forward test)
 
-Written 2026-10-15. The original Phase 1 (buildplan v4.2: Supabase research MVP
-around `trend_breakout_v1`) assumed v1 had an edge; Phase 0.5 showed it did
-not, and the owner chose path A (BTC core, risk overlay, simulated trading
-first). Phase 1 therefore builds around the path A book while it runs.
+Written 2026-10-15. **Correction:** buildplan v4.2 §24 defines Phase 1 as
+Foundation (pinned monorepo/config/CI, single-workspace auth, minimum ledger
+schema, API shell, contracts), which is mostly strategy-agnostic; the v1-bound
+work is Phase 3 and 5. This file is a proposed alternative that front-loads
+path A tooling; see docs/adr/0001-path-a-after-phase-0.5.md for the proposal
+to keep the buildplan's Phase 1 instead.
 
 ## Rules for running development and testing together
 
