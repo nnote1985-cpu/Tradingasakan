@@ -42,11 +42,17 @@ report in `/mnt/project-files/pathA-power/report.json`):
 | 5 years | 74% | 21% |
 | 10 years | 87% | 14% |
 
-The forward test cannot confirm performance on any practical horizon: the edge
-comes from a few long bear regimes, not from many independent signals. Its
-job is to prove the system runs correctly (timing, data, fills). The only
-clean performance test available now is the untouched holdout
-(2025-01-25 → 2025-12-31), which can be spent once on a frozen version.
+Under these assumptions (history of 2022–2025 treated as the truth, 90-day
+blocks, the owner's pass rule) the forward test is unlikely to confirm
+superiority within a few years; about 10 years is an estimate under those
+assumptions, not a general conclusion. The forward test is still useful: it
+checks that the system runs correctly and shows real costs, fill timing,
+behaviour and risk in new markets, which feeds the next hypothesis. Full
+assumptions: docs/research/pathA-power-assumptions.md.
+
+The 2025 holdout (2025-01-25 → 2025-12-31) was spent once on 2026-10-15; it
+may be used for development but is no longer unseen confirmation data
+(docs/research/results-register.md).
 
 ## Build steps (in order)
 
