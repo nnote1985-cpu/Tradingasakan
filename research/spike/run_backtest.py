@@ -16,7 +16,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-
 from common import jsonable, load_config, load_market, make_backtester, partitions, with_exits
 from trading.evaluation.metrics import daily_log_returns, summary
 from trading.simulator.bar_backtest import BacktestConfig, CostModel

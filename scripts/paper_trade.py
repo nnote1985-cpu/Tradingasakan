@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from trading.alerts.live_data import daily_funding, daily_klines, hourly_klines, missing_days
@@ -54,12 +54,12 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--state", default=DEFAULT_STATE)
     args = ap.parse_args()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     end = now.date() - timedelta(days=1)
     state_path = Path(args.state)
     state = json.loads(state_path.read_text()) if state_path.exists() else None
     if state is not None and state.get("version") != VERSION:
-        state = migrate_v1(state, datetime.fromtimestamp(state_path.stat().st_mtime, timezone.utc))
+        state = migrate_v1(state, datetime.fromtimestamp(state_path.stat().st_mtime, UTC))
     if state is not None:
         state.setdefault("rules_version", "pathA-v1")      # books created before the stamp existed
         if state["rules_version"] != RULES_VERSION:

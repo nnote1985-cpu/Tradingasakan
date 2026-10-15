@@ -17,7 +17,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-
 from common import jsonable, load_config, load_market, partitions
 from trading.evaluation.metrics import daily_log_returns, max_drawdown, sharpe
 from trading.risk.sizing import InstrumentRules

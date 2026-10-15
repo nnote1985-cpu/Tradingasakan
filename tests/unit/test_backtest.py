@@ -3,7 +3,6 @@ from decimal import Decimal
 import numpy as np
 import pandas as pd
 import pytest
-
 from trading.risk.sizing import SizingAllowances
 from trading.simulator.bar_backtest import BacktestConfig, BarBacktester, CostModel
 

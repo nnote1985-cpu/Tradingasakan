@@ -1,6 +1,6 @@
 # ADR 0001: Continue with path A after Phase 0.5; keep buildplan Phase 1 Foundation
 
-Status: proposed (2026-10-15), awaiting owner choice on Phase 1 scope.
+Status: accepted 2026-10-15 (owner chose to follow buildplan Phase 1).
 
 ## Context
 
@@ -16,7 +16,7 @@ registry. Phase 0.5 results (docs/research/):
 - Power: a forward test cannot confirm performance on any practical horizon
   (46% power at 1 year, 29% false pass), see docs/phase-1-plan.md.
 
-## Decision (proposed)
+## Decision
 
 1. Phase 1 stays as defined in §24 (Foundation): pinned monorepo/config/CI,
    single-workspace auth, minimum ledger schema per §20 in the private

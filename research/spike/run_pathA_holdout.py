@@ -11,7 +11,6 @@ import json
 from pathlib import Path
 
 import pandas as pd
-
 from common import jsonable, load_config, partitions
 from trading.alerts.risk_check import signals
 from trading.evaluation.metrics import daily_log_returns, max_drawdown, sharpe

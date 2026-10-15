@@ -8,7 +8,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-
 from trading.market_data.binance_public import load, load_funding
 from trading.simulator.bar_backtest import BacktestConfig, BarBacktester, ExitParams
 from trading.strategies.trend_breakout_v1 import StrategyParams, build_features

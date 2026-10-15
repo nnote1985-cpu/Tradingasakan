@@ -1,6 +1,5 @@
 import pandas as pd
 import pytest
-
 from trading.paper.ledger import advance, decide, new_state, performance
 
 D0 = pd.Timestamp("2025-01-01", tz="UTC")

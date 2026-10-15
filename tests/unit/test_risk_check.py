@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 import pytest
-
 from trading.alerts.live_data import estimate_funding
 from trading.alerts.risk_check import events, render_th, signals, summary
 

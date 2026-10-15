@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 import pytest
-
 from trading.strategies.trend_regime_v2 import RegimeCosts, daily_bars, regime_state, simulate
 
 D0 = pd.Timestamp("2023-01-01", tz="UTC")

@@ -1,6 +1,5 @@
 import pandas as pd
 import pytest
-
 from trading.strategies.funding_overlay_v3 import OverlayParams, funding_weights, simulate_weights
 from trading.strategies.trend_regime_v2 import RegimeCosts
 
