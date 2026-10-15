@@ -1,0 +1,18 @@
+{
+  "symbol": "BTCUSDT",
+  "data_start": "2022-01-01",
+  "data_end": "2025-12-31",
+  "data_dir": "data/binance_um",
+  "exec_interval": "1m",
+  "partitions": {"development": 0.50, "validation": 0.25, "holdout": 0.25},
+  "initial_equity": 10000,
+  "cost_grid": {"fee_mult": [0.5, 1.0, 1.5, 2.0], "slip_mult": [0.0, 1.0, 2.0, 4.0]},
+  "param_grid": {
+    "stop_atr_mult": [1.5, 2.0, 2.5],
+    "take_profit_r": [1.5, 2.0, 3.0],
+    "time_exit_hours": [12, 24, 48],
+    "breakout_lookback": [10, 20, 40]
+  },
+  "power": {"durations_days": [90, 180, 365], "n_windows": 12, "seeds": 5,
+            "alpha": 0.05, "delta_floor": 0.0, "block_days": 7, "reps": 1000}
+}
