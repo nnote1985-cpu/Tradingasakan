@@ -6,3 +6,5 @@ reports/
 *.parquet
 .env
 supabase/.temp/
+apps/web/node_modules/
+apps/web/dist/
