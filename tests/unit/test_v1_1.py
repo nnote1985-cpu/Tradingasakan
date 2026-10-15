@@ -1,10 +1,9 @@
 import numpy as np
 import pandas as pd
+from test_backtest import FLAT, T0, make
 
 from trading.simulator.bar_backtest import ExitParams
 from trading.strategies.trend_donchian_4h_v1_1 import DonchianParams, build_features
-
-from test_backtest import FLAT, T0, make
 
 NO_TP = ExitParams(take_profit_r=None, time_exit=pd.Timedelta(days=60))
 

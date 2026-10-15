@@ -5,3 +5,9 @@ data/
 reports/
 *.parquet
 .env
+.env.*
+!.env.example
+supabase/.temp/
+apps/web/node_modules/
+apps/web/dist/
+*.tsbuildinfo

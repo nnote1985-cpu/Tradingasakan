@@ -2,13 +2,47 @@ name: ci
 
 on:
   push:
+    branches: [main]
   pull_request:
+
+permissions:
+  contents: read
 
 jobs:
   backend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
-      - run: uv sync --locked
-      - run: uv run pytest -q
+        with:
+          version: "0.11.13"
+      - name: Install (locked)
+        run: uv sync --locked --python 3.13
+      - name: Lint
+        run: uv run ruff check .
+      - name: Types (Foundation modules)
+        run: uv run mypy
+      - name: Tests (unit + migrations on local PostgreSQL)
+        env:
+          PG_BIN: /usr/lib/postgresql/16/bin
+        run: uv run pytest -q
+
+  web:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: apps/web/.nvmrc
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build

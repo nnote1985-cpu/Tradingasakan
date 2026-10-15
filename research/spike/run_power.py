@@ -19,8 +19,8 @@ import json
 from pathlib import Path
 
 import pandas as pd
-
 from common import jsonable, load_config, load_market, make_backtester, partitions
+
 from trading.evaluation.power import default_filters, filter_utility, run_power_design
 from trading.simulator.bar_backtest import BacktestConfig
 from trading.strategies.trend_breakout_v1 import StrategyParams, build_features

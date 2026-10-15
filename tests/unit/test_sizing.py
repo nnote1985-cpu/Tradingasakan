@@ -1,8 +1,13 @@
 from decimal import Decimal
 
 from trading.risk.sizing import (
-    InstrumentRules, RiskProfile, SizingAllowances, plan_entry, round_stop,
-    round_take_profit, size_linear_position,
+    InstrumentRules,
+    RiskProfile,
+    SizingAllowances,
+    plan_entry,
+    round_stop,
+    round_take_profit,
+    size_linear_position,
 )
 
 

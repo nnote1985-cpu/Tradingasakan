@@ -1,0 +1,26 @@
+# Future multi-analyst filter (BUILDPLAN v4.2 §7.9 example). Cannot be enabled:
+# null budgets, models and deadlines must be resolved and validated before lock.
+analysis_profile:
+  graph_version: multi_filter_draft_1
+  enabled: false
+  capability_stage: MULTI_ANALYST_FILTER
+  roles:
+    - {role_id: regime, kind: analyst, schema_version: agent_analysis.v1, input_scopes: [snapshot_features]}
+    - {role_id: setup, kind: analyst, schema_version: agent_analysis.v1, input_scopes: [snapshot_features]}
+    - {role_id: news, kind: analyst, schema_version: agent_analysis.v1, input_scopes: [snapshot_news]}
+    - {role_id: derivatives_liquidity, kind: analyst, schema_version: agent_analysis.v1, input_scopes: [snapshot_derivatives]}
+    - role_id: synthesis
+      kind: synthesis
+      schema_version: synthesis_result.v1
+      depends_on: [regime, setup, news, derivatives_liquidity]
+  required_roles: [regime, setup]
+  optional_roles: [news, derivatives_liquidity]
+  synthesis_required: true
+  reviewer_enabled: false
+  allow_partial_optional: true
+  max_concurrency: 2
+  tools: []
+  total_timeout_ms: null
+  analyst_cutoff_ms: null
+  max_run_cost_usd: null
+  daily_cost_cap_usd: null

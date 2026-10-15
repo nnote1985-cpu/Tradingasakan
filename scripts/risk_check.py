@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from trading.alerts.live_data import daily_funding, daily_klines, missing_days, open_interest
@@ -24,7 +24,7 @@ def main() -> None:
     ap.add_argument("--end", help="last UTC day to include (default: yesterday)")
     ap.add_argument("--json-out")
     args = ap.parse_args()
-    end = date.fromisoformat(args.end) if args.end else datetime.now(timezone.utc).date() - timedelta(days=1)
+    end = date.fromisoformat(args.end) if args.end else datetime.now(UTC).date() - timedelta(days=1)
     start = end - timedelta(days=400)
 
     daily = daily_klines(SYMBOL, start, end)

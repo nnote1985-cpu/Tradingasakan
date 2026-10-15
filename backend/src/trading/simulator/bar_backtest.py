@@ -9,15 +9,20 @@ It is not the QUOTE_FORWARD simulator and does not claim execution precision.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
-from typing import Callable, Literal
+from typing import Literal
 
 import numpy as np
 import pandas as pd
 
 from trading.risk.sizing import (
-    InstrumentRules, RiskProfile, SizingAllowances, plan_entry, round_take_profit,
+    InstrumentRules,
+    RiskProfile,
+    SizingAllowances,
+    plan_entry,
+    round_take_profit,
 )
 
 Ambiguity = Literal["conservative", "optimistic"]
@@ -32,7 +37,7 @@ class CostModel:
     exit_slip_bps: float = 2.0
     stop_slip_bps: float = 5.0
 
-    def scaled(self, fee_mult: float = 1.0, slip_mult: float = 1.0) -> "CostModel":
+    def scaled(self, fee_mult: float = 1.0, slip_mult: float = 1.0) -> CostModel:
         return CostModel(
             taker_fee=self.taker_fee * fee_mult,
             entry_slip_bps=self.entry_slip_bps * slip_mult,
