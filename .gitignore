@@ -5,3 +5,4 @@ data/
 reports/
 *.parquet
 .env
+supabase/.temp/
