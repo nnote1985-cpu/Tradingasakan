@@ -116,3 +116,39 @@ def test_live_portfolio_needs_an_account(db):
     with pytest.raises(psycopg.errors.CheckViolation):
         db.execute("insert into trading.portfolios (label, owner_id, mode, currency, initial_equity) "
                    "values ('live-no-account', gen_random_uuid(), 'LIVE', 'USDT', '1')")
+
+
+def test_paper_book_sync_is_balanced_and_idempotent(db, tmp_path):
+    import json
+    import subprocess
+    import sys
+
+    state = {
+        "rules_version": "pathA-test", "start_equity": 10000.0,
+        "journal": [{"date": "2026-10-13", "at": "2026-10-15T06:39:03+00:00", "kind": "open", "weight": 1.0, "notes": []}],
+        "trades": [
+            {"date": "2026-10-15", "at": "2026-10-15T07:00:00+00:00", "book": "paper", "side": "BUY",
+             "price": 80016.0, "qty": 0.12484, "value": 10000.0},
+            {"date": "2026-10-15", "at": "2026-10-15T07:00:00+00:00", "book": "buy_and_hold", "side": "BUY",
+             "price": 80016.0, "qty": 0.12484, "value": 10000.0},
+            {"date": "2026-10-20", "at": "2026-10-20T09:00:00+00:00", "book": "paper", "side": "SELL",
+             "price": 85000.0, "qty": 0.12484, "value": 10600.0},
+        ],
+        "history": [{"date": "2026-10-15", "close": 81000.0, "weight_held_at_close": 1.0, "equity": 10100.0,
+                     "buy_and_hold": 10100.0}],
+    }
+    (tmp_path / "pathA-test").mkdir()
+    (tmp_path / "pathA-test" / "state.json").write_text(json.dumps(state))
+    sql = subprocess.run([sys.executable, str(ROOT / "scripts/trading_sync_sql.py"), "--root", str(tmp_path),
+                          "--commit", "pathA-test=abcdef1"], check=True, capture_output=True, text=True).stdout
+    db.execute("insert into trading.workspace_settings (owner_id) values (gen_random_uuid()) on conflict do nothing")
+    db.execute(sql)
+    db.execute(sql)                                   # second run changes nothing
+    n = db.execute("select count(*) from trading.journal_entries where source_event_key like 'pathA-test/%'").fetchone()[0]
+    assert n == 5                                     # 2 fundings + 3 fills
+    bad = db.execute("select entry_id from trading.journal_lines l join trading.journal_entries e on e.id = l.entry_id "
+                     "where e.source_event_key like 'pathA-test/%' group by entry_id having sum(amount) <> 0").fetchall()
+    assert bad == []
+    snaps = db.execute("select count(*) from trading.equity_snapshots s join trading.portfolios p on p.id = s.portfolio_id "
+                       "where p.label like 'pathA-test/%'").fetchone()[0]
+    assert snaps == 2
