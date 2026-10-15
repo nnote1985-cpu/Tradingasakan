@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+
 from trading.features.indicators import atr_wilder, ema, previous_high, previous_low
 from trading.strategies.trend_breakout_v1 import (
     StrategyParams,

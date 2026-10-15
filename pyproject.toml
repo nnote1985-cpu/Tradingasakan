@@ -4,19 +4,23 @@ version = "0.0.1"
 description = "AI trading research system (BUILDPLAN v4.2); Phase 1 Foundation"
 requires-python = ">=3.13,<3.14"
 dependencies = [
+    "fastapi>=0.143.1",
     "numpy>=2.0",
     "pandas>=2.2",
+    "psycopg[binary,pool]>=3.2",
     "pyarrow>=16",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
+    "pyjwt[crypto]>=2.15.1",
     "structlog>=24",
+    "uvicorn[standard]>=0.54.0",
 ]
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "mypy>=2.4.0",
     "pandas-stubs>=3.0.5.260914",
-    "psycopg[binary]>=3.2",
     "pytest>=8",
     "ruff>=0.17.0",
 ]
@@ -30,7 +34,7 @@ packages = ["backend/src/trading"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["backend/src", "."]
+pythonpath = ["backend/src", "apps/api", "."]
 
 [tool.ruff]
 line-length = 150
@@ -40,6 +44,9 @@ target-version = "py313"
 select = ["E", "F", "I", "B", "UP"]
 ignore = ["E731", "B008", "B905"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["trading", "api"]
+
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["E741"]
 
@@ -47,5 +54,5 @@ ignore = ["E731", "B008", "B905"]
 python_version = "3.13"
 strict = true
 plugins = ["pydantic.mypy"]
-mypy_path = "backend/src"
-files = ["backend/src/trading/config.py", "backend/src/trading/contracts"]
+mypy_path = ["backend/src", "apps/api"]
+files = ["backend/src/trading/config.py", "backend/src/trading/contracts", "apps/api/api"]

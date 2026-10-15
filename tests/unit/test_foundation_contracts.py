@@ -2,6 +2,7 @@ from decimal import Decimal
 
 import pytest
 from pydantic import BaseModel, ValidationError
+
 from trading.config import Settings
 from trading.contracts.enums import TradingMode
 from trading.contracts.money import DecimalStr
