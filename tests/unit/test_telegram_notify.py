@@ -58,3 +58,40 @@ def test_seen_chats(monkeypatch):
     ]}
     monkeypatch.setattr(tg.urllib.request, "urlopen", lambda req, timeout: R(json.dumps(body).encode()))
     assert {c["id"] for c in tg.seen_chats("t")} == {42, -1001}
+
+
+FAKE = "123456789:AAH" + "x" * 32
+
+
+def test_mask_removes_token_and_token_shapes():
+    url = f"https://api.telegram.org/bot{FAKE}/sendMessage"
+    assert FAKE not in tg.mask(url) and "<redacted>" in tg.mask(url)
+    assert tg.mask("plain text 12:34") == "plain text 12:34"
+    assert tg.mask("short-SECRET", "short-SECRET") == "<redacted>"
+
+
+def test_unexpected_error_with_url_is_masked(monkeypatch, capsys):
+    def boom(req, timeout):
+        raise ValueError(f"bad url {req.full_url}")
+
+    monkeypatch.setattr(tg.urllib.request, "urlopen", boom)
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", FAKE)
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "1")
+    monkeypatch.setattr("sys.stdin", io.StringIO("hi"))
+    assert tg.main([]) == 1
+    out = capsys.readouterr()
+    assert FAKE not in out.err + out.out and "<redacted>" in out.err
+
+
+def test_check_sends_nothing(monkeypatch, capsys):
+    calls = []
+
+    def fake(req, timeout):
+        calls.append(req.full_url.rsplit("/", 1)[-1])
+        return io.BytesIO(json.dumps({"ok": True, "result": {"username": "b"}}).encode())
+
+    monkeypatch.setattr(tg.urllib.request, "urlopen", fake)
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", FAKE)
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "1")
+    assert tg.main(["--check"]) == 0
+    assert calls == ["getMe"] and FAKE not in capsys.readouterr().out

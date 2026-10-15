@@ -21,6 +21,17 @@ def test_live_mode_is_refused_without_explicit_enable():
         Settings(live_enabled=True, app_env="development")
 
 
+def test_production_env_and_flags_cannot_enable_live_in_this_build():
+    for kwargs in (
+        {"app_env": "production", "live_enabled": True},
+        {"app_env": "production", "live_enabled": True, "trading_mode": "LIVE"},
+        {"app_env": "production", "trading_mode": "LIVE"},
+    ):
+        with pytest.raises(ValidationError, match="not available in this build"):
+            Settings(**kwargs)
+    assert Settings(app_env="production").trading_mode is TradingMode.SHADOW
+
+
 def test_secrets_are_not_in_repr():
     assert "postgres://secret" not in repr(Settings(database_url="postgres://secret"))
 

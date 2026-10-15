@@ -3,11 +3,13 @@
     echo "ข้อความ" | python3 scripts/telegram_notify.py
     python3 scripts/telegram_notify.py --text-file /tmp/alert.txt
     python3 scripts/telegram_notify.py --chat-ids
+    python3 scripts/telegram_notify.py --check      # token works, chat id set; sends nothing
 
 Reads TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID from the environment (cloud
 environment settings, or .env.local loaded by the shell on a local machine).
 Standard library only, so it runs without the project's virtualenv. The token
-is part of the request URL, so it is never printed or included in errors.
+is part of the request URL, so every error and log line passes through
+``mask`` first, which removes the token and anything shaped like one.
 """
 
 from __future__ import annotations
@@ -15,12 +17,21 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
 
 API = "https://api.telegram.org"
 LIMIT = 4096                             # Telegram's maximum message length
+_TOKEN_SHAPE = re.compile(r"\d{5,}:[A-Za-z0-9_-]{20,}")
+
+
+def mask(text: str, token: str | None = None) -> str:
+    """Remove the bot token from text bound for logs, errors or chat."""
+    if token:
+        text = text.replace(token, "<redacted>")
+    return _TOKEN_SHAPE.sub("<redacted>", text)
 
 
 class TelegramError(RuntimeError):
@@ -89,6 +100,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--text-file", help="message file (default: stdin)")
     ap.add_argument("--chat-ids", action="store_true", help="list chats that messaged the bot recently")
+    ap.add_argument("--check", action="store_true", help="verify the token and chat id without sending")
     args = ap.parse_args(argv)
 
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
@@ -103,14 +115,18 @@ def main(argv: list[str] | None = None) -> int:
         if not chat_id:
             print("TELEGRAM_CHAT_ID is not set (run with --chat-ids after messaging the bot)", file=sys.stderr)
             return 2
+        if args.check:
+            bot = _call(token, "getMe")["result"].get("username")
+            print(f"ok: bot @{bot}, chat id set")
+            return 0
         text = open(args.text_file, encoding="utf-8").read() if args.text_file else sys.stdin.read()
         if not text.strip():
             print("empty message, nothing sent", file=sys.stderr)
             return 2
         print(f"sent {send(token, chat_id, text)} message(s)")
         return 0
-    except TelegramError as e:
-        print(str(e), file=sys.stderr)
+    except Exception as e:                       # noqa: BLE001 - any error may carry the URL
+        print(mask(f"{type(e).__name__}: {e}", token), file=sys.stderr)
         return 1
 
 
