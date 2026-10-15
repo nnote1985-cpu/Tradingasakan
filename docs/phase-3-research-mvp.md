@@ -78,3 +78,17 @@ bar opening at the signal close with no decision time.
 No forward v1 book is started: choosing to run v1 forward is a research
 decision for Note. No QUOTE_FORWARD simulator (no quote data reachable), no AI
 arm, no Supabase migration or writes, no deploy, no order adapter.
+
+## Implementation notes (added after the code, not changes to the tests above)
+
+- A day's allocated operating cost is booked when that UTC day ends, so the
+  next day's start equity already includes it.
+- Equity is marked at the execution bar's close. The archive has no mark-price
+  or quote stream here, so this is BAR_RESEARCH marking, not §10.2 mark-price
+  equity.
+- Exits checked at a bar's open, in order: HALT flatten, 24h time exit, 4h
+  trend exit, then a gap through the stop or TP. Same order as `bar_backtest`.
+- The exact-v1 test compares against `bar_backtest` with zero decision delay on
+  three random series with funding; trades and net P&L match to 1e-6 USDT.
+- 196 backend tests and 4 web tests pass. The pathA-v1.1 paper book is
+  unchanged and not moved onto this engine.

@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { type ApiError, apiGet, type Overview, supabase } from "./api";
 import { ModeBadge } from "./ModeBadge";
+import { PortfolioTable } from "./PortfolioTable";
 
 function SignIn() {
   const [email, setEmail] = useState("");
@@ -35,7 +36,7 @@ function OverviewPage() {
         <h1 className="text-xl font-semibold">ภาพรวม</h1>
         <ModeBadge mode={q.data.mode} />
       </div>
-      <p>พอร์ต: {q.data.portfolios.length}</p>
+      <PortfolioTable rows={q.data.portfolios} />
     </section>
   );
 }
