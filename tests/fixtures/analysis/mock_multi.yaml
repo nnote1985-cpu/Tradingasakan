@@ -1,0 +1,21 @@
+# Test fixture: fully pinned MULTI_ANALYST_FILTER graph with mock roles (§7.12 extension points).
+analysis_profile:
+  graph_version: mock_multi_1
+  enabled: true
+  capability_stage: MULTI_ANALYST_FILTER
+  roles:
+    - {role_id: regime, kind: analyst, model_id: mock, prompt_version: p1, schema_version: agent_analysis.v1, timeout_ms: 15000, max_output_tokens: 600}
+    - {role_id: setup, kind: analyst, model_id: mock, prompt_version: p1, schema_version: agent_analysis.v1, timeout_ms: 15000, max_output_tokens: 600}
+    - {role_id: news, kind: analyst, model_id: mock, prompt_version: p1, schema_version: agent_analysis.v1, timeout_ms: 15000, max_output_tokens: 600}
+    - {role_id: derivatives_liquidity, kind: analyst, model_id: mock, prompt_version: p1, schema_version: agent_analysis.v1, timeout_ms: 15000, max_output_tokens: 600}
+    - {role_id: synthesis, kind: synthesis, model_id: mock, prompt_version: p1, schema_version: synthesis_result.v1, timeout_ms: 20000,
+       max_output_tokens: 800, depends_on: [regime, setup, news, derivatives_liquidity]}
+  required_roles: [regime, setup]
+  optional_roles: [news, derivatives_liquidity]
+  synthesis_required: true
+  allow_partial_optional: true
+  max_concurrency: 2
+  total_timeout_ms: 45000
+  analyst_cutoff_ms: 20000
+  max_run_cost_usd: "0.20"
+  daily_cost_cap_usd: "5.00"

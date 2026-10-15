@@ -1,0 +1,24 @@
+# v1 single filter adapter (BUILDPLAN v4.2 §7.2, §7.6 FILTER_ONLY).
+# Disabled draft: model, prompt and budgets stay null until provider discovery
+# and an experiment lock. A graph with nulls cannot be enabled (lock_problems).
+# Path A today is alert-only and makes no model calls.
+analysis_profile:
+  graph_version: v1_filter_draft_1
+  enabled: false
+  capability_stage: FILTER_ONLY
+  roles:
+    - role_id: filter
+      kind: filter
+      schema_version: filter_response.v1
+      model_id: null
+      prompt_version: null
+      timeout_ms: null
+      max_output_tokens: null
+      input_scopes: [snapshot_features, snapshot_news]
+  required_roles: [filter]
+  optional_roles: []
+  max_concurrency: 1
+  tools: []
+  total_timeout_ms: null
+  max_run_cost_usd: null
+  daily_cost_cap_usd: null

@@ -1,0 +1,12 @@
+# Test fixture: a fully pinned FILTER_ONLY graph with a mock model. Not a real provider.
+analysis_profile:
+  graph_version: mock_filter_1
+  enabled: true
+  capability_stage: FILTER_ONLY
+  roles:
+    - {role_id: filter, kind: filter, model_id: mock-filter, prompt_version: p1, schema_version: filter_response.v1,
+       timeout_ms: 20000, max_output_tokens: 400}
+  required_roles: [filter]
+  total_timeout_ms: 30000
+  max_run_cost_usd: "0.05"
+  daily_cost_cap_usd: "1.00"

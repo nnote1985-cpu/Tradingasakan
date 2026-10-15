@@ -12,6 +12,7 @@ dependencies = [
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
     "pyjwt[crypto]>=2.15.1",
+    "pyyaml>=6.0.3",
     "structlog>=24",
     "uvicorn[standard]>=0.54.0",
 ]
@@ -23,6 +24,7 @@ dev = [
     "pandas-stubs>=3.0.5.260914",
     "pytest>=8",
     "ruff>=0.17.0",
+    "types-pyyaml>=6.0.12.20260906",
 ]
 
 [build-system]
@@ -55,4 +57,4 @@ python_version = "3.13"
 strict = true
 plugins = ["pydantic.mypy"]
 mypy_path = ["backend/src", "apps/api"]
-files = ["backend/src/trading/config.py", "backend/src/trading/contracts", "apps/api/api"]
+files = ["backend/src/trading/config.py", "backend/src/trading/contracts", "backend/src/trading/analysis", "apps/api/api"]
