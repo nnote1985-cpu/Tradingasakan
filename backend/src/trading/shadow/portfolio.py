@@ -258,7 +258,11 @@ class ShadowPortfolio:
             self.last_close = str(D(c))
             self.last_bar = _iso(t)
             tr_eq, ec_eq = self.equity()
+            n_alerts = len(self.risk.alerts)
             reason = self.risk.observe(t, tr_eq, ec_eq, cfg.profile)
+            for a in self.risk.alerts[n_alerts:]:
+                self.events.append({"time": a["time"], "event": f"ALERT_{a['alert']}",
+                                    **{k: v for k, v in a.items() if k not in ("time", "alert")}})
             if reason:
                 self.events.append({"time": _iso(t), "event": f"HALT_{reason}", "trading_equity": str(tr_eq),
                                     "economic_equity": str(ec_eq), "high_water_mark": str(self.risk.high_water_mark),
