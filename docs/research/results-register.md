@@ -12,9 +12,9 @@
 | --- | --- | --- | --- |
 | R1 | `trend_breakout_v1` (v1) | breakout 1h, TP 2R, time exit 24h, เสี่ยง 0.5%/เทรด | BTCUSDT perp |
 | R2 | `trend_donchian_4h_v1_1` (v1.1) | Donchian 4h 20/10 ไม่มี TP | BTC+ETH+SOL perp |
-| R3 | `trend_regime_v2` (v2) | ถือเต็มเมื่อปิดเหนือ SMA100 ไม่งั้นถือเงินสด | BTC+ETH+SOL (คิดต้นทุนแบบ spot) |
-| R4 | `funding_overlay_v3` (v3) | ถือ BTC ลดเหลือ 50% เมื่อ funding เฉลี่ย 7 วัน > 0.09%/วัน | BTC (spot) |
-| R5 | `pathA-v1` | R3 บน BTC × R4 (น้ำหนัก = trend × funding) | BTC (spot) |
+| R3 | `trend_regime_v2` (v2) | ถือเต็มเมื่อปิดเหนือ SMA100 ไม่งั้นถือเงินสด | BTC+ETH+SOL พอร์ตแบบ spot (เงินสด+เหรียญ, ค่าธรรมเนียม spot, ไม่คิด funding) แต่ใช้ราคา perp เป็นตัวแทน |
+| R4 | `funding_overlay_v3` (v3) | ถือ BTC ลดเหลือ 50% เมื่อ funding เฉลี่ย 7 วัน > 0.09%/วัน | BTC พอร์ตแบบ spot ใช้ราคา perp เป็นตัวแทน |
+| R5 | `pathA-v1` | R3 บน BTC × R4 (น้ำหนัก = trend × funding) | BTC พอร์ตแบบ spot ใช้ราคา perp เป็นตัวแทน |
 
 `pathA-v1` ยังเป็นชื่อของพอร์ตจำลองที่ตรึงไว้ เปลี่ยนไม่ได้โดยไม่เปิดพอร์ตใหม่
 
@@ -62,6 +62,19 @@ R1 ใช้ fill แบบ conservative/absorbing ส่วน R2 ใช้ rec
 - equity 10,000 → 8,348.89 USDT = **−16.5%** (`pathA-holdout/equity_buy_and_hold.csv`)
 - ถ้านับทั้งปีปฏิทิน 2025 (เปิด 1 ม.ค. 93,548.8) ราคาเปลี่ยนแค่ −6.4% ตัวเลข −16.5% จึงใช้เทียบได้เฉพาะช่วง holdout นี้
 - ใช้ราคา perpetual แทน spot และไม่ได้คิด funding ใน B&H
+
+## ตลาดที่จำลอง และข้อจำกัดของราคาตัวแทน (R3–R5 และพอร์ตจำลอง pathA-v1)
+
+| ส่วน | ข้อมูลที่ใช้ |
+| --- | --- |
+| พอร์ตที่จำลอง | **Spot**: ถือเงินสด USDT + BTC, ไม่มี leverage, ไม่จ่าย/รับ funding, ค่าธรรมเนียม 0.10% + 2 bps |
+| สัญญาณ | ราคาปิดรายวันของ BTCUSDT perpetual (USD-M) และ funding ของ perpetual |
+| ราคา fill, mark-to-market, B&H | **ราคา perpetual เป็นตัวแทนราคา spot** (holdout: แท่งรายวันจาก 1h perp; พอร์ตจำลอง: ราคาเปิด 1h และราคาปิดรายวันของ perp) |
+
+ผลวัดผลกระทบ (`research/spike/check_pathA_data.py`, ผลที่ `/mnt/project-files/pathA-data-checks/report.json`):
+basis ราคาปิดรายวัน perp/spot − 1 ช่วง holdout เฉลี่ย −0.044% สูงสุด 0.069% (341 วัน), ต.ค. 2026 เฉลี่ย −0.053%
+เมื่อรัน holdout ใหม่ด้วยน้ำหนักเดิมแต่ใช้แท่ง spot สำหรับ fill/mark/B&H: R5 net −6.93% (เดิม −6.90%),
+Sharpe −0.32, DD 18.0%; B&H −16.52% (เดิม −16.51%) ผลแบบใช้ราคา perp ยังคงอยู่ ไม่ถูกแทนที่ ข้อสรุปไม่เปลี่ยน
 
 ## ผลแต่ละข้อเทียบเกณฑ์ (แยก 3 กรณี)
 
