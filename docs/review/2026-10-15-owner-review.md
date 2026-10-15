@@ -1,6 +1,6 @@
 # หลักฐานตามข้อตรวจของ Note (2026-10-15)
 
-PR #1 = `phase-0.5-research-spike` (head 6c669ce) · PR #2 = `phase-1-foundation` (head ล่าสุดใน PR)
+หลักฐานผูกกับ commit ที่ระบุใน `/mnt/project-files/review-2026-10-15/evidence.md` (SHA เต็มของ PR #1 และ PR #2 พร้อมลิงก์ CI)
 ไฟล์ที่อ้างถึงด้านล่างอยู่ใน branch ของ PR #2 ยกเว้นที่ระบุว่าอยู่ใน `/mnt/project-files`
 
 | ข้อ | สิ่งที่แก้หรือเพิ่ม | หลักฐาน |
@@ -19,3 +19,11 @@ PR #1 = `phase-0.5-research-spike` (head 6c669ce) · PR #2 = `phase-1-foundation
 | 8 CI | PR #1 CI ผ่านบน commit จริง 6c669ce; PR #2 CI ผ่านทุก commit ที่ push วันนี้ · **ยังค้าง:** รัน CI ของ #2 ใหม่หลัง base เปลี่ยนเป็น main (ทำได้หลัง merge #1) | GitHub Actions |
 | 8 แก้รูปแบบไม่เปลี่ยนผล | รันงานวิจัยทั้ง 6 ชุด (R1–R4, power, holdout) บนหัว PR #1 และหัว PR #2 ด้วยข้อมูลชุดเดียวกัน: ไฟล์ผลทั้ง 44 ไฟล์ sha256 ตรงกันทุกไฟล์ และตรงกับผลที่เผยแพร่ไว้เดิมทุกไฟล์ | `/mnt/project-files/review-2026-10-15/outputs-*.sha256` |
 | 8 manifest พอร์ตจำลอง | pathA-v1 รันจาก commit 42920baa…, tree 6e25a92e…, ไม่มีไฟล์แก้ค้าง; hash ของโค้ด 26 ไฟล์, config (กฎ+ต้นทุน), ไฟล์ข้อมูล 57 ไฟล์ที่ตรวจกับ .CHECKSUM ของ Binance แล้ว, และ state.json | `scripts/paper_manifest.py`, `/mnt/project-files/paper-trading/pathA-v1/manifests/2026-10-14.json` (สร้างย้อนหลังจาก archive ที่ไม่เปลี่ยนแล้ว) |
+
+## รอบที่ 2: คำถามเรื่อง manifest
+
+| เรื่อง | คำตอบสั้น | หลักฐาน |
+| --- | --- | --- |
+| ตลาดที่จำลอง | พอร์ตแบบ Spot ใช้ราคา perpetual เป็นตัวแทน fill/mark/B&H; basis เฉลี่ย −0.044% (holdout), holdout ด้วยราคา spot −6.93% เทียบ −6.90% | `docs/paper-book-data.md` §1, `results-register.md`, `/mnt/project-files/pathA-data-checks/report.json` |
+| Funding ต.ค. | ประมาณจาก premium index (proxy) ไม่ใช่ funding จริง; ตรวจกับของจริง 12 เดือน คลาดเฉลี่ย 0.0027%/รอบ; ค่า 7 วันห่างจากเกณฑ์ราว 25 เท่า; ไม่มีการใช้ข้อมูลเก่าแทน | `docs/paper-book-data.md` §2 |
+| เวลาของ paper trading | รายการถึงตอนนี้เป็น reconstructed; forward record เริ่มรอบ 2026-10-16 ผ่าน `scripts/paper_run.py` (hash chain + `trading.audit_events`); baseline ยึดไว้ที่ audit_events id 2 | `docs/paper-book-data.md` §3, `/mnt/project-files/paper-trading/pathA-v1/provenance.md` |
