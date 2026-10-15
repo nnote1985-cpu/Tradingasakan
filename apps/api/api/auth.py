@@ -69,13 +69,18 @@ class SupabaseJwtVerifier:
             raise AuthError("invalid_token", "โทเคนไม่ถูกต้อง") from e
 
 
+# Checked on every request, so revoking a role (active = false) takes effect at once,
+# even while the user's Supabase token is still unexpired.
+ACTIVE_ROLES_SQL = "select role from trading.operator_roles where user_id = %s and active"
+
+
 class PgRoleStore:
     def __init__(self, pool: AsyncConnectionPool) -> None:
         self.pool = pool
 
     async def active_roles(self, user_id: UUID) -> frozenset[OperatorRole]:
         async with self.pool.connection() as conn:
-            cur = await conn.execute("select role from trading.operator_roles where user_id = %s and active", (user_id,))
+            cur = await conn.execute(ACTIVE_ROLES_SQL, (user_id,))
             return frozenset(OperatorRole(r[0]) for r in await cur.fetchall())
 
 

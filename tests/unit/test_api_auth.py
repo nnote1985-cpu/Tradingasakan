@@ -83,3 +83,13 @@ def test_valid_token_without_allowlist_is_forbidden(client):
 def test_role_claim_in_token_is_ignored(client):
     r = _get(client, "/api/v1/overview", _token(STRANGER, role="service_role", app_metadata={"role": "admin"}))
     assert r.status_code == 403
+
+
+def test_revoked_user_is_refused_even_with_a_valid_token():
+    roles = _Roles({VIEWER: {OperatorRole.VIEWER}})
+    app = create_app(Settings(), SupabaseJwtVerifier(URL, jwks_client=_Jwks()), roles)
+    c, tok = TestClient(app), _token(VIEWER)
+    assert _get(c, "/api/v1/overview", tok).status_code == 200
+    roles.table[VIEWER] = set()                     # role set active = false
+    r = _get(c, "/api/v1/overview", tok)
+    assert r.status_code == 403 and r.json()["code"] == "not_allowlisted"

@@ -224,3 +224,20 @@ def test_migration_files_match_recorded_history():
     recorded = (ROOT / "supabase/migration_history.txt").read_text().split()
     files = sorted(p.stem for p in (ROOT / "supabase/migrations").glob("*.sql"))
     assert files == recorded
+
+
+def test_revoked_role_is_not_returned_by_the_api_role_query(db):
+    from api.auth import ACTIVE_ROLES_SQL
+
+    uid = uuid.uuid4()
+    db.execute("begin")
+    try:
+        db.execute("insert into trading.operator_roles (user_id, role) values (%s, 'viewer'), (%s, 'operator')",
+                   (uid, uid))
+        assert {r[0] for r in db.execute(ACTIVE_ROLES_SQL, (uid,)).fetchall()} == {"viewer", "operator"}
+        db.execute("update trading.operator_roles set active = false where user_id = %s and role = 'operator'", (uid,))
+        assert {r[0] for r in db.execute(ACTIVE_ROLES_SQL, (uid,)).fetchall()} == {"viewer"}
+        db.execute("update trading.operator_roles set active = false where user_id = %s", (uid,))
+        assert db.execute(ACTIVE_ROLES_SQL, (uid,)).fetchall() == []
+    finally:
+        db.execute("rollback")
