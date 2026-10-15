@@ -55,3 +55,23 @@ once this is merged.
 
 No forward run, no change to the daily job, no Supabase writes, no order
 adapter, nothing live.
+
+## Results (added after the code; no rule above was changed)
+
+- Equivalence on real data, `research/spike/check_pathA_v12_equivalence.py`
+  (output `/mnt/project-files/pathA-v1.2-checks/equivalence.json`): 2025-01-24
+  → 2025-12-31, 341 days, BTCUSDT spot 1h bars, pathA weights from
+  `trading.alerts.risk_check`. Both books made the same 21 fills (20 paper +
+  the buy & hold fill) at the same times and sides. The largest daily equity
+  difference was 6.6e-11 relative, against a 1e-6 limit: **pass**. No HALT
+  tripped. v1.2 recorded two alerts: a 15% drawdown at the 2025-08-30 close and
+  a 5% day loss at the 2025-10-10 close.
+- These books return −6.09%, against −16.16% for buy & hold. The recorded
+  holdout result (−6.90%) came from `simulate_weights` with other fill timing.
+  The figure here comes from the paper-book timing (fill at the first 1h bar
+  after `decided_at`). It is not a new strategy result.
+- Money amounts in `SpotLedger` are now kept to 1e-12 USDT, and a full sell
+  removes exactly the booked inventory. Before this, the 28-digit Decimal
+  rounding of products could leave a fill entry unbalanced by about 1e-24 and
+  refused. The bar_backtest equivalence tests still pass.
+- 221 backend tests pass; ruff and mypy are clean.

@@ -10,9 +10,19 @@ quantity held. Fees are charged in the quote asset (USDT).
 
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import ROUND_FLOOR, Decimal
 
 from trading.shadow.ledger import ZERO, D, ShadowLedger
+
+MONEY_Q = Decimal("1e-12")       # USDT amounts are kept to 1e-12 so every entry balances exactly
+
+
+def money(x, rounding=None) -> Decimal:
+    return D(x).quantize(MONEY_Q, rounding=rounding) if rounding else D(x).quantize(MONEY_Q)
+
+
+def money_floor(x) -> Decimal:
+    return money(x, ROUND_FLOOR)
 
 
 class InsufficientBalance(ValueError):
@@ -25,7 +35,7 @@ class SpotLedger(ShadowLedger):
     def fill(self, exec_id: str, at, side: str, qty, price, fee, reference_price=None) -> bool:
         if exec_id in self._keys:
             return False
-        q, p, f = D(qty), D(price), D(fee)
+        q, p, f = D(qty), D(price), money(fee)
         if q <= 0 or p <= 0 or f < 0 or side not in ("BUY", "SELL"):
             raise ValueError("invalid fill")
         pos = self.position
@@ -34,7 +44,7 @@ class SpotLedger(ShadowLedger):
             r = D(reference_price)
             slip = (p - r) * q if side == "BUY" else (r - p) * q
         if side == "BUY":
-            cost = p * q
+            cost = money(p * q)
             if cost + f > self.bal("cash"):
                 raise InsufficientBalance(f"buy needs {cost + f} USDT, cash is {self.bal('cash')}")
             lines = [("cash", -(cost + f)), ("inventory_at_cost", cost), ("fees", f)]
@@ -42,8 +52,9 @@ class SpotLedger(ShadowLedger):
         else:
             if q > pos.qty:
                 raise InsufficientBalance(f"sell {q} but only {pos.qty} held (no short sales on spot)")
-            at_cost = pos.avg_entry * q
-            proceeds = p * q
+            # A full sell takes out exactly what is booked, so no residue is left in inventory.
+            at_cost = self.bal("inventory_at_cost") if q == pos.qty else money(pos.avg_entry * q)
+            proceeds = money(p * q)
             realized = proceeds - at_cost
             lines = [("cash", proceeds - f), ("inventory_at_cost", -at_cost), ("realized_pnl", -realized), ("fees", f)]
         self._post(exec_id, at, "fill", lines,
