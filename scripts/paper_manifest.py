@@ -8,8 +8,9 @@ Run inside the frozen worktree so the imports are the book's own code:
 
 Code: commit, tree, and sha256 of every tracked file the book can import, plus the lock
 file. Config: the rule constants and costs as loaded. Data: every archive file the book's
-own fetch code pulls for the run ending on --end, with the sha256 already checked against
-Binance's published .CHECKSUM. Read-only: nothing here writes a book or its state.
+own fetch code pulls for the run ending on --end (perp signal files and, from pathA-v1.1,
+the spot price files), with the sha256 already checked against Binance's published
+.CHECKSUM. Each forward run also records the files it actually fetched in runs.jsonl. Read-only: nothing here writes a book or its state.
 """
 
 from __future__ import annotations
@@ -43,13 +44,14 @@ def code_section() -> dict:
 
 
 def config_section() -> dict:
-    from trading.alerts import risk_check
+    from trading.alerts import live_data, risk_check
     from trading.paper import ledger
     from trading.strategies.trend_regime_v2 import RegimeCosts
 
     consts = {k: v for k, v in vars(risk_check).items() if k.isupper() and isinstance(v, (int, float, str))}
     cfg = {"rules_version": ledger.RULES_VERSION, "ledger_format": ledger.VERSION, "start_equity": ledger.START_EQUITY,
-           "costs": dataclasses.asdict(RegimeCosts()), "signal_constants": consts}
+           "costs": dataclasses.asdict(RegimeCosts()), "signal_constants": consts,
+           "funding_policy": getattr(live_data, "FUNDING_POLICY", None)}
     return {**cfg, "digest": sha256(json.dumps(cfg, sort_keys=True).encode())}
 
 
@@ -68,11 +70,15 @@ def data_section(end: date, fill_from: date | None) -> dict:
     live_data._get_verified = recording      # type: ignore[assignment]
     live_data.daily_klines("BTCUSDT", end - timedelta(days=400), end)
     live_data.daily_funding("BTCUSDT", end - timedelta(days=40), end)
+    spot = hasattr(live_data, "spot_daily_klines")          # pathA-v1.1 and later price on spot bars
+    if spot:
+        live_data.spot_daily_klines("BTCUSDT", (fill_from or end) - timedelta(days=1), end)
     if fill_from is not None and fill_from <= end:
-        live_data.hourly_klines("BTCUSDT", fill_from, end)
+        (live_data.spot_hourly_klines if spot else live_data.hourly_klines)("BTCUSDT", fill_from, end)
     live_data._get_verified = original       # type: ignore[assignment]
     files = dict(sorted(seen.items()))
-    return {"end": str(end), "source": live_data.BASE, "verified_against": "published .CHECKSUM (sha256)",
+    return {"end": str(end), "signals_source": live_data.BASE,
+            "price_source": getattr(live_data, "SPOT_BASE", live_data.BASE), "verified_against": "published .CHECKSUM (sha256)",
             "files": files, "digest": sha256(json.dumps(files, sort_keys=True).encode())}
 
 

@@ -26,6 +26,20 @@ SPOT_BASE = "https://data.binance.vision/data/spot"
 INTEREST_8H = 0.0001
 CLAMP = 0.0005
 
+# Locked with the owner 2026-10-15. Changing any value is a new policy version.
+FUNDING_POLICY = {
+    "version": "funding_policy.v1",
+    "units": "rates are fractions of notional (0.0001 = 0.01%); a day's value is the sum of the "
+             "funding prints stamped on that UTC day; the signal is the mean of the last 7 daily values",
+    "threshold_per_day": 0.0009,           # = risk_check.FUNDING_THRESHOLD_PER_DAY, 0.09%/day (0.03% per 8h)
+    "actual_source": "data.binance.vision futures/um monthly fundingRate archive, checksum-verified",
+    "proxy_formula": "for each 8h interval [t, t+8h): P = mean of the 1h premiumIndexKlines closes; "
+                     "F = P + clamp(0.0001 - P, -0.0005, +0.0005); the print is stamped at t+8h",
+    "switch": "each run uses every actual print the archive has and the proxy only after the last actual "
+              "print; decisions already recorded keep their snapshot and are never recomputed; any "
+              "recomputation with actual prints is a separate diagnostic and never overwrites forward results",
+}
+
 
 class ChecksumError(RuntimeError):
     pass

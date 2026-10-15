@@ -9,6 +9,23 @@ records `funding_source` and `funding_proxy_days`. It starts from 10,000 USDT ca
 forward run with no order carried over. pathA-v1 stays frozen and is no longer run forward;
 its state is a reconstructed replay. The sections below describe pathA-v1 unless noted.
 
+### Funding policy (locked, `funding_policy.v1`, `live_data.FUNDING_POLICY`)
+
+- Units: rates are fractions of notional (0.0001 = 0.01%). A day's value is the sum of the
+  funding prints stamped on that UTC day; the signal is the mean of the last 7 daily values.
+- Threshold: 0.0009 per day (0.09%/day, 0.03% per 8h). Above it the weight is halved.
+- Actual source: futures/um monthly `fundingRate` archive, checksum-verified.
+- Proxy: for each 8h interval [t, t+8h), P = mean of the 1h `premiumIndexKlines` closes,
+  F = P + clamp(0.0001 − P, −0.0005, +0.0005), stamped at t+8h. A proxy, not actual funding.
+- Switch: every run uses all actual prints the archive has and the proxy only after the
+  last one. Decisions already recorded keep their snapshot (`inputs`: the 7 daily values with
+  `actual`/`proxy` per day, closes, SMA and weight, plus `inputs_sha256`) and are never
+  recomputed. Recomputing past decisions with actual prints is a separate diagnostic written
+  to its own file; it never overwrites forward results.
+- Every journal entry and every run report shows `funding_source` and `funding_proxy_days`.
+- Price files: each run's `runs.jsonl` line lists every file fetched (perp signal files and
+  spot price files) with arrival time and sha256; `scripts/paper_manifest.py` lists them too.
+
 Answers the owner's questions on the pathA-v1 manifest (2026-10-15). Numbers come from
 `research/spike/check_pathA_data.py` (rules and signals from frozen/pathA-v1, nothing tuned);
 output `/mnt/project-files/pathA-data-checks/report.json`.

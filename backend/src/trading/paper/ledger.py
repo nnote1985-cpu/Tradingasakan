@@ -55,7 +55,7 @@ def _entry(kind: str, o: dict) -> dict:
     return {"date": o["decided_on"], "kind": kind, "weight": o["weight"], "decided_on": o["decided_on"],
             "data_ready_at": o["data_ready_at"], "decided_at": o["decided_at"], "at": o["decided_at"],
             "fill_at": o["fill_at"], "notes": o["notes"] + [f"สั่งเติมที่ {o['fill_at']}"],
-            **{k: v for k, v in o.items() if k.startswith("funding_")}}
+            **{k: v for k, v in o.items() if k.startswith("funding_") or k.startswith("inputs")}}
 
 
 def new_state(decided_on: str, weight: float, data_ready_at: datetime, decided_at: datetime,
@@ -211,5 +211,8 @@ def render_th(p: dict, added: list[dict], problems: list[str]) -> str:
             lines.append(f"- {e['at']}: {e['notes'][0]}")
         elif e["kind"] == "no_decision":
             lines.append(f"- ไม่ตัดสินใจใหม่จากราคาปิด {e['decided_on']}: {', '.join(e['notes'])}")
+    if p.get("funding_source"):
+        lines.append(f"- ที่มา funding ({p.get('funding_policy')}): {p['funding_source']}; "
+                     f"proxy {p.get('funding_proxy_days', 0)}/7 วัน")
     lines += [f"- ปัญหา: {x}" for x in problems]
     return "\n".join(lines)

@@ -83,3 +83,20 @@ def test_no_data_means_no_new_decision_and_decisions_are_frozen():
     # a second run on the same close does not add another decision.
     assert decide(st, "2025-01-01", 0.0, T("2025-01-02 09:20"), T("2025-01-02 09:21"), []) is None
     assert performance(st)["weight_held"] == 1.0
+
+
+def test_funding_policy_threshold_matches_the_signal_rule():
+    from trading.alerts.live_data import FUNDING_POLICY
+    from trading.alerts.risk_check import FUNDING_THRESHOLD_PER_DAY
+
+    assert FUNDING_POLICY["version"] == "funding_policy.v1"
+    assert FUNDING_POLICY["threshold_per_day"] == FUNDING_THRESHOLD_PER_DAY
+
+
+def test_decision_snapshot_is_kept_in_the_journal():
+    info = {"funding_policy": "funding_policy.v1", "funding_proxy_days": 2, "funding_source": "x",
+            "inputs": {"funding_window": [{"day": "2025-01-01", "funding": 0.0001, "source": "proxy"}]},
+            "inputs_sha256": "abc"}
+    st = new_state("2025-01-01", 1.0, T("2025-01-02 08:20"), T("2025-01-02 08:20:01"), [], info=info)
+    e = st["journal"][0]
+    assert e["inputs"] == info["inputs"] and e["inputs_sha256"] == "abc" and e["funding_proxy_days"] == 2

@@ -20,11 +20,14 @@ a readable journal live side by side (default: the shared project folder).
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from trading.alerts.live_data import daily_funding, daily_klines, missing_days, spot_daily_klines, spot_hourly_klines
+import numpy as np
+
+from trading.alerts.live_data import FUNDING_POLICY, daily_funding, daily_klines, missing_days, spot_daily_klines, spot_hourly_klines
 from trading.alerts.risk_check import events, missing_inputs, signals
 from trading.paper.ledger import RULES_VERSION, VERSION, advance, decide, new_state, performance, render_th
 
@@ -43,12 +46,28 @@ def write_journal(state: dict, path: Path) -> None:
     path.write_text("\n".join(lines) + "\n")
 
 
-def funding_info(est, last) -> dict:
-    window = est.loc[(est.index > last - timedelta(days=7)) & (est.index <= last)]
-    n = int(window.sum())
-    return {"funding_proxy_days": n,
-            "funding_source": "archive" if n == 0 else
-            f"archive + premium-index proxy ({n}/7 days; proxy, not actual funding)"}
+def decision_inputs(sig, funding, est, last) -> dict:
+    """Everything the decision used, frozen into the journal entry (never recomputed later)."""
+    days = [last - timedelta(days=i) for i in range(6, -1, -1)]
+    window = [{"day": str(d.date()), "funding": None if d not in funding.index else float(funding.loc[d]),
+               "source": "proxy" if bool(est.get(d, False)) else ("actual" if d in funding.index else "missing")}
+              for d in days]
+    n = sum(1 for w in window if w["source"] == "proxy")
+    row = sig.loc[last]
+
+    def val(x):
+        if x is None or (isinstance(x, float) and x != x):
+            return None
+        return bool(x) if isinstance(x, (bool, np.bool_)) else float(x)
+
+    snap = {k: val(row[c]) for k, c in (("close_perp", "close"), ("sma100", "sma100"), ("trend_up", "trend_up"),
+                                         ("funding_7d_per_day", "funding_7d_per_day"), ("funding_hot", "funding_hot"),
+                                         ("suggested_btc_weight", "suggested_btc_weight"))}
+    snap["funding_window"] = window
+    return {"funding_policy": FUNDING_POLICY["version"], "funding_proxy_days": n,
+            "funding_source": "actual archive" if n == 0 else
+            f"actual archive + premium-index proxy ({n}/7 days are proxy, not actual funding)",
+            "inputs": snap, "inputs_sha256": hashlib.sha256(json.dumps(snap, sort_keys=True).encode()).hexdigest()}
 
 
 def main() -> None:
@@ -82,7 +101,7 @@ def main() -> None:
     w = sig["suggested_btc_weight"].iloc[-1]
     weight = None if w != w else float(w)
     notes = missing_inputs(sig) if weight is None else (events(sig) or ["ตามสัญญาณ ณ ราคาปิด"])
-    info = funding_info(est, last)
+    info = decision_inputs(sig, funding, est, last)
     if weight is not None and info["funding_proxy_days"]:
         notes = notes + [f"funding {info['funding_proxy_days']}/7 วันเป็นค่าประมาณจาก premium index"]
     if state is None:
@@ -103,7 +122,9 @@ def main() -> None:
     p = performance(state)
     p.update(rules_version=RULES_VERSION, run_started_at=started.isoformat(), data_ready_at=data_ready_at.isoformat(),
              data_through=str(last.date()), stale=last.date() < end, missing_days=gaps, problems=problems,
-             new_entries=added, prices="BTCUSDT spot (fills, marks, buy & hold); signals from perp + funding")
+             new_entries=added, prices="BTCUSDT spot (fills, marks, buy & hold); signals from perp + funding",
+             funding_policy=FUNDING_POLICY["version"], funding_source=info["funding_source"],
+             funding_proxy_days=info["funding_proxy_days"])
     print(json.dumps(p, ensure_ascii=False, indent=2))
     print()
     print(render_th(p, [e for e in added if e["kind"] != "open"], problems))
