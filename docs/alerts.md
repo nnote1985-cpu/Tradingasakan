@@ -34,7 +34,21 @@ klines (error ~0.002% per print, checked on 2025-09).
 
 `scripts/paper_trade.py` runs a 10,000 USDT simulated book that holds
 `suggested_btc_weight` of BTC, next to a BTC buy & hold book with the same
-costs (0.10% fee + 2 bps). Each weight is frozen in the ledger at the close it
-was decided on and traded at the next day's open; no exchange orders are sent.
+costs (0.10% fee + 2 bps). No exchange orders are sent.
+
+Timing follows when the data actually arrived. The archive publishes a closed
+UTC day about 8 hours later, so each decision is stamped with the time the run
+received the data (`received_at`) and filled at the open of the first 1h bar
+starting at or after that time. That bar's price is in the archive a day
+later, so a decision placed on one run is filled on the next. Buy & hold fills
+at the same moment as the first order.
+
+Data checks: if the latest close has no 100-day price history or no complete
+7-day funding, the suggestion is "not enough data" and the book keeps what it
+holds (journal kind `no_decision`). If a closed day is missing while later
+days exist, or the fill hour is missing, the book stops and reports it rather
+than skipping ahead. Loaders trim monthly files to the requested dates.
+
 State and journal: `/mnt/project-files/paper-trading/{state.json,journal.md}`.
-Opened on the 2026-10-13 close at 100% BTC; the first fill is the 2026-10-14 open.
+Opened on the 2026-10-13 close at 100% BTC, received 2026-10-15 06:39 UTC,
+first fill at the 2026-10-15 07:00 UTC open.

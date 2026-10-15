@@ -42,3 +42,37 @@ def test_funding_estimate_uses_clamp_around_interest():
     # small premium → interest-dominated 0.01%; large premium → P - 0.05%.
     assert est.loc[D0 + pd.Timedelta(hours=8)] == pytest.approx(0.0001)
     assert est.loc[D0 + pd.Timedelta(hours=16)] == pytest.approx(0.0007)
+
+
+def test_missing_funding_gives_no_suggestion():
+    closes = list(np.linspace(100, 200, 110))
+    d = _daily(closes)
+    f = pd.Series(0.0003, index=d.index)
+    f.iloc[-3] = np.nan                       # one funding day missing inside the 7-day window
+    sig = signals(d, f)
+    assert sig["funding_hot"].iloc[-1] is None
+    assert np.isnan(sig["suggested_btc_weight"].iloc[-1])
+    s = summary(sig, funding_estimated=False)
+    assert s["suggested_btc_weight"] is None and not s["weight_changed"]
+    assert "funding 7 วันไม่ครบ" in s["missing_inputs"]
+    assert "ข้อมูลไม่พอ" in render_th(s)
+
+
+def test_missing_price_day_blocks_sma_instead_of_skipping():
+    d = _daily(list(np.linspace(100, 200, 110))).drop(D0 + pd.Timedelta(days=105))
+    sig = signals(d, pd.Series(0.0003, index=d.index))
+    assert len(sig) == 110                    # the gap stays as an empty row
+    assert np.isnan(sig["suggested_btc_weight"].iloc[-1])
+
+
+def test_clip_trims_monthly_file_to_requested_days():
+    from datetime import date
+
+    from trading.alerts.live_data import clip, missing_days
+    idx = pd.date_range("2025-03-01", periods=31 * 24, freq="1h", tz="UTC")
+    df = pd.DataFrame({"close": 1.0}, index=idx)
+    out = clip(df, date(2025, 3, 5), date(2025, 3, 10))
+    assert out.index.min() == pd.Timestamp("2025-03-05", tz="UTC")
+    assert out.index.max() == pd.Timestamp("2025-03-10 23:00", tz="UTC")
+    days = pd.date_range("2025-03-01", periods=5, freq="1D", tz="UTC").delete(2)
+    assert missing_days(days, date(2025, 3, 1), date(2025, 3, 5)) == ["2025-03-03"]

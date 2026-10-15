@@ -63,10 +63,34 @@ def _fetch(kind: str, symbol: str, interval: str | None, start: date, end: date)
     return out
 
 
-def daily_klines(symbol: str, start: date, end: date) -> pd.DataFrame:
-    frames = [parse_klines_csv(raw) for raw in _fetch("klines", symbol, "1d", start, end)]
+def clip(obj, start: date, end: date):
+    """Rows whose timestamp falls on a UTC day in [start, end]; monthly files hold the whole month."""
+    lo = pd.Timestamp(start, tz="UTC")
+    hi = pd.Timestamp(end, tz="UTC") + pd.Timedelta(days=1)
+    return obj[(obj.index >= lo) & (obj.index < hi)]
+
+
+def _klines(symbol: str, interval: str, start: date, end: date) -> pd.DataFrame:
+    frames = [parse_klines_csv(raw) for raw in _fetch("klines", symbol, interval, start, end)]
+    if not frames:
+        return pd.DataFrame(columns=["open", "high", "low", "close", "volume"], dtype=float)
     df = pd.concat(frames).sort_index()
-    return df[~df.index.duplicated(keep="first")]
+    return clip(df[~df.index.duplicated(keep="first")], start, end)
+
+
+def daily_klines(symbol: str, start: date, end: date) -> pd.DataFrame:
+    return _klines(symbol, "1d", start, end)
+
+
+def hourly_klines(symbol: str, start: date, end: date) -> pd.DataFrame:
+    return _klines(symbol, "1h", start, end)
+
+
+def missing_days(index: pd.DatetimeIndex, start: date, end: date) -> list[str]:
+    """UTC days in [start, end] with no row in ``index``."""
+    have = set(index.floor("1D"))
+    days = pd.date_range(pd.Timestamp(start, tz="UTC"), pd.Timestamp(end, tz="UTC"), freq="1D")
+    return [str(d.date()) for d in days if d not in have]
 
 
 def estimate_funding(premium_1h: pd.Series) -> pd.Series:
@@ -80,17 +104,18 @@ def estimate_funding(premium_1h: pd.Series) -> pd.Series:
 def daily_funding(symbol: str, start: date, end: date) -> tuple[pd.Series, pd.Series]:
     """(sum of funding prints per UTC day, True where the day used estimates)."""
     actual = [parse_funding_csv(raw) for raw in _fetch("fundingRate", symbol, None, start, end)]
-    f = pd.concat(actual).sort_index() if actual else pd.Series(dtype=float)
+    f = pd.concat(actual).sort_index() if actual else pd.Series(dtype=float, index=pd.DatetimeIndex([], tz="UTC"))
     f.index = f.index.round("1h")
+    f = clip(f, start, end)
     last = f.index.max() if len(f) else pd.Timestamp(start, tz="UTC")
     est_start = max(start, (last + pd.Timedelta(hours=1)).date())
     estimated = pd.Series(dtype=float)
     if est_start <= end:
         prem = [parse_klines_csv(raw)["close"] for raw in _fetch("premiumIndexKlines", symbol, "1h", est_start, end)]
         if prem:
-            p = pd.concat(prem).sort_index()
+            p = clip(pd.concat(prem).sort_index(), est_start, end)
             estimated = estimate_funding(p[~p.index.duplicated()])
-            estimated = estimated[estimated.index > last]
+            estimated = clip(estimated[estimated.index > last], start, end)
     allp = pd.concat([f, estimated]).sort_index()
     # A print at 00:00 settles the previous day's last interval; keep it on its own date (as in backtests).
     daily = allp.groupby(allp.index.floor("1D")).sum()
