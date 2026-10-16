@@ -330,3 +330,42 @@ def test_pathA_v12_sync_copies_the_spot_journal(db, tmp_path, halt):
     assert bad == []
     sells = sum(1 for e in state["book"]["entries"] if e["data"].get("side") == "SELL")
     assert sells == 1 and (state["risk"]["halted"] is halt)
+    halted = db.execute("select halted, halt_reason from trading.portfolio_risk_status where label = %s",
+                        (f"{label}/paper",)).fetchone()
+    assert halted[0] is halt and (halted[1] is not None) is halt
+    n_risk = db.execute("select count(*) from trading.risk_events where source_event_key like %s",
+                        (f"{label}/paper:%",)).fetchone()[0]
+    assert n_risk == sum(1 for e in state["journal"] if e["kind"] in ("alert", "halt", "resume"))
+
+
+def test_paired_run_sync_lands_both_arms_ai_answers_and_halts(db, tmp_path):
+    import importlib.util
+    import sys
+    from decimal import Decimal
+
+    spec = importlib.util.spec_from_file_location("p5_tests", ROOT / "tests/unit/test_phase5_paired.py")
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    state = mod.paid_halting_state()
+    (tmp_path / "pathA-p5-r1").mkdir()
+    (tmp_path / "pathA-p5-r1" / "state.json").write_text(json.dumps(state))
+    sql = subprocess.run([sys.executable, str(ROOT / "scripts/trading_sync_sql.py"), "--root", str(tmp_path)],
+                         check=True, capture_output=True, text=True).stdout
+    db.execute("insert into trading.workspace_settings (owner_id) values (gen_random_uuid()) on conflict do nothing")
+    db.execute(sql)
+    first = _fingerprint(db, "pathA-p5-r1")
+    db.execute(sql)
+    assert _fingerprint(db, "pathA-p5-r1") == first
+    assert first[4] == 3 and first[2] == 0                       # three portfolios, every line sums to zero
+    rows = db.execute("select kind, decision, cost_usd from trading.agent_decisions d join trading.portfolios p "
+                      "on p.id = d.portfolio_id where p.label = 'pathA-p5-r1/ai'").fetchall()
+    assert len(rows) == len(state["filter_log"]) + len(state["diagnostics"])
+    assert sum(r[2] for r in rows) == Decimal(str(sum(Decimal(r["cost_usd"]) for r in state["filter_log"] + state["diagnostics"])))
+    costs = db.execute("select sum(l.amount) from trading.journal_lines l join trading.journal_entries e on e.id = l.entry_id "
+                       "where e.source_event_key like 'pathA-p5-r1/ai:%' and l.ledger_account = 'operating_costs'").fetchone()[0]
+    assert costs == sum(r[2] for r in rows)
+    status = dict(db.execute("select label, halted from trading.portfolio_risk_status where label like 'pathA-p5-r1/%'").fetchall())
+    assert status == {"pathA-p5-r1/code": True, "pathA-p5-r1/ai": True, "pathA-p5-r1/buy_and_hold": False}
+    with pytest.raises(psycopg.errors.RaiseException):
+        db.execute("update trading.agent_decisions set decision = 'VETO'")

@@ -258,3 +258,41 @@ def test_random_veto_is_deterministic_and_bounded_by_p():
     never = random_veto(pb.targets, daily, hourly, 1.0, 1, pb.endpoint)
     assert all(t["side"] == "SELL" for t in never.trades if t["book"] == "paper") or not never.trades
     assert 0 <= uniform(1, "x") < 1 and uniform(1, "x") == uniform(1, "x") != uniform(2, "x")
+
+
+def paid_halting_state() -> dict:
+    """A paired run whose AI answers cost money and whose arms both HALT: the sync fixture."""
+    class Paid:
+        model_id = "claude-opus-5-5"
+
+        def ask(self, system, user, schema, max_tokens, timeout_s):
+            q = json.loads(user.split("REQUEST:", 1)[1].split("\nSNAPSHOT:", 1)[0])
+            return pf.ProviderReply(_ok(q, decision="ALLOW", reason_code="SUPPORTED_CONTEXT", evidence_refs=[]),
+                                    "msg", 5000, 2000)
+    pb, *_ = run([80000.0, 81000.0, 82000.0, 60000.0, 59000.0, 58000.0], [1.0] * 6, Paid())
+    assert pb.ai.risk.halted and pb.code.risk.halted and pb.spent_usd() > 0
+    return pb.to_dict()
+
+
+def test_trading_mirror_copies_both_arms_ai_answers_and_halts(tmp_path):
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    state = paid_halting_state()
+    (tmp_path / "pathA-p5-r1").mkdir()
+    (tmp_path / "pathA-p5-r1" / "state.json").write_text(json.dumps(state))
+    root = Path(__file__).resolve().parents[2]
+    r = subprocess.run([sys.executable, str(root / "scripts/trading_sync_sql.py"), "--root", str(tmp_path)],
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    for label in ("pathA-p5-r1/code", "pathA-p5-r1/ai", "pathA-p5-r1/buy_and_hold"):
+        assert f"'{label}'" in r.stdout
+    assert "'pathA-p5-r1/ai/" not in r.stdout and "'2ae53c7'" in r.stdout
+    n = len(state["filter_log"]) + len(state["diagnostics"])
+    assert r.stdout.count("insert into trading.agent_decisions") == n
+    assert "'pathA-p5-r1/ai:llm:p5:" in r.stdout                    # AI cost is an operating-cost entry
+    assert "'pathA-p5-r1/code:halt:" in r.stdout and "'pathA-p5-r1/ai:halt:" in r.stdout
+    s = subprocess.run([sys.executable, str(root / "scripts/supabase_sync_sql.py"), "--root", str(tmp_path)],
+                       capture_output=True, text=True)
+    assert s.returncode == 0 and "pathA-p5-r1 (paired_book.v1) is not mirrored" in s.stderr
