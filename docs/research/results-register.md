@@ -20,6 +20,7 @@
 | R9a / R9b | `run_r9.py` | path A × 0.5 when 30-day realised vol > 80%/yr (R9a); path A × min(1, trailing-1y median vol / vol) floored to 0.25 steps (R9b) | BTC spot model, perp prices |
 | R10a / R10b | `run_r10.py` | path A with a sticky trend state: in above SMA100 × 1.02, out below × 0.98 (R10a); in/out after 3 closes above/below SMA100 (R10b) | BTC spot model, perp prices |
 | R11 | `run_r11.py` | R7 long/short with a sticky side: long above SMA100 × 1.02, short below × 0.98 | BTCUSDT **perp**, 1x, funding |
+| R12 | `run_r12.py` | R10a weight × R9b vol scale | BTC spot model, perp prices |
 | R7 | `run_r7.py` | long เมื่อปิดเหนือ SMA100 รายวัน, short เมื่อต่ำกว่า, 1x, คิด funding | BTCUSDT **perp** |
 
 `pathA-v1` ยังเป็นชื่อของพอร์ตจำลองที่ตรึงไว้ เปลี่ยนไม่ได้โดยไม่เปิดพอร์ตใหม่
@@ -169,3 +170,9 @@ Window fully seen before and the idea came from the 2025 analysis: R10a is a can
 2022-04-12 → 2026-01-01, perp 1x, taker 0.05% + 2 bps, funding: R7 +103.4% / Sharpe 0.43 / DD 55.0% (57 flips, reproduced);
 R11 +221.0% / 0.71 / 39.4% (21 flips); B&H +121.5% / 0.42 / 62.0%. **R11 passes.** Short days turned positive (+0.148 log vs
 −0.078). Window seen before and band idea came from the 2025 analysis: candidate only; C1/C2 unspent.
+
+## R12 (2026-10-16, docs/research/r12-band-voltarget-plan.md)
+
+2022-07-01 → 2026-01-01, spot 0.10% + 2 bps: R10a +244.8% / Sharpe 1.02 / DD 26.0% (48 trades); R12 +182.8% / 0.97 / 21.7%
+(331 trades); B&H +339.2% / 0.88 / 35.4%. **R12 fails** (Sharpe below R10a; DD cut 4.3 points, short of the declared 5).
+Vol sizing helped only the high-vol 2024 drawdown; the low-vol sideways drawdowns of 2023 and 2025 are unchanged.
