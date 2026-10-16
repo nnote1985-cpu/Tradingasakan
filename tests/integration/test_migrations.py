@@ -287,6 +287,7 @@ def _v12_sql(tmp_path, state: dict) -> str:
     (tmp_path / v).mkdir()
     (tmp_path / v / "state.json").write_text(json.dumps(state))
     extra = [] if v == "pathA-v1.2" else ["--commit", f"{v}=abcdef1"]
+    extra.append("--risk-and-agent-tables")
     return subprocess.run([sys.executable, str(ROOT / "scripts/trading_sync_sql.py"), "--root", str(tmp_path), *extra],
                           check=True, capture_output=True, text=True).stdout
 
@@ -338,30 +339,70 @@ def test_pathA_v12_sync_copies_the_spot_journal(db, tmp_path, halt):
     assert n_risk == sum(1 for e in state["journal"] if e["kind"] in ("alert", "halt", "resume"))
 
 
-def test_paired_run_sync_lands_both_arms_ai_answers_and_halts(db, tmp_path):
-    import importlib.util
-    import sys
-    from decimal import Decimal
 
-    spec = importlib.util.spec_from_file_location("p5_tests", ROOT / "tests/unit/test_phase5_paired.py")
+def _load(name: str, rel: str):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(name, ROOT / rel)
     assert spec and spec.loader
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    state = mod.paid_halting_state()
-    (tmp_path / "pathA-p5-r1").mkdir()
-    (tmp_path / "pathA-p5-r1" / "state.json").write_text(json.dumps(state))
+    return mod
+
+
+@pytest.mark.parametrize("which", ["futures-r7", "pathA-p5-r1"])
+def test_perp_and_paired_books_land_balanced_and_once(db, tmp_path, which):
+    import sys
+    from decimal import Decimal
+
+    if which == "futures-r7":
+        state = _load("sync_formats", "tests/unit/test_sync_formats.py").perp_state()
+        books = {"futures-r7/paper": state["book"], "futures-r7/buy_and_hold": state["buy_and_hold"]}
+    else:
+        state = _load("p5_tests", "tests/unit/test_phase5_paired.py").paid_halting_state()
+        books = {"pathA-p5-r1/code": state["code"]["book"], "pathA-p5-r1/ai": state["ai"]["book"],
+                 "pathA-p5-r1/buy_and_hold": state["code"]["buy_and_hold"]}
+    (tmp_path / which).mkdir()
+    (tmp_path / which / "state.json").write_text(json.dumps(state))
     sql = subprocess.run([sys.executable, str(ROOT / "scripts/trading_sync_sql.py"), "--root", str(tmp_path)],
                          check=True, capture_output=True, text=True).stdout
     db.execute("insert into trading.workspace_settings (owner_id) values (gen_random_uuid()) on conflict do nothing")
     db.execute(sql)
-    first = _fingerprint(db, "pathA-p5-r1")
+    first = _fingerprint(db, which)
     db.execute(sql)
-    assert _fingerprint(db, "pathA-p5-r1") == first
-    assert first[4] == 3 and first[2] == 0                       # three portfolios, every line sums to zero
+    assert _fingerprint(db, which) == first and first[2] == 0 and first[4] == len(books)
+    for label, ledger in books.items():
+        rows = dict(db.execute(
+            "select l.ledger_account, sum(l.amount) from trading.journal_lines l join trading.journal_entries e "
+            "on e.id = l.entry_id where e.source_event_key like %s group by 1", (f"{label}:%",)).fetchall())
+        want: dict[str, Decimal] = {}
+        for e in ledger["entries"]:
+            for a, x in e["lines"]:
+                a = {"capital": "owner_capital", "inventory_at_cost": "btc_position_cost"}.get(a, a)
+                want[a] = want.get(a, Decimal(0)) + Decimal(x)
+        # each line is rounded to the column's 18 decimals; the residual stays within the entry
+        tol = Decimal(len(ledger["entries"])) * Decimal("1e-17")
+        assert set(a for a, v in rows.items() if v) == set(a for a, v in want.items() if v)
+        assert all(abs(rows[a] - want[a]) <= tol for a in want if want[a])
+
+
+def test_paired_run_risk_and_agent_tables(db, tmp_path):
+    """With --risk-and-agent-tables, AI answers and HALTs land in their own append-only tables."""
+    import sys
+    from decimal import Decimal
+
+    state = _load("p5_tests", "tests/unit/test_phase5_paired.py").paid_halting_state()
+    (tmp_path / "pathA-p5-r1").mkdir()
+    (tmp_path / "pathA-p5-r1" / "state.json").write_text(json.dumps(state))
+    sql = subprocess.run([sys.executable, str(ROOT / "scripts/trading_sync_sql.py"), "--root", str(tmp_path),
+                          "--risk-and-agent-tables"], check=True, capture_output=True, text=True).stdout
+    db.execute("insert into trading.workspace_settings (owner_id) values (gen_random_uuid()) on conflict do nothing")
+    db.execute(sql)
+    db.execute(sql)
     rows = db.execute("select kind, decision, cost_usd from trading.agent_decisions d join trading.portfolios p "
                       "on p.id = d.portfolio_id where p.label = 'pathA-p5-r1/ai'").fetchall()
     assert len(rows) == len(state["filter_log"]) + len(state["diagnostics"])
-    assert sum(r[2] for r in rows) == Decimal(str(sum(Decimal(r["cost_usd"]) for r in state["filter_log"] + state["diagnostics"])))
+    assert sum(r[2] for r in rows) == sum(Decimal(r["cost_usd"]) for r in state["filter_log"] + state["diagnostics"])
     costs = db.execute("select sum(l.amount) from trading.journal_lines l join trading.journal_entries e on e.id = l.entry_id "
                        "where e.source_event_key like 'pathA-p5-r1/ai:%' and l.ledger_account = 'operating_costs'").fetchone()[0]
     assert costs == sum(r[2] for r in rows)

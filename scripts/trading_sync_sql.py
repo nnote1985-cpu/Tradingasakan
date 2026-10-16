@@ -18,7 +18,17 @@ HALTs and resumes go to trading.risk_events.
 The Phase 5 paired run (format paired_book.v1, docs/phase-5-paired-plan.md) becomes the portfolios
 `pathA-p5-r1/code`, `pathA-p5-r1/ai` and `pathA-p5-r1/buy_and_hold` (the Code arm's benchmark;
 the AI arm's is the same), each copied like a pathA-v1.2 book, and every question to the AI
-becomes a trading.agent_decisions row on the AI portfolio.
+becomes a trading.agent_decisions row on the AI portfolio. The r2 proposal run (format
+proposal_book.v1, docs/phase-5-r2-plan.md) becomes `pathA-p5-r2/code`, `/ai` and `/buy_and_hold`
+the same way; its proposals are not copied yet.
+
+futures-r7 (format trend_perp_book.v1, docs/futures-r7-book-plan.md) keeps a balanced perp
+journal (ShadowLedger: cash, realized_pnl, fees, funding); its entries are copied line for line
+into `futures-r7/paper` and `futures-r7/buy_and_hold`. The open position is not a journal
+account, so trading equity comes from the book's own marks; exposure is the signed notional.
+
+The trading.risk_events and trading.agent_decisions rows are written only with
+--risk-and-agent-tables, once the migration that creates those tables is applied.
 """
 
 from __future__ import annotations
@@ -32,6 +42,7 @@ from pathlib import Path
 ROOT = Path("/mnt/project-files/paper-trading")
 FEE = Decimal("0.001")                   # trend_regime_v2.RegimeCosts.fee used by the paper ledger
 Q = Decimal("0.000000000001")
+Q18 = Decimal("1e-18")             # scale of trading.journal_lines.amount
 
 
 def q(v) -> str:
@@ -95,8 +106,10 @@ def book_sql(state: dict, commit: str) -> list[str]:
     return out
 
 
+RISK_AND_AGENT_TABLES = False      # set by --risk-and-agent-tables
 ACCOUNTS = {"capital": "owner_capital", "inventory_at_cost": "btc_position_cost"}
-COMMITS = ["pathA-v1=42920ba", "pathA-v1.1=5306f62", "pathA-v1.2=34028a6", "pathA-p5-r1=2ae53c7"]   # frozen/<version> heads
+COMMITS = ["pathA-v1=42920ba", "pathA-v1.1=5306f62", "pathA-v1.2=34028a6", "pathA-p5-r1=2ae53c7",   # frozen/<version> heads
+           "futures-r7=39488df", "pathA-p5-r2=a6e1c33"]
 
 
 def _version_and_portfolio(v: str, commit: str, label: str, start_equity) -> list[str]:
@@ -118,20 +131,30 @@ def _spot_book_sql(v: str, commit: str, state: dict, label: str, bh_label: str |
             lines = [(ACCOUNTS.get(a, a), Decimal(x)) for a, x in e["lines"]]
             if sum(x for _, x in lines) != 0:
                 raise SystemExit(f"{lab} entry {e['key']} does not balance: the state is not a valid book")
+            # numeric(38, 18) columns: round each line, then _entry puts the residual on the last line
+            lines = [(a, x.quantize(Q18, rounding=ROUND_HALF_EVEN)) for a, x in lines]
             dd = e["data"]
             memo = "starting cash" if e["kind"] == "open" else f"{dd.get('side')} {dd.get('qty')} BTC @ {dd.get('price')}"
             if e["kind"] == "operating_cost":
                 memo = dd.get("memo") or "operating cost"
+            elif e["kind"] == "funding":
+                memo = f"funding rate {dd.get('rate')} on {dd.get('qty')} BTC"
             out += _entry(f"{lab}:{e['key']}", lab, e["at"], memo, lines)
         for h in state["history"]:
             at = f"{h['date']}T23:59:59.999+00:00"
             tr = d(h["equity"] if book == "paper" else h["buy_and_hold"])
             ec = d(h["economic_equity"] if book == "paper" else h["buy_and_hold"])
-            exposure = d(tr * Decimal(str(h["weight_held_at_close"]))) if book == "paper" else None
+            if book != "paper":
+                exposure = None
+            elif "side_held_at_close" in h:                       # perp: signed notional
+                exposure = d(Decimal(h["exposure"]) * h["side_held_at_close"])
+            else:
+                exposure = d(tr * Decimal(str(h["weight_held_at_close"])))
             out.append("insert into trading.equity_snapshots (portfolio_id, at, trading_equity, economic_equity, mark_price, exposure) "
                        f"select id, {q(at)}, {q(tr)}, {q(ec)}, {q(d(h['close']))}, {q(exposure)} from trading.portfolios "
                        f"where label = {q(lab)} on conflict do nothing;")
-    out += _risk_events_sql(state.get("journal", []), label)
+    if RISK_AND_AGENT_TABLES:
+        out += _risk_events_sql(state.get("journal", []), label)
     return out
 
 
@@ -159,6 +182,12 @@ def rebalance_book_sql(state: dict, commit: str) -> list[str]:
     return _spot_book_sql(v, commit, state, f"{v}/paper", f"{v}/buy_and_hold")
 
 
+def trend_perp_book_sql(state: dict, commit: str) -> list[str]:
+    """futures-r7: the perp book and its buy & hold benchmark, same copy rules as pathA-v1.2."""
+    v = state["rules_version"]
+    return _spot_book_sql(v, commit, state, f"{v}/paper", f"{v}/buy_and_hold")
+
+
 def _ms(a: str | None, b: str | None) -> int | None:
     if not a or not b:
         return None
@@ -170,7 +199,7 @@ def paired_book_sql(state: dict, commit: str) -> list[str]:
     v = state["experiment_id"]
     out = _spot_book_sql(v, commit, state["code"], f"{v}/code", f"{v}/buy_and_hold")
     out += _spot_book_sql(v, commit, state["ai"], f"{v}/ai", None)
-    for r in state["filter_log"] + state["diagnostics"]:
+    for r in [] if not RISK_AND_AGENT_TABLES else state["filter_log"] + state["diagnostics"]:
         a, dec, resp = r["attempt"], r["decision"], r.get("response") or {}
         cols = {"proposal_id": r["proposal_id"], "kind": r["kind"], "decided_on": r["proposal_id"].split(":")[1],
                 "current_weight": r["current"], "target_weight": r["target"], "decision": dec["decision"],
@@ -185,12 +214,24 @@ def paired_book_sql(state: dict, commit: str) -> list[str]:
     return out
 
 
+def proposal_book_sql(state: dict, commit: str) -> list[str]:
+    """Phase 5 r2: both arms and the Code arm's benchmark. Proposals stay in state.json for now:
+    trading.agent_decisions holds filter answers only (PR #12), not weight proposals."""
+    v = state["experiment_id"]
+    return (_spot_book_sql(v, commit, state["code"], f"{v}/code", f"{v}/buy_and_hold")
+            + _spot_book_sql(v, commit, state["ai"], f"{v}/ai", None))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default=str(ROOT))
     ap.add_argument("--commit", action="append", default=list(COMMITS),
                     help="version=commit of each frozen branch (later values win)")
+    ap.add_argument("--risk-and-agent-tables", action="store_true",
+                    help="also write trading.risk_events and trading.agent_decisions (needs their migration)")
     args = ap.parse_args()
+    global RISK_AND_AGENT_TABLES
+    RISK_AND_AGENT_TABLES = args.risk_and_agent_tables
     commits = dict(c.split("=", 1) for c in args.commit)
     lines = ["begin;", "do $$ begin if not exists (select 1 from trading.workspace_settings) then "
              "raise exception 'trading.workspace_settings is empty: set the owner first'; end if; end $$;"]
@@ -199,8 +240,12 @@ def main() -> None:
         v = s.get("rules_version") or s["experiment_id"]
         if v not in commits:
             raise SystemExit(f"no frozen commit known for {v}: pass --commit {v}=<sha>")
-        if s.get("format") == "paired_book.v1":
+        if s.get("format") == "trend_perp_book.v1":
+            lines += trend_perp_book_sql(s, commits[v])
+        elif s.get("format") == "paired_book.v1":
             lines += paired_book_sql(s, commits[v])
+        elif s.get("format") == "proposal_book.v1":
+            lines += proposal_book_sql(s, commits[v])
         elif s.get("format") == "rebalance_book.v1":
             lines += rebalance_book_sql(s, commits[v])
         else:

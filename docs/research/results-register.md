@@ -16,6 +16,7 @@
 | R4 | `funding_overlay_v3` (v3) | ถือ BTC ลดเหลือ 50% เมื่อ funding เฉลี่ย 7 วัน > 0.09%/วัน | BTC พอร์ตแบบ spot ใช้ราคา perp เป็นตัวแทน |
 | R5 | `pathA-v1` | R3 บน BTC × R4 (น้ำหนัก = trend × funding) | BTC พอร์ตแบบ spot ใช้ราคา perp เป็นตัวแทน |
 | R6a / R6b | `run_r6.py` | สัญญาณ v1 เฉพาะ LONG, ไม่มี TP/time exit, ออกด้วย stop / trend exit / channel exit 10 แท่ง 4h; R6a เสี่ยง 0.5%, R6b ใช้เงินทั้งหมด | BTCUSDT **spot** (ราคา spot จริง) |
+| R7 | `run_r7.py` | long เมื่อปิดเหนือ SMA100 รายวัน, short เมื่อต่ำกว่า, 1x, คิด funding | BTCUSDT **perp** |
 
 `pathA-v1` ยังเป็นชื่อของพอร์ตจำลองที่ตรึงไว้ เปลี่ยนไม่ได้โดยไม่เปิดพอร์ตใหม่
 
@@ -96,6 +97,7 @@ Sharpe −0.32, DD 18.0%; B&H −16.52% (เดิม −16.51%) ผลแบบ
 | R4 | dev | ผ่าน | ไม่ผ่าน | ไม่พอ |
 | R4 | val | ผ่าน | ผ่าน (Sharpe) | ไม่พอ |
 | R6a/R6b | dev | ผ่าน | **ไม่ผ่าน** (Sharpe 0.31 และ 0.09 < 0.42) ³ | ไม่ผ่านตามเกณฑ์ที่ประกาศไว้ จึงไม่ได้ใช้ข้อมูลยืนยัน C1 (2018–2021) และ C2 (ม.ค.–ก.ย. 2026) |
+| R7 | dev | ผ่าน | ผ่านแบบเฉียด (Sharpe 0.43 > 0.42); ฝั่ง short ขาดทุน | ไม่พอ: Note เลือกไม่ใช้ข้อมูลยืนยัน C1 (perp 2020-04→2021) และ C2 (2026) (`docs/research/r7-futures-longshort-plan.md`) |
 | R5 | holdout | **ไม่ผ่าน** (−6.9%) | **ผ่าน** ด้าน Sharpe (−0.32 > −0.47); DD 18.0% ไม่ถึงครึ่งของ 32.0% | **ไม่พอ**: ปีเดียว power ราว 46% และกฎที่ไม่มีฝีมือผ่านได้ราว 29% |
 
 ³ R6 ใช้เกณฑ์เข้มกว่า: ต้อง Sharpe สูงกว่า B&H เท่านั้น ไม่ใช้ทางเลือก DD (`docs/research/r6-v1-spot-plan.md`) 113 จาก 156 เทรดออกที่ stop 2×ATR(1h)
@@ -116,6 +118,7 @@ R5 ขาดทุนน้อยกว่า B&H ในช่วงตลาด
 | R4 | 6800dec | `uv run python research/spike/run_v3.py` | `/mnt/project-files/v3-results/` |
 | R5 power | b0de161 | `uv run python research/spike/run_pathA_power.py` | `/mnt/project-files/pathA-power/` |
 | R6 dev | 2cdeb01 | `PYTHONPATH=research/spike uv run python research/spike/run_r6.py development` | `/mnt/project-files/r6-results/` |
+| R7 dev | f64ef00 | `PYTHONPATH=research/spike uv run python research/spike/run_r7.py development` | `/mnt/project-files/r7-results/` |
 | R5 holdout | d4f77a7 (กฎจาก 42920ba) | `PYTHONPATH=<worktree ของ frozen/pathA-v1>/backend/src:research/spike uv run python research/spike/run_pathA_holdout.py` | `/mnt/project-files/pathA-holdout/` |
 
 ข้อมูลโหลดด้วย `uv run python research/spike/download_data.py` (ต้องใช้ environment ที่อนุญาต data.binance.vision)

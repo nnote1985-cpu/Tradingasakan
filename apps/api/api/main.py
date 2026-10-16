@@ -10,16 +10,22 @@ from typing import Any
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from psycopg_pool import PoolTimeout
 
+from api.ai import ai_settings, scorecard
+from api.assets import ASSETS, AssetCache
 from api.auth import AuthError, Principal, RoleStore, TokenVerifier, authenticate
-from api.portfolios import NoPortfolios, PortfolioStore, overview_items
+from api.backtests import load_backtests
+from api.portfolios import NoPortfolios, PortfolioStore, Unavailable, decision_items, equity_series, overview_items, risk_items
+from api.strategies import catalog_view, profiles_view
 from trading.config import Settings
 from trading.contracts.enums import OperatorRole
 
 
 def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
-               portfolios: PortfolioStore | None = None) -> FastAPI:
+               portfolios: PortfolioStore | None = None, assets: AssetCache | None = None) -> FastAPI:
     store: PortfolioStore = portfolios or NoPortfolios()
+    market = assets or AssetCache()
     app = FastAPI(title="asakantrading API", version="0.1.0")
     if settings.allowed_origins:
         app.add_middleware(CORSMiddleware, allow_origins=list(settings.allowed_origins),
@@ -37,6 +43,12 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
         return JSONResponse(status_code=exc.status, content={
             "code": exc.code, "request_id": getattr(request.state, "request_id", None),
             "retryable": False, "message": exc.message_th})
+
+    @app.exception_handler(PoolTimeout)
+    async def database_unavailable(request: Request, exc: PoolTimeout) -> JSONResponse:
+        return JSONResponse(status_code=503, content={
+            "code": "database_unavailable", "request_id": getattr(request.state, "request_id", None),
+            "retryable": True, "message": "เชื่อมต่อฐานข้อมูลไม่ได้ กรุณาตรวจ DATABASE_URL ในไฟล์ .env ของ Backend"})
 
     async def principal(request: Request) -> Principal:
         return await authenticate(request.headers.get("authorization"), verifier, roles)
@@ -61,6 +73,66 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
         return {"mode": settings.trading_mode.value, "live_enabled": settings.live_enabled,
                 "portfolios": overview_items(await store.overview_rows())}
 
+    # Labels contain "/" (e.g. pathA-v1.2/paper), hence the path converter.
+    @app.get("/api/v1/portfolios/{label:path}/equity")
+    async def equity(label: str, p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        row = await store.portfolio(label)
+        if row is None:
+            raise AuthError("not_found", "ไม่พบพอร์ตนี้", status=404)
+        return equity_series(row, await store.equity_rows(label))
+
+    @app.get("/api/v1/risk-status")
+    async def risk_status(p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        try:
+            return {"available": True, "portfolios": risk_items(await store.risk_rows())}
+        except Unavailable:
+            return {"available": False, "portfolios": []}
+
+    @app.get("/api/v1/backtests")
+    async def backtests(market: str | None = None, p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        return {"items": load_backtests(market)}
+
+    @app.get("/api/v1/assets")
+    async def asset_list(p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        return {"items": list(ASSETS.values())}
+
+    @app.get("/api/v1/assets/{symbol}")
+    async def asset(symbol: str, p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        if symbol not in ASSETS:
+            raise AuthError("not_found", "ยังไม่รองรับสินทรัพย์นี้", status=404)
+        return await market.get(symbol)
+
+    @app.get("/api/v1/strategies")
+    async def strategies(p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        return catalog_view()
+
+    @app.get("/api/v1/bot-profiles")
+    async def bot_profiles(p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        return profiles_view()
+
+    @app.get("/api/v1/ai/settings")
+    async def ai_settings_view(p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        return ai_settings()
+
+    @app.get("/api/v1/portfolios/{label:path}/ai-scorecard")
+    async def ai_scorecard(label: str, p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        if await store.portfolio(label) is None:
+            raise AuthError("not_found", "ไม่พบพอร์ตนี้", status=404)
+        try:
+            items = decision_items(await store.decision_rows(label))["items"]
+        except Unavailable:
+            return {"available": False, "horizon_days": 0, "items": [], "counts": {}, "diagnostic_only": True}
+        return {"available": True, **scorecard(items, await store.equity_rows(label))}
+
+    @app.get("/api/v1/portfolios/{label:path}/decisions")
+    async def decisions(label: str, p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        if await store.portfolio(label) is None:
+            raise AuthError("not_found", "ไม่พบพอร์ตนี้", status=404)
+        try:
+            return decision_items(await store.decision_rows(label))
+        except Unavailable:
+            return {"available": False, "items": [], "counts": {}, "cost_usd": "0", "limit": 0}
+
     return app
 
 
@@ -74,7 +146,7 @@ def app_from_env() -> FastAPI:   # uvicorn --factory api.main:app_from_env
     s = load_settings()
     if not s.supabase_url or not s.database_url:
         raise RuntimeError("SUPABASE_URL and DATABASE_URL are required")
-    pool = AsyncConnectionPool(s.database_url, open=False)
+    pool = AsyncConnectionPool(s.database_url, open=False, timeout=5)
     app = create_app(s, SupabaseJwtVerifier(s.supabase_url), PgRoleStore(pool), PgPortfolioStore(pool))
     app.router.on_startup.append(pool.open)
     app.router.on_shutdown.append(pool.close)

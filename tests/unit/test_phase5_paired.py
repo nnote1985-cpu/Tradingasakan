@@ -283,8 +283,12 @@ def test_trading_mirror_copies_both_arms_ai_answers_and_halts(tmp_path):
     (tmp_path / "pathA-p5-r1").mkdir()
     (tmp_path / "pathA-p5-r1" / "state.json").write_text(json.dumps(state))
     root = Path(__file__).resolve().parents[2]
-    r = subprocess.run([sys.executable, str(root / "scripts/trading_sync_sql.py"), "--root", str(tmp_path)],
-                       capture_output=True, text=True)
+    base = subprocess.run([sys.executable, str(root / "scripts/trading_sync_sql.py"), "--root", str(tmp_path)],
+                          capture_output=True, text=True)
+    assert base.returncode == 0, base.stderr
+    assert "trading.agent_decisions" not in base.stdout and "trading.risk_events" not in base.stdout
+    r = subprocess.run([sys.executable, str(root / "scripts/trading_sync_sql.py"), "--root", str(tmp_path),
+                        "--risk-and-agent-tables"], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
     for label in ("pathA-p5-r1/code", "pathA-p5-r1/ai", "pathA-p5-r1/buy_and_hold"):
         assert f"'{label}'" in r.stdout

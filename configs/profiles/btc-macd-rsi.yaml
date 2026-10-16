@@ -1,0 +1,17 @@
+# Bot profile (docs/strategy-library.md). Change anything here => bump `version`.
+# Draft: not attached to any paper book yet.
+profile_id: btc-macd-rsi
+version: 1
+name: BTC MACD with trend filter
+status: draft
+instrument: BTCUSDT_SPOT
+decision_clock: 1d
+combine: main_with_filters  # first strategy decides; 0 when any filter says 0
+strategies:
+  - number: 1                   # MACD Crossover (main)
+    timeframe: 4h
+  - number: 7                   # SMA trend regime (filter)
+    timeframe: 1d
+risk_profile: spot.v1
+ai_mode: "off"
+notes: Example profile; strategies untested on our data.
