@@ -65,3 +65,26 @@ Also reported: number of filtered days, trades, fees, the result with costs ×2,
 A variant that passes is a candidate for a confirmation run on C2 (Note's separate approval) and,
 after the Phase 5 day-28 review, a forward paper book. A variant that fails is recorded and not
 retuned (no other percentiles, depth bands or windows are tried on this data).
+
+## Result (run once, 2026-10-16, `research/spike/run_r8.py`; outputs in `/mnt/project-files/r8-results/`)
+
+Data: bookDepth 1,093 of 1,096 days (3 files missing on Binance, 2 inside the window), median 2,880
+snapshots a day; metrics 1,096 of 1,096. All present files passed SHA256.
+
+2023-04-01 → 2026-01-01, 10,000 USDT, fee 0.10% + 2 bps:
+
+| | Net | Sharpe | Max DD | Trades | Days cut |
+| --- | --- | --- | --- | --- | --- |
+| path A (base) | +103.3% | 0.75 | 35.1% | 76 | – |
+| R8a depth | +55.9% | 0.50 | 33.0% | 280 | 137 |
+| R8b depth + OI | +84.1% | 0.66 | 34.3% | 134 | 39 |
+| BTC buy & hold | +207.5% | 0.90 | 32.0% | 1 | – |
+
+By year (Sharpe): path A 0.60 / 1.23 / 0.17; R8a 0.30 / 0.92 / 0.05; R8b 0.18 / 1.16 / 0.37
+(2023 Apr–Dec / 2024 / 2025). With costs ×2 the order is the same (path A 0.68, R8a 0.33, R8b 0.56).
+
+**Verdict: both fail** criterion 1. Each lowered max drawdown slightly (by 2.1 and 0.8 points)
+but cut Sharpe and return more, so neither is better than path A. Neither meets Note's objective
+against buy & hold either. R8b did better than path A in 2025 only (Sharpe 0.37 vs 0.17), which one
+year of a failed screen does not support acting on. As declared, no other thresholds, bands or
+windows are tried on this data, and C2 stays unspent.
