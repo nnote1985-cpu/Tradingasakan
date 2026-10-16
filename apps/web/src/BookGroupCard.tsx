@@ -29,7 +29,7 @@ function ArmTile({ row, risk }: { row: PortfolioRow; risk?: RiskStatus }) {
       {costed && <div className="text-xs text-[var(--text-muted)]">ก่อนหักค่า AI {money(row.trading_equity, row.currency)}</div>}
       <dl className="mt-2 grid grid-cols-3 gap-1 text-xs">
         <div><dt className="text-[var(--text-muted)]">ผลตอบแทน</dt><dd className="font-medium"><Signed v={row.return} /></dd></div>
-        <div><dt className="text-[var(--text-muted)]">ลดจากจุดสูงสุด</dt><dd className="font-medium">{row.drawdown === null ? "–" : pct(row.drawdown, true)}</dd></div>
+        <div><dt className="text-[var(--text-muted)]">ลดจากสูงสุด</dt><dd className="font-medium">{row.drawdown === null ? "–" : pct(row.drawdown, true)}</dd></div>
         <div><dt className="text-[var(--text-muted)]">ถือ BTC</dt><dd className="font-medium">{row.exposure_share === null ? "–" : pct(row.exposure_share, true)}</dd></div>
       </dl>
     </div>
@@ -70,7 +70,12 @@ export function BookGroupCard({ group, risk = [] }: { group: BookGroup; risk?: R
         {group.rows.map((r) => <ArmTile key={r.label} row={r} risk={risk.find((x) => x.label === r.label)} />)}
       </div>
       {failed && <p role="alert" className="text-sm text-[var(--loss)]">{failed.message ?? "โหลดกราฟไม่สำเร็จ"}</p>}
-      {loaded.length > 0 && (
+      {loaded.length > 0 && days < 2 && (
+        <p data-testid="few-days" className="text-sm text-[var(--text-muted)]">
+          มีราคาปิดแล้ว {days} วัน กราฟจะเริ่มแสดงเมื่อมีอย่างน้อย 2 วัน
+        </p>
+      )}
+      {loaded.length > 0 && days >= 2 && (
         <div className="space-y-3">
           {equity.length > 1 && <Legend series={equity} />}
           <div>
