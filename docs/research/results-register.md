@@ -19,6 +19,7 @@
 | R8a / R8b | `run_r8.py` | path A × 0.5 when bid depth within 2% is in its trailing-90-day bottom 20% (R8a), and also 7-day OI change in its top 20% (R8b) | BTC spot model, perp prices, Binance bookDepth + metrics |
 | R9a / R9b | `run_r9.py` | path A × 0.5 when 30-day realised vol > 80%/yr (R9a); path A × min(1, trailing-1y median vol / vol) floored to 0.25 steps (R9b) | BTC spot model, perp prices |
 | R10a / R10b | `run_r10.py` | path A with a sticky trend state: in above SMA100 × 1.02, out below × 0.98 (R10a); in/out after 3 closes above/below SMA100 (R10b) | BTC spot model, perp prices |
+| R11 | `run_r11.py` | R7 long/short with a sticky side: long above SMA100 × 1.02, short below × 0.98 | BTCUSDT **perp**, 1x, funding |
 | R7 | `run_r7.py` | long เมื่อปิดเหนือ SMA100 รายวัน, short เมื่อต่ำกว่า, 1x, คิด funding | BTCUSDT **perp** |
 
 `pathA-v1` ยังเป็นชื่อของพอร์ตจำลองที่ตรึงไว้ เปลี่ยนไม่ได้โดยไม่เปิดพอร์ตใหม่
@@ -162,3 +163,9 @@ path A). R9b cut max DD by 8.3 points at nearly the same Sharpe. Window overlaps
 2022-05-01 → 2026-01-01, spot 0.10% + 2 bps: path A +176.5% / Sharpe 0.82 / DD 35.1% (82 trades); R10a band +244.8% / 1.00 /
 26.0% (48 trades); R10b confirm +135.1% / 0.67 / 39.0% (52 trades); B&H +132.6% / 0.46 / 60.3%. **R10a passes, R10b fails.**
 Window fully seen before and the idea came from the 2025 analysis: R10a is a candidate for C1/C2 confirmation, not evidence.
+
+## R11 (2026-10-16, docs/research/r11-futures-band-plan.md)
+
+2022-04-12 → 2026-01-01, perp 1x, taker 0.05% + 2 bps, funding: R7 +103.4% / Sharpe 0.43 / DD 55.0% (57 flips, reproduced);
+R11 +221.0% / 0.71 / 39.4% (21 flips); B&H +121.5% / 0.42 / 62.0%. **R11 passes.** Short days turned positive (+0.148 log vs
+−0.078). Window seen before and band idea came from the 2025 analysis: candidate only; C1/C2 unspent.

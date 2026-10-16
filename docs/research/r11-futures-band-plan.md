@@ -47,3 +47,30 @@ Also reported: flips, days long/short, fees, funding, long-day vs short-day log 
 with costs ×2. Passing makes R11 a candidate for a confirmation run (Note's separate approval) and
 a futures paper book; it does not change the running futures-r7 book. A fail is recorded and not
 retuned.
+
+## Result (run once, 2026-10-16, `research/spike/run_r11.py`; outputs in `/mnt/project-files/r11-results/`)
+
+The R7 re-run on `data/binance_um` reproduced its development result exactly (+103.4% / 0.43 /
+55.0%, 57 flips, fees 904, funding 3,478).
+
+2022-04-12 → 2026-01-01, 10,000 USDT, taker 0.05% + 2 bps per side, daily funding:
+
+| | Net | Sharpe | Max DD | Flips | Days long / short | Fees | Funding paid | Log ret long / short days |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| R7 | +103.4% | 0.428 | 55.0% | 57 | 757 / 603 | 904 | 3,478 | +0.788 / −0.078 |
+| R11 band ±2% | +221.0% | 0.705 | 39.4% | 21 | 768 / 592 | 456 | 4,570 | +1.018 / +0.148 |
+| BTC buy & hold | +121.5% | 0.424 | 62.0% | – | – | – | – | – |
+
+By year (net / Sharpe / max DD): R7 +34.6% / 1.01 / 21.1%, +23.9% / 0.48 / 43.7%, +10.5% / 0.19 /
+55.0%, +10.4% / 0.27 / 27.9%; R11 +43.3% / 1.26 / 16.2%, +31.7% / 0.62 / 35.9%, +54.4% / 0.82 /
+39.4%, +10.1% / 0.26 / 35.2% (2022 Apr–Dec / 2023 / 2024 / 2025). With costs ×2: R7 0.38 / 56.1%,
+R11 0.69 / 40.0% (Sharpe / max DD). No liquidation.
+
+**Verdict: R11 passes** criterion 1 (Sharpe 0.705 > 0.428, max DD 39.4% ≤ 55.0%, net > 0) and R7's
+own rule against buy & hold (0.705 > 0.424). With the band the short days made money (+0.148 log)
+instead of losing (−0.078), since fewer flips meant fewer wrong-way shorts. 2025 was no better than
+R7 (+10.1% vs +10.4%, max DD 35.2% vs 27.9%). It is still behind the spot band R10a on risk
+(Sharpe 1.00, max DD 26.0% over a near-identical window), and pays more funding.
+
+Same caveats as R10: the window was seen before and the band came from the 2025 analysis, so R11 is
+a candidate for confirmation, not evidence. C1 and C2 stay unspent; the futures-r7 book is unchanged.
