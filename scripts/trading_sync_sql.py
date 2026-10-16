@@ -109,7 +109,7 @@ def book_sql(state: dict, commit: str) -> list[str]:
 RISK_AND_AGENT_TABLES = False      # set by --risk-and-agent-tables
 ACCOUNTS = {"capital": "owner_capital", "inventory_at_cost": "btc_position_cost"}
 COMMITS = ["pathA-v1=42920ba", "pathA-v1.1=5306f62", "pathA-v1.2=34028a6", "pathA-p5-r1=2ae53c7",   # frozen/<version> heads
-           "futures-r7=39488df", "pathA-p5-r2=a6e1c33"]
+           "futures-r7=39488df", "pathA-p5-r2=a6e1c33", "pathA-r10a=bd98dd8", "futures-r11=bd98dd8"]
 
 
 def _version_and_portfolio(v: str, commit: str, label: str, start_equity) -> list[str]:
