@@ -132,3 +132,24 @@ export type ScorecardResponse = {
   counts: Record<string, Partial<Record<Verdict, number>>>;
   diagnostic_only: boolean;
 };
+
+export type BacktestPoint = { day: string; strategy: string; buy_and_hold: string; strategy_drawdown: string; buy_and_hold_drawdown: string };
+export type Backtest = {
+  id: string;
+  name: string;
+  market: string;
+  instrument: string;
+  status: string;                 // dev_passed_unconfirmed, ...
+  plan: string;
+  commit: string;
+  set: string;
+  range: [string, string];
+  initial_equity: string;
+  summary: {
+    net: string; sharpe: string; max_dd: string; bh_net: string; bh_sharpe: string; bh_max_dd: string;
+    flips: number; days_long: number; days_short: number; fees: string; funding_paid: string;
+    log_return_long_days: string; log_return_short_days: string; passes: boolean;
+  };
+  note: string;
+  points: BacktestPoint[];
+};
