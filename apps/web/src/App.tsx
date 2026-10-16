@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { AiTab } from "./AiTab";
 import { type ApiError, apiGet, type Overview, type RiskStatusResponse, supabase } from "./api";
 import { BookGroupCard } from "./BookGroupCard";
+import { FuturesTab } from "./FuturesTab";
 import { groupBooks } from "./books";
 import { ModeBadge } from "./ModeBadge";
 import { PortfolioTable } from "./PortfolioTable";
@@ -71,7 +72,7 @@ export function Dashboard() {
       <TabBar tab={tab} onSelect={setTab} />
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
         {tab === "futures" ? (
-          <NotOpen title="ยังไม่มีพอร์ต Futures">ตอนนี้ทุกพอร์ตเป็น BTC spot พอร์ต futures จะขึ้นที่นี่เมื่อมีกลยุทธ์ที่ผ่าน backtest</NotOpen>
+          <FuturesTab />
         ) : tab === "options" ? (
           <NotOpen title="Options ยังไม่เปิด">จะเปิดเมื่อตัวจำลอง options ผ่านเทสต์ และจะเริ่มด้วยเงินสมมติเหมือนพอร์ตอื่น</NotOpen>
         ) : q.isPending ? (

@@ -14,6 +14,19 @@ vi.mock("../src/api", () => ({
   apiGet: async (path: string): Promise<unknown> => {
     if (path === "/api/v1/overview") return { mode: "SHADOW", portfolios: [row("pathA-p5-r1/code"), row("pathA-p5-r1/ai")] };
     if (path === "/api/v1/risk-status") return { available: false, portfolios: [] };
+    if (path === "/api/v1/backtests?market=futures") {
+      const p = (day: string, s: string, b: string, sd: string, bd: string) => ({ day, strategy: s, buy_and_hold: b, strategy_drawdown: sd, buy_and_hold_drawdown: bd });
+      return {
+        items: [{
+          id: "R7", name: "Long/short", market: "futures", instrument: "BTCUSDT perpetual 1x", status: "dev_passed_unconfirmed",
+          plan: "docs/research/r7.md", commit: "f64ef0084e1c", set: "development", range: ["2022-04-12", "2026-01-01"], initial_equity: "10000",
+          summary: { net: "1.033688", sharpe: "0.43", max_dd: "0.549605", bh_net: "1.214954", bh_sharpe: "0.42", bh_max_dd: "0.619679",
+            flips: 57, days_long: 757, days_short: 603, fees: "903.89", funding_paid: "3478.14", log_return_long_days: "0.787719", log_return_short_days: "-0.077869", passes: true },
+          note: "ยังไม่ได้ยืนยัน",
+          points: [p("2022-04-11", "10000.00", "10000.00", "0", "0"), p("2022-04-12", "9850.05", "10128.35", "0.014995", "0")],
+        }],
+      };
+    }
     if (path === "/api/v1/ai/settings") {
       return {
         experiment_id: "pathA-p5-r1", graph_version: "g", locked: true, capability_stage: "FILTER_ONLY", model_id: "claude-opus-5-5", effort: "medium",
@@ -147,6 +160,9 @@ test("tabs switch through the URL hash; futures and options say they are not ope
   expect(container.querySelector("[data-testid=not-open]")?.textContent).toContain("Options ยังไม่เปิด");
   fireEvent.click(screen.getByRole("tab", { name: "Futures" }));
   expect(container.querySelector("[data-testid=not-open]")?.textContent).toContain("Futures");
+  await waitFor(() => expect(container.querySelector("[data-testid=backtest]")?.textContent).toContain("ผ่านช่วง dev แต่ยังไม่ยืนยัน"));
+  expect(container.querySelector("[data-testid=backtest]")?.textContent).toContain("+103.37%");
+  expect(screen.getByRole("img", { name: "มูลค่าพอร์ต R7" })).toBeTruthy();
   fireEvent.click(screen.getByRole("tab", { name: "AI" }));
   await waitFor(() => expect(container.querySelector("[data-testid=ai-settings]")).not.toBeNull());
   expect(screen.getByRole("tab", { name: "AI" }).getAttribute("aria-selected")).toBe("true");

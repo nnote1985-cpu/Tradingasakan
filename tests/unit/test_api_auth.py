@@ -236,3 +236,27 @@ def test_ai_settings_and_scorecard_endpoints():
     assert _get(c, "/api/v1/portfolios/nope/ai-scorecard", _token(VIEWER)).status_code == 404
     gone = _get(_p5_client(missing=True), "/api/v1/portfolios/pathA-p5-r1/ai/ai-scorecard", _token(VIEWER)).json()
     assert gone["available"] is False and gone["items"] == []
+
+
+def test_backtests_list_r7_with_drawdowns_and_need_a_viewer():
+    c = _p5_client()
+    body = _get(c, "/api/v1/backtests?market=futures", _token(VIEWER)).json()
+    r7 = next(i for i in body["items"] if i["id"] == "R7")
+    assert r7["status"] == "dev_passed_unconfirmed" and r7["market"] == "futures"
+    assert r7["points"][0] == {"day": "2022-04-11", "strategy": "10000.00", "buy_and_hold": "10000.00",
+                               "strategy_drawdown": "0.000000", "buy_and_hold_drawdown": "0.000000"}
+    assert max(p["strategy_drawdown"] for p in r7["points"]) == r7["summary"]["max_dd"]
+    assert _get(c, "/api/v1/backtests?market=options", _token(VIEWER)).json() == {"items": []}
+    assert _get(c, "/api/v1/backtests", _token(STRANGER)).status_code == 403
+
+
+def test_backtest_drawdowns_follow_the_running_peak(tmp_path):
+    from api.backtests import load_backtests
+    (tmp_path / "x.json").write_text('{"id": "X", "market": "futures", "points": ['
+                                     '{"day": "a", "strategy": "100", "buy_and_hold": "100"},'
+                                     '{"day": "b", "strategy": "120", "buy_and_hold": "90"},'
+                                     '{"day": "c", "strategy": "90", "buy_and_hold": "99"}]}')
+    [x] = load_backtests("futures", tmp_path)
+    assert [p["strategy_drawdown"] for p in x["points"]] == ["0.000000", "0.000000", "0.250000"]
+    assert [p["buy_and_hold_drawdown"] for p in x["points"]] == ["0.000000", "0.100000", "0.010000"]
+    assert load_backtests("spot", tmp_path) == []

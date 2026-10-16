@@ -14,6 +14,7 @@ from psycopg_pool import PoolTimeout
 
 from api.ai import ai_settings, scorecard
 from api.auth import AuthError, Principal, RoleStore, TokenVerifier, authenticate
+from api.backtests import load_backtests
 from api.portfolios import NoPortfolios, PortfolioStore, Unavailable, decision_items, equity_series, overview_items, risk_items
 from trading.config import Settings
 from trading.contracts.enums import OperatorRole
@@ -83,6 +84,10 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
             return {"available": True, "portfolios": risk_items(await store.risk_rows())}
         except Unavailable:
             return {"available": False, "portfolios": []}
+
+    @app.get("/api/v1/backtests")
+    async def backtests(market: str | None = None, p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        return {"items": load_backtests(market)}
 
     @app.get("/api/v1/ai/settings")
     async def ai_settings_view(p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
