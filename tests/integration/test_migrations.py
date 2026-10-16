@@ -330,3 +330,49 @@ def test_pathA_v12_sync_copies_the_spot_journal(db, tmp_path, halt):
     assert bad == []
     sells = sum(1 for e in state["book"]["entries"] if e["data"].get("side") == "SELL")
     assert sells == 1 and (state["risk"]["halted"] is halt)
+
+
+def _load(name: str, rel: str):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(name, ROOT / rel)
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+@pytest.mark.parametrize("which", ["futures-r7", "pathA-p5-r1"])
+def test_perp_and_paired_books_land_balanced_and_once(db, tmp_path, which):
+    import sys
+    from decimal import Decimal
+
+    if which == "futures-r7":
+        state = _load("sync_formats", "tests/unit/test_sync_formats.py").perp_state()
+        books = {"futures-r7/paper": state["book"], "futures-r7/buy_and_hold": state["buy_and_hold"]}
+    else:
+        state = _load("p5_tests", "tests/unit/test_phase5_paired.py").paid_halting_state()
+        books = {"pathA-p5-r1/code": state["code"]["book"], "pathA-p5-r1/ai": state["ai"]["book"],
+                 "pathA-p5-r1/buy_and_hold": state["code"]["buy_and_hold"]}
+    (tmp_path / which).mkdir()
+    (tmp_path / which / "state.json").write_text(json.dumps(state))
+    sql = subprocess.run([sys.executable, str(ROOT / "scripts/trading_sync_sql.py"), "--root", str(tmp_path)],
+                         check=True, capture_output=True, text=True).stdout
+    db.execute("insert into trading.workspace_settings (owner_id) values (gen_random_uuid()) on conflict do nothing")
+    db.execute(sql)
+    first = _fingerprint(db, which)
+    db.execute(sql)
+    assert _fingerprint(db, which) == first and first[2] == 0 and first[4] == len(books)
+    for label, ledger in books.items():
+        rows = dict(db.execute(
+            "select l.ledger_account, sum(l.amount) from trading.journal_lines l join trading.journal_entries e "
+            "on e.id = l.entry_id where e.source_event_key like %s group by 1", (f"{label}:%",)).fetchall())
+        want: dict[str, Decimal] = {}
+        for e in ledger["entries"]:
+            for a, x in e["lines"]:
+                a = {"capital": "owner_capital", "inventory_at_cost": "btc_position_cost"}.get(a, a)
+                want[a] = want.get(a, Decimal(0)) + Decimal(x)
+        # each line is rounded to the column's 18 decimals; the residual stays within the entry
+        tol = Decimal(len(ledger["entries"])) * Decimal("1e-17")
+        assert set(a for a, v in rows.items() if v) == set(a for a, v in want.items() if v)
+        assert all(abs(rows[a] - want[a]) <= tol for a in want if want[a])

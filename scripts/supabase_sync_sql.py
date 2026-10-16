@@ -62,7 +62,7 @@ def main() -> None:
     for p in sorted(Path(args.root).glob("*/state.json")):
         state = json.loads(p.read_text())
         if state.get("format"):     # pathA-v1.2 and later: mirrored to the trading schema only
-            print(f"-- {state['rules_version']} ({state['format']}) is not mirrored to paper.*", file=sys.stderr)
+            print(f"-- {state.get('rules_version') or state.get('experiment_id')} ({state['format']}) is not mirrored to paper.*", file=sys.stderr)
             continue
         lines += book_sql(state)
     if args.risk_json:
