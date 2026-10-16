@@ -45,3 +45,29 @@ R10a and path A are re-run on the same window as comparisons.
 Also reported: Note's objective vs buy & hold, trades, per-year results, costs ×2, and the worst
 three drawdown episodes. Passing makes R12 a candidate for confirmation (Note's separate approval).
 A fail is recorded and not retuned.
+
+## Result (run once, 2026-10-16, `research/spike/run_r12.py`; outputs in `/mnt/project-files/r12-results/`)
+
+1,280 days, no missing weights. The vol scale cut the weight on 306 days while R10a held BTC.
+
+2022-07-01 → 2026-01-01, 10,000 USDT, fee 0.10% + 2 bps:
+
+| | Net | Sharpe | Max DD | Trades | Worst three drawdowns |
+| --- | --- | --- | --- | --- | --- |
+| path A | +176.5% | 0.843 | 35.1% | 82 | 35.1% (2024-04→10), 26.8% (2023-04→10), 19.0% (2023-02→03) |
+| R10a band | +244.8% | 1.022 | 26.0% | 48 | 26.0% (2024-04→10), 21.7% (2025-08→10), 21.5% (2023-04→10) |
+| R12 band + vol | +182.8% | 0.968 | 21.7% | 331 | 21.7% (2025-08→10), 21.5% (2023-04→10), 19.5% (2024-04→10) |
+| BTC buy & hold | +339.2% | 0.880 | 35.4% | 1 | 35.4% (2022-08→11), 32.0% (2025-10→11), 28.1% (2025-01→04) |
+
+By year (net / Sharpe / max DD), R10a vs R12: 2022 H2 −12.5% / −1.76 / 13.0% both; 2023 +89.1% /
+1.59 / 21.5% vs +65.3% / 1.37 / 21.5%; 2024 +97.5% / 1.61 / 26.0% vs +87.0% / 1.83 / 19.5%; 2025
++5.5% / 0.21 / 21.7% vs +4.6% / 0.17 / 21.7%. With costs ×2: R10a 0.999 / 26.5%, R12 0.939 / 22.1%.
+
+**Verdict: R12 fails both criteria.** Primary: Sharpe 0.968 < 1.022. Drawdown-first: max DD fell
+4.3 points (needed 5) and Sharpe fell 0.054 (allowed 0.05), so it misses both limits narrowly. It
+does meet Note's objective against buy & hold (Sharpe 0.968 > 0.880).
+
+What it shows: vol sizing only helped the 2024 episode, which began with a high-volatility fall
+(26.0% → 19.5%). The 2023 and 2025 drawdowns were slow, low-volatility sideways losses, where the
+scale stays at 1 and changes nothing, so R12's max drawdown is set by them (21.7%). Not retuned;
+C1 and C2 unspent.
