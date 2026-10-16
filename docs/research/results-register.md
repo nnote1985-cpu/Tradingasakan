@@ -18,6 +18,7 @@
 | R6a / R6b | `run_r6.py` | สัญญาณ v1 เฉพาะ LONG, ไม่มี TP/time exit, ออกด้วย stop / trend exit / channel exit 10 แท่ง 4h; R6a เสี่ยง 0.5%, R6b ใช้เงินทั้งหมด | BTCUSDT **spot** (ราคา spot จริง) |
 | R8a / R8b | `run_r8.py` | path A × 0.5 when bid depth within 2% is in its trailing-90-day bottom 20% (R8a), and also 7-day OI change in its top 20% (R8b) | BTC spot model, perp prices, Binance bookDepth + metrics |
 | R9a / R9b | `run_r9.py` | path A × 0.5 when 30-day realised vol > 80%/yr (R9a); path A × min(1, trailing-1y median vol / vol) floored to 0.25 steps (R9b) | BTC spot model, perp prices |
+| R10a / R10b | `run_r10.py` | path A with a sticky trend state: in above SMA100 × 1.02, out below × 0.98 (R10a); in/out after 3 closes above/below SMA100 (R10b) | BTC spot model, perp prices |
 | R7 | `run_r7.py` | long เมื่อปิดเหนือ SMA100 รายวัน, short เมื่อต่ำกว่า, 1x, คิด funding | BTCUSDT **perp** |
 
 `pathA-v1` ยังเป็นชื่อของพอร์ตจำลองที่ตรึงไว้ เปลี่ยนไม่ได้โดยไม่เปิดพอร์ตใหม่
@@ -155,3 +156,9 @@ Window overlaps data path A was built on; C2 not used.
 2022-07-01 → 2026-01-01, spot 0.10% + 2 bps: path A +176.5% / Sharpe 0.84 / DD 35.1% (82 trades); R9a +172.3% / 0.84 / 35.1%
 (92 trades, 9 days cut); R9b +142.1% / 0.83 / 26.8% (362 trades); B&H +339.2% / 0.88 / 35.4%. Both fail (Sharpe below
 path A). R9b cut max DD by 8.3 points at nearly the same Sharpe. Window overlaps data path A was built on; C2 not used.
+
+## R10 (2026-10-16, docs/research/r10-trend-hysteresis-plan.md)
+
+2022-05-01 → 2026-01-01, spot 0.10% + 2 bps: path A +176.5% / Sharpe 0.82 / DD 35.1% (82 trades); R10a band +244.8% / 1.00 /
+26.0% (48 trades); R10b confirm +135.1% / 0.67 / 39.0% (52 trades); B&H +132.6% / 0.46 / 60.3%. **R10a passes, R10b fails.**
+Window fully seen before and the idea came from the 2025 analysis: R10a is a candidate for C1/C2 confirmation, not evidence.

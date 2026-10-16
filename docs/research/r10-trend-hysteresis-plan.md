@@ -58,3 +58,37 @@ a candidate for a confirmation run on C1 (2020-04 → 2022-01, which has the mid
 market) and/or C2, each needing Note's separate approval, and only then a new paper book; the
 running pathA-v1.x books are not changed. A variant that fails is recorded and not retuned (no
 other bands, day counts or windows are tried on this data).
+
+## Result (run 2026-10-16, `research/spike/run_r10.py`; outputs in `/mnt/project-files/r10-results/`)
+
+One run; a second run after a line-length lint fix gave identical numbers. 1,341 days in the
+window, no missing weights.
+
+2022-05-01 → 2026-01-01, 10,000 USDT, fee 0.10% + 2 bps:
+
+| | Net | Sharpe | Max DD | Trades | State changes 2022/23/24/25 |
+| --- | --- | --- | --- | --- | --- |
+| path A (base) | +176.5% | 0.824 | 35.1% | 82 | 4 / 13 / 18 / 19 |
+| R10a band ±2% | +244.8% | 0.998 | 26.0% | 48 | 2 / 5 / 6 / 7 |
+| R10b confirm 3 days | +135.1% | 0.671 | 39.0% | 52 | 2 / 5 / 10 / 7 |
+| BTC buy & hold | +132.6% | 0.456 | 60.3% | 1 | – |
+
+By year (net / Sharpe / max DD):
+
+| | 2022 May–Dec | 2023 | 2024 | 2025 |
+| --- | --- | --- | --- | --- |
+| path A | −12.7% / −1.53 / 12.7% | +81.9% / 1.48 / 26.8% | +66.8% / 1.23 / 35.1% | +4.4% / 0.17 / 18.0% |
+| R10a | −12.5% / −1.52 / 13.0% | +89.1% / 1.59 / 21.5% | +97.5% / 1.61 / 26.0% | +5.5% / 0.21 / 21.7% |
+| R10b | −24.1% / −1.81 / 24.1% | +72.0% / 1.36 / 24.4% | +62.9% / 1.15 / 39.0% | +10.5% / 0.39 / 20.5% |
+
+With costs ×2: path A 0.768 / 36.4%, R10a 0.976 / 26.5%, R10b 0.645 / 39.7% (Sharpe / max DD).
+
+**Verdict: R10a passes** criterion 1 (Sharpe 0.998 > 0.824, max DD 26.0% ≤ 35.1%, net > 0) and
+Note's objective against buy & hold on this window (Sharpe 0.998 > 0.456). It was better or level
+in every year on return and Sharpe; its 2025 max DD was higher (21.7% vs 18.0%). **R10b fails**: the
+3-day wait made the 2022 exit later (−24.1% vs −12.7%) and the 2024 drawdown deeper.
+
+Caveats: the whole window was seen before (path A was built on 2022–2024 and 2025 is the spent
+holdout), and the band idea came from looking at 2025's whipsaws, so this result is a candidate,
+not evidence. Next, per the plan: a confirmation run on C1 and/or C2 with Note's separate approval,
+then a new paper book. The running pathA-v1.x books are not changed.
