@@ -153,3 +153,32 @@ export type Backtest = {
   note: string;
   points: BacktestPoint[];
 };
+
+export type ParamBound = { default: number; min: number; max: number };
+export type LibraryStrategy = {
+  number: number;
+  template_id: string;
+  version: string;
+  name: string;
+  family: string;                 // trend | momentum | mean_reversion
+  timeframes: string[];
+  default_timeframe: string;
+  summary: string;
+  params: Record<string, ParamBound>;
+  evidence: string;               // untested until a pre-declared backtest says otherwise
+};
+export type ProfileStrategy = { number: number; template_id: string; version: string; name: string; timeframe: string; params: Record<string, number> };
+export type BotProfile = {
+  profile_id: string;
+  version: number;
+  name: string;
+  status: "draft" | "active" | "retired";
+  instrument: string;
+  decision_clock: string;
+  combine: "average" | "main_with_filters";
+  risk_profile: string;
+  ai_mode: string;
+  notes: string;
+  strategies: ProfileStrategy[];
+  hash: string;
+};

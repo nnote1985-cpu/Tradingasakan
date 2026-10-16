@@ -16,6 +16,7 @@ from api.ai import ai_settings, scorecard
 from api.auth import AuthError, Principal, RoleStore, TokenVerifier, authenticate
 from api.backtests import load_backtests
 from api.portfolios import NoPortfolios, PortfolioStore, Unavailable, decision_items, equity_series, overview_items, risk_items
+from api.strategies import catalog_view, profiles_view
 from trading.config import Settings
 from trading.contracts.enums import OperatorRole
 
@@ -88,6 +89,14 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
     @app.get("/api/v1/backtests")
     async def backtests(market: str | None = None, p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
         return {"items": load_backtests(market)}
+
+    @app.get("/api/v1/strategies")
+    async def strategies(p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        return catalog_view()
+
+    @app.get("/api/v1/bot-profiles")
+    async def bot_profiles(p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        return profiles_view()
 
     @app.get("/api/v1/ai/settings")
     async def ai_settings_view(p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:

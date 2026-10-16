@@ -8,6 +8,7 @@ import { groupBooks, isFutures } from "./books";
 import { ModeBadge } from "./ModeBadge";
 import { PortfolioTable } from "./PortfolioTable";
 import { ShadowBanner } from "./ShadowBanner";
+import { StrategiesTab } from "./StrategiesTab";
 import { NotOpen, TabBar, useHashTab } from "./tabs";
 
 type Health = { status: string; mode: string; live_enabled: boolean };
@@ -74,6 +75,8 @@ export function Dashboard() {
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
         {tab === "futures" ? (
           <FuturesTab rows={q.data?.portfolios ?? []} />
+        ) : tab === "strategies" ? (
+          <StrategiesTab />
         ) : tab === "options" ? (
           <NotOpen title="Options ยังไม่เปิด">จะเปิดเมื่อตัวจำลอง options ผ่านเทสต์ และจะเริ่มด้วยเงินสมมติเหมือนพอร์ตอื่น</NotOpen>
         ) : q.isPending ? (
