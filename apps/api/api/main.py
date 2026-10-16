@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from api.auth import AuthError, Principal, RoleStore, TokenVerifier, authenticate
-from api.portfolios import NoPortfolios, PortfolioStore, overview_items
+from api.portfolios import NoPortfolios, PortfolioStore, Unavailable, decision_items, equity_series, overview_items, risk_items
 from trading.config import Settings
 from trading.contracts.enums import OperatorRole
 
@@ -60,6 +60,30 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
     async def overview(p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
         return {"mode": settings.trading_mode.value, "live_enabled": settings.live_enabled,
                 "portfolios": overview_items(await store.overview_rows())}
+
+    # Labels contain "/" (e.g. pathA-v1.2/paper), hence the path converter.
+    @app.get("/api/v1/portfolios/{label:path}/equity")
+    async def equity(label: str, p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        row = await store.portfolio(label)
+        if row is None:
+            raise AuthError("not_found", "ไม่พบพอร์ตนี้", status=404)
+        return equity_series(row, await store.equity_rows(label))
+
+    @app.get("/api/v1/risk-status")
+    async def risk_status(p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        try:
+            return {"available": True, "portfolios": risk_items(await store.risk_rows())}
+        except Unavailable:
+            return {"available": False, "portfolios": []}
+
+    @app.get("/api/v1/portfolios/{label:path}/decisions")
+    async def decisions(label: str, p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        if await store.portfolio(label) is None:
+            raise AuthError("not_found", "ไม่พบพอร์ตนี้", status=404)
+        try:
+            return decision_items(await store.decision_rows(label))
+        except Unavailable:
+            return {"available": False, "items": [], "counts": {}, "cost_usd": "0", "limit": 0}
 
     return app
 
