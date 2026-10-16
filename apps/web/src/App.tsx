@@ -1,11 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { AiTab } from "./AiTab";
 import { type ApiError, apiGet, type Overview, type RiskStatusResponse, supabase } from "./api";
 import { BookGroupCard } from "./BookGroupCard";
 import { groupBooks } from "./books";
 import { ModeBadge } from "./ModeBadge";
 import { PortfolioTable } from "./PortfolioTable";
 import { ShadowBanner } from "./ShadowBanner";
+import { NotOpen, TabBar, useHashTab } from "./tabs";
 
 type Health = { status: string; mode: string; live_enabled: boolean };
 
@@ -30,23 +32,14 @@ function SignIn() {
   );
 }
 
-function OverviewPage() {
-  // DEFAULT transport is REST polling (§21.3); paused automatically when the tab is hidden.
-  const q = useQuery<Overview, ApiError>({ queryKey: ["overview"], queryFn: () => apiGet<Overview>("/api/v1/overview"), refetchInterval: 10_000, retry: false, networkMode: "always" });
+function SpotTab({ data }: { data: Overview }) {
   const risk = useQuery<RiskStatusResponse, ApiError>({ queryKey: ["risk-status"], queryFn: () => apiGet<RiskStatusResponse>("/api/v1/risk-status"), refetchInterval: 30_000 });
   const [showTable, setShowTable] = useState(false);
-  if (q.isPending) return <p>กำลังโหลด…</p>;
-  if (q.isError) return <div role="alert"><p>{q.error.message ?? "โหลดข้อมูลไม่สำเร็จ"}</p><button className="mt-2 rounded border px-3 py-1" onClick={() => void q.refetch()}>ลองใหม่</button>{["invalid_token", "missing_token"].includes(q.error.code) && <button className="ml-2 rounded border px-3 py-1" onClick={() => void supabase?.auth.signOut({ scope: "local" })}>เข้าสู่ระบบใหม่</button>}</div>;
-  const groups = groupBooks(q.data.portfolios);
+  const groups = groupBooks(data.portfolios);
   return (
-    <section className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <h1 className="text-xl font-semibold">ภาพรวมพอร์ต</h1>
-        <ModeBadge mode={q.data.mode} />
-        <button className="ml-auto text-sm text-[var(--text-secondary)] underline" onClick={() => supabase?.auth.signOut()}>ออกจากระบบ</button>
-      </div>
+    <div className="space-y-4">
       <p className="text-sm text-[var(--text-secondary)]">
-        ทุกพอร์ตเริ่มที่ 10,000 USDT ด้วยเงินสมมติ ราคาปิดรายวันตามเวลา UTC ตัวเลขเป็นมูลค่าหลังหักค่าธรรมเนียมและค่า AI
+        BTC spot ทุกพอร์ตเริ่มที่ 10,000 USDT ด้วยเงินสมมติ ราคาปิดรายวันตามเวลา UTC ตัวเลขเป็นมูลค่าหลังหักค่าธรรมเนียมและค่า AI
       </p>
       {risk.data && !risk.data.available && (
         <p className="text-xs text-[var(--text-muted)]">ยังไม่มีข้อมูลสถานะ HALT ในฐานข้อมูล</p>
@@ -57,9 +50,40 @@ function OverviewPage() {
           <button className="text-sm text-[var(--text-secondary)] underline" aria-expanded={showTable} onClick={() => setShowTable((s) => !s)}>
             {showTable ? "ซ่อนตาราง" : "ดูเป็นตาราง"}
           </button>
-          {showTable && <div className="mt-2 overflow-x-auto"><PortfolioTable rows={q.data.portfolios} /></div>}
+          {showTable && <div className="mt-2 overflow-x-auto"><PortfolioTable rows={data.portfolios} /></div>}
         </div>
       )}
+    </div>
+  );
+}
+
+export function Dashboard() {
+  // DEFAULT transport is REST polling (§21.3); paused automatically when the tab is hidden.
+  const q = useQuery<Overview, ApiError>({ queryKey: ["overview"], queryFn: () => apiGet<Overview>("/api/v1/overview"), refetchInterval: 10_000, retry: false, networkMode: "always" });
+  const [tab, setTab] = useHashTab();
+  return (
+    <section className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <h1 className="text-xl font-semibold">ภาพรวมพอร์ต</h1>
+        {q.data && <ModeBadge mode={q.data.mode} />}
+        <button className="ml-auto text-sm text-[var(--text-secondary)] underline" onClick={() => supabase?.auth.signOut()}>ออกจากระบบ</button>
+      </div>
+      <TabBar tab={tab} onSelect={setTab} />
+      <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
+        {tab === "futures" ? (
+          <NotOpen title="ยังไม่มีพอร์ต Futures">ตอนนี้ทุกพอร์ตเป็น BTC spot พอร์ต futures จะขึ้นที่นี่เมื่อมีกลยุทธ์ที่ผ่าน backtest</NotOpen>
+        ) : tab === "options" ? (
+          <NotOpen title="Options ยังไม่เปิด">จะเปิดเมื่อตัวจำลอง options ผ่านเทสต์ และจะเริ่มด้วยเงินสมมติเหมือนพอร์ตอื่น</NotOpen>
+        ) : q.isPending ? (
+          <p>กำลังโหลด…</p>
+        ) : q.isError ? (
+          <div role="alert"><p>{q.error.message ?? "โหลดข้อมูลไม่สำเร็จ"}</p><button className="mt-2 rounded border px-3 py-1" onClick={() => void q.refetch()}>ลองใหม่</button>{["invalid_token", "missing_token"].includes(q.error.code) && <button className="ml-2 rounded border px-3 py-1" onClick={() => void supabase?.auth.signOut({ scope: "local" })}>เข้าสู่ระบบใหม่</button>}</div>
+        ) : tab === "ai" ? (
+          <AiTab rows={q.data.portfolios} />
+        ) : (
+          <SpotTab data={q.data} />
+        )}
+      </div>
     </section>
   );
 }
@@ -77,7 +101,7 @@ export function App() {
   return (
     <>
       {health.data && <ShadowBanner mode={health.data.mode} liveEnabled={health.data.live_enabled} />}
-      <main className="mx-auto max-w-5xl p-4">{signedIn === null ? null : signedIn ? <OverviewPage /> : <SignIn />}</main>
+      <main className="mx-auto max-w-5xl p-4">{signedIn === null ? null : signedIn ? <Dashboard /> : <SignIn />}</main>
     </>
   );
 }

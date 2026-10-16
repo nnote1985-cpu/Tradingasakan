@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from psycopg_pool import PoolTimeout
 
+from api.ai import ai_settings, scorecard
 from api.auth import AuthError, Principal, RoleStore, TokenVerifier, authenticate
 from api.portfolios import NoPortfolios, PortfolioStore, Unavailable, decision_items, equity_series, overview_items, risk_items
 from trading.config import Settings
@@ -82,6 +83,20 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
             return {"available": True, "portfolios": risk_items(await store.risk_rows())}
         except Unavailable:
             return {"available": False, "portfolios": []}
+
+    @app.get("/api/v1/ai/settings")
+    async def ai_settings_view(p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        return ai_settings()
+
+    @app.get("/api/v1/portfolios/{label:path}/ai-scorecard")
+    async def ai_scorecard(label: str, p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        if await store.portfolio(label) is None:
+            raise AuthError("not_found", "ไม่พบพอร์ตนี้", status=404)
+        try:
+            items = decision_items(await store.decision_rows(label))["items"]
+        except Unavailable:
+            return {"available": False, "horizon_days": 0, "items": [], "counts": {}, "diagnostic_only": True}
+        return {"available": True, **scorecard(items, await store.equity_rows(label))}
 
     @app.get("/api/v1/portfolios/{label:path}/decisions")
     async def decisions(label: str, p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:

@@ -1,7 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
+import { AiTab } from "../src/AiTab";
 import type { DecisionsResponse, EquitySeries, PortfolioRow } from "../src/api";
+import { Dashboard } from "../src/App";
 import { BookGroupCard } from "../src/BookGroupCard";
 import { armOf, groupBooks } from "../src/books";
 import { money, pct } from "../src/format";
@@ -9,7 +11,28 @@ import { ShadowBanner } from "../src/ShadowBanner";
 
 vi.mock("../src/api", () => ({
   supabase: null,
-  apiGet: async (path: string): Promise<EquitySeries | DecisionsResponse> => {
+  apiGet: async (path: string): Promise<unknown> => {
+    if (path === "/api/v1/overview") return { mode: "SHADOW", portfolios: [row("pathA-p5-r1/code"), row("pathA-p5-r1/ai")] };
+    if (path === "/api/v1/risk-status") return { available: false, portfolios: [] };
+    if (path === "/api/v1/ai/settings") {
+      return {
+        experiment_id: "pathA-p5-r1", graph_version: "g", locked: true, capability_stage: "FILTER_ONLY", model_id: "claude-opus-5-5", effort: "medium",
+        prompt_version: "pv1", prompt_hash: "4564016eabcdef", policy_version: "pol1", context_profile: "quant_only", tools: [], timeout_ms: 120000,
+        max_attempts: 1, max_run_cost_usd: "0.50", daily_cost_cap_usd: "1.00", monthly_cap_usd: "5", timebox_days: 28,
+      };
+    }
+    if (path.endsWith("/ai-scorecard")) {
+      return {
+        available: true, horizon_days: 7, diagnostic_only: true,
+        counts: { filter: { avoided_loss: 1, missed_gain: 1, pending: 1 }, diagnostic: { allowed_gain: 1 } },
+        items: [
+          { proposal_id: "a", kind: "filter", decided_on: "2026-10-01", outcome: "VETO", forward_return: "-0.05", verdict: "avoided_loss" },
+          { proposal_id: "b", kind: "filter", decided_on: "2026-10-02", outcome: "TIMEOUT", forward_return: "0.03", verdict: "missed_gain" },
+          { proposal_id: "c", kind: "diagnostic", decided_on: "2026-10-02", outcome: "ALLOW", forward_return: "0.03", verdict: "allowed_gain" },
+          { proposal_id: "d", kind: "filter", decided_on: "2026-10-15", outcome: "ALLOW", forward_return: null, verdict: "pending" },
+        ],
+      };
+    }
     if (path.endsWith("/decisions")) {
       const base = { current_weight: "0", target_weight: "0.5", reason: null, model_id: "m", latency_ms: 8000, decided_at: "2026-10-16T08:25:00+00:00" };
       return {
@@ -34,11 +57,13 @@ vi.mock("../src/api", () => ({
   },
 }));
 
-const row = (label: string, over: Partial<PortfolioRow> = {}): PortfolioRow => ({
+function row(label: string, over: Partial<PortfolioRow> = {}): PortfolioRow {
+  return {
   label, mode: "SHADOW", currency: "USDT", initial_equity: "10000", as_of: "2026-10-15T23:59:59.999+00:00",
   trading_equity: "9900", economic_equity: "9900", high_water_mark: null, quality: "ok", stale: false,
   return: "-0.01", drawdown: "0.1", exposure_share: "0", ...over,
-});
+  };
+}
 
 test("formats decimal strings without float money math", () => {
   expect(money("1234567.891", "USDT")).toBe("1,234,567.89 USDT");
@@ -88,14 +113,43 @@ test("a halted book is marked HALT with its date and reason", () => {
   expect(halted[0].textContent).toContain("drawdown 25%");
 });
 
-test("the AI arm lists its decisions; diagnostic answers are marked as having no effect and a timeout as an error", async () => {
-  const [g] = groupBooks([row("pathA-p5-r1/code"), row("pathA-p5-r1/ai")]);
-  render(<QueryClientProvider client={new QueryClient()}><BookGroupCard group={g} /></QueryClientProvider>);
+test("the AI tab lists decisions; diagnostic answers are marked as having no effect and a timeout as an error", async () => {
+  render(<QueryClientProvider client={new QueryClient()}><AiTab rows={[row("pathA-p5-r1/code"), row("pathA-p5-r1/ai")]} /></QueryClientProvider>);
   await waitFor(() => expect(screen.getAllByTestId("decision-row")).toHaveLength(3));
   const rows = screen.getAllByTestId("decision-row");
   expect(rows[0].textContent).toContain("ความเห็น (ไม่มีผล)");
   expect(rows[2].textContent).toContain("ผิดพลาด");
   expect(screen.getByText("$0.0250")).toBeTruthy();
+});
+
+test("the AI tab shows locked settings and the helped-or-missed scorecard, counting filter answers only", async () => {
+  const { container } = render(<QueryClientProvider client={new QueryClient()}><AiTab rows={[row("pathA-p5-r1/ai")]} /></QueryClientProvider>);
+  await waitFor(() => expect(container.querySelector("[data-testid=ai-settings]")?.textContent).toContain("ล็อกไว้ตลอดรอบทดลอง"));
+  expect(container.querySelector("[data-testid=ai-settings]")?.textContent).toContain("$5");
+  await waitFor(() => expect(container.querySelectorAll("[data-testid=score-row]")).toHaveLength(4));
+  const card = container.querySelector("[data-testid=ai-scorecard]")!;
+  expect(card.textContent).toContain("ไม่มีผลกับพอร์ต");
+  const stats = [...card.querySelectorAll(".text-lg")].map((e) => e.textContent);
+  expect(stats).toEqual(["1", "1", "1"]);   // the diagnostic allowed_gain is not counted as help
+  const rows = container.querySelectorAll("[data-testid=score-row]");
+  expect(rows[0].textContent).toContain("−5.00%");
+  expect(rows[1].textContent).toContain("TIMEOUT (ไม่เพิ่ม)");
+  expect(rows[3].textContent).toContain("รอผล");
+});
+
+test("tabs switch through the URL hash; futures and options say they are not open yet", async () => {
+  window.location.hash = "";
+  const { container } = render(<QueryClientProvider client={new QueryClient()}><Dashboard /></QueryClientProvider>);
+  expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Spot", "Futures", "Options", "AI"]);
+  await waitFor(() => expect(container.querySelectorAll("[data-testid=arm-tile]")).toHaveLength(2));
+  fireEvent.click(screen.getByRole("tab", { name: "Options" }));
+  expect(window.location.hash).toBe("#options");
+  expect(container.querySelector("[data-testid=not-open]")?.textContent).toContain("Options ยังไม่เปิด");
+  fireEvent.click(screen.getByRole("tab", { name: "Futures" }));
+  expect(container.querySelector("[data-testid=not-open]")?.textContent).toContain("Futures");
+  fireEvent.click(screen.getByRole("tab", { name: "AI" }));
+  await waitFor(() => expect(container.querySelector("[data-testid=ai-settings]")).not.toBeNull());
+  expect(screen.getByRole("tab", { name: "AI" }).getAttribute("aria-selected")).toBe("true");
 });
 
 test("with a single close the charts wait and say why", async () => {
