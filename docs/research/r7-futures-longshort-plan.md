@@ -90,3 +90,22 @@ Output: `/mnt/project-files/r7-results/`.
 - 2020–2021 was a strong bull market, so a short side is likely to cost there.
 - Sharpe over 9 months (C2) is noisy.
 - Passing would justify a SHADOW futures book, not real money.
+
+## Development result (run 2026-10-16 at f64ef00, after this plan was committed)
+
+`PYTHONPATH=research/spike uv run python research/spike/run_r7.py development`
+→ `/mnt/project-files/r7-results/development.json`. Data: 59,160 1h bars and
+7,395 funding rows, 2020-01 → 2026-09, all checksum-verified.
+
+| 2022-04-12 → 2026-01-01 | Net | Sharpe | Max DD |
+| --- | --- | --- | --- |
+| R7 long/short | +103.4% | 0.43 | 55.0% |
+| Buy & hold BTC | +121.5% | 0.42 | 62.0% |
+
+- 57 position opens; 757 days long, 603 days short. Fees 904 USDT. Net funding
+  paid 3,478 USDT (longs paid more than shorts received). No liquidation.
+- Log return on long days +0.788, on short days −0.078: **the short side lost
+  money over the period**, so the hypothesis (shorts add return in falling
+  phases) is not supported here, even though the set passes.
+- By the pre-declared rule this is a **pass** (net > 0 and Sharpe 0.43 > 0.42),
+  by a margin far smaller than daily-return noise.
