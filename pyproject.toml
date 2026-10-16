@@ -4,6 +4,7 @@ version = "0.0.1"
 description = "AI trading research system (BUILDPLAN v4.2); Phase 1 Foundation"
 requires-python = ">=3.13,<3.14"
 dependencies = [
+    "anthropic>=1.0",
     "fastapi>=0.143.1",
     "numpy>=2.0",
     "pandas>=2.2",

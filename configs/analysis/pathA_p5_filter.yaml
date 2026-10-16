@@ -1,0 +1,23 @@
+# Phase 5 on path A: the AI filter of the pathA-p5-r1 paired run (docs/phase-5-paired-plan.md).
+# Locked for the whole run: changing any field changes graph_hash and starts a new revision.
+# Effort (medium) and the prompt text are pinned in trading.analysis.pathA_filter (PROMPT_VERSION).
+analysis_profile:
+  graph_version: pathA_p5_filter_r1
+  enabled: true
+  capability_stage: FILTER_ONLY
+  roles:
+    - role_id: filter
+      kind: filter
+      schema_version: filter_response.v1
+      model_id: claude-opus-5-5
+      prompt_version: pathA_p5_filter_prompt_v1
+      timeout_ms: 120000
+      max_output_tokens: 16000
+      input_scopes: [snapshot_features]
+  required_roles: [filter]
+  optional_roles: []
+  max_concurrency: 1
+  tools: []
+  total_timeout_ms: 120000
+  max_run_cost_usd: "0.50"
+  daily_cost_cap_usd: "1.00"
