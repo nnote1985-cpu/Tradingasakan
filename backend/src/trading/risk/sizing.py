@@ -51,10 +51,16 @@ class RiskProfile:
     risk_per_trade_fraction: Decimal = Decimal("0.005")
     absolute_trade_risk_cap_usdt: Decimal = Decimal("50")
     daily_loss_trigger_fraction: Decimal = Decimal("0.02")
-    portfolio_drawdown_halt_fraction: Decimal = Decimal("0.08")
+    portfolio_drawdown_halt_fraction: Decimal | None = Decimal("0.08")   # None: drawdown never halts
     max_gross_notional_to_equity: Decimal = Decimal("3")
     requested_exchange_leverage: Decimal = Decimal("3")
     max_margin_utilization_fraction: Decimal = Decimal("0.80")
+    daily_loss_action: str = "HALT"                      # "HALT", or "ALERT": record and alert, keep trading
+    drawdown_alert_fraction: Decimal | None = None       # alert (no halt) once per drawdown episode
+
+    def __post_init__(self):
+        if self.daily_loss_action not in ("HALT", "ALERT"):
+            raise ValueError("daily_loss_action must be HALT or ALERT")
 
 
 @dataclass(frozen=True)
