@@ -87,3 +87,8 @@ adapter, nothing live.
   recorded and checked the same way as v1.1: a hash-chained `runs.jsonl`, the
   `trading.audit_events` anchor and `simulator_valid`. Without `--book`, `paper_run.py`
   runs pathA-v1.1 exactly as before.
+- From 2026-10-16 (PR for the web view) `scripts/trading_sync_sql.py` mirrors the book into
+  the `trading` schema as `pathA-v1.2/paper` and `pathA-v1.2/buy_and_hold`, so it appears on
+  the overview page. Its spot journal entries are copied line for line (no amount is
+  re-derived) and daily marks become equity snapshots. The `paper.*` mirror skips v1.2.
+  No migration: the existing tables hold it.

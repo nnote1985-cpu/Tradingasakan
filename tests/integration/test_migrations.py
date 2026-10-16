@@ -6,6 +6,7 @@ Skipped when PostgreSQL server binaries are not installed (set PG_BIN to their d
 from __future__ import annotations
 
 import glob
+import json
 import os
 import shutil
 import subprocess
@@ -254,3 +255,78 @@ def test_overview_sql_takes_each_portfolios_latest_snapshot(db):
     label = db.execute("select label from trading.portfolios where id = %s", (pid,)).fetchone()[0]
     r = rows[label]
     assert str(r[4].date()) == "2026-10-02" and r[5].startswith("10050.5") and r[6].startswith("10050.25")
+
+
+def _v12_state(halt: bool = False) -> dict:
+    """A real pathA-v1.2 book: open, buy, a few marks, then a sell (or a HALT that sells)."""
+    import pandas as pd
+
+    from trading.shadow.rebalance_book import PathABook
+
+    d0 = pd.Timestamp("2026-10-15", tz="UTC")
+    closes = [80000.0, 81000.0, 79000.0, 82000.0] if not halt else [80000.0, 81000.0, 58000.0, 57000.0]
+    hourly = pd.DataFrame(
+        [(d0 + pd.Timedelta(days=i, hours=h), c, c) for i, c in enumerate(closes) for h in range(24)],
+        columns=["t", "open", "close"]).set_index("t")
+    daily = pd.DataFrame({"close": hourly["close"].resample("1D").last()})
+    book = PathABook()
+    at = d0 + pd.Timedelta(days=1, minutes=5)
+    book.open("2026-10-15", 1.0, at, at, ["open"])
+    for i in range(1, len(closes)):
+        day = d0 + pd.Timedelta(days=i)
+        book.advance(daily.loc[:day], hourly.loc[:day + pd.Timedelta(hours=23)])
+        at = day + pd.Timedelta(days=1, minutes=5)
+        book.decide(str(day.date()), 0.0 if i == 2 and not halt else 1.0, at, at, ["x"])
+    return json.loads(json.dumps(book.to_dict()))
+
+
+def _v12_sql(tmp_path, state: dict) -> str:
+    import sys
+
+    v = state["rules_version"]
+    (tmp_path / v).mkdir()
+    (tmp_path / v / "state.json").write_text(json.dumps(state))
+    extra = [] if v == "pathA-v1.2" else ["--commit", f"{v}=abcdef1"]
+    return subprocess.run([sys.executable, str(ROOT / "scripts/trading_sync_sql.py"), "--root", str(tmp_path), *extra],
+                          check=True, capture_output=True, text=True).stdout
+
+
+@pytest.mark.parametrize("halt", [False, True])
+def test_pathA_v12_sync_copies_the_spot_journal(db, tmp_path, halt):
+    from decimal import Decimal
+
+    state = _v12_state(halt)
+    if halt:                                  # its own label: the journal is append-only within this database
+        state["rules_version"] = "pathA-v1.2-halt"
+    label = state["rules_version"]
+    sql = _v12_sql(tmp_path, state)
+    db.execute("insert into trading.workspace_settings (owner_id) values (gen_random_uuid()) on conflict do nothing")
+    db.execute(sql)
+    first = _fingerprint(db, label)
+    db.execute(sql)
+    assert _fingerprint(db, label) == first                     # re-running inserts nothing
+    for book, key in (("paper", "book"), ("buy_and_hold", "buy_and_hold")):
+        entries = state[key]["entries"]
+        n = db.execute("select count(*) from trading.journal_entries where source_event_key like %s",
+                       (f"{label}/{book}:%",)).fetchone()[0]
+        assert n == len(entries)
+        # account balances in the database equal the book's own balances, to the last digit
+        rows = dict(db.execute(
+            "select l.ledger_account, sum(l.amount) from trading.journal_lines l join trading.journal_entries e "
+            "on e.id = l.entry_id where e.source_event_key like %s group by 1", (f"{label}/{book}:%",)).fetchall())
+        want: dict[str, Decimal] = {}
+        for e in entries:
+            for a, x in e["lines"]:
+                a = {"capital": "owner_capital", "inventory_at_cost": "btc_position_cost"}.get(a, a)
+                want[a] = want.get(a, Decimal(0)) + Decimal(x)
+        assert {a: v for a, v in rows.items() if v} == {a: v for a, v in want.items() if v}
+        last = db.execute("select trading_equity from trading.equity_snapshots s join trading.portfolios p "
+                          "on p.id = s.portfolio_id where p.label = %s order by at desc limit 1",
+                          (f"{label}/{book}",)).fetchone()[0]
+        h = state["history"][-1]
+        assert last == Decimal(h["equity"] if book == "paper" else h["buy_and_hold"]).quantize(Decimal("1e-12"))
+    bad = db.execute("select entry_id from trading.journal_lines l join trading.journal_entries e on e.id = l.entry_id "
+                     "where e.source_event_key like %s group by entry_id having sum(amount) <> 0", (f"{label}/%",)).fetchall()
+    assert bad == []
+    sells = sum(1 for e in state["book"]["entries"] if e["data"].get("side") == "SELL")
+    assert sells == 1 and (state["risk"]["halted"] is halt)

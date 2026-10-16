@@ -7,6 +7,12 @@ Each rules version becomes a strategy_versions row and two SHADOW portfolios
 balanced USDT journal entries; daily marks become equity snapshots. Keys are
 deterministic, so re-running inserts nothing new. Needs trading.workspace_settings
 (the owner) to exist first.
+
+Books in the pathA-v1 float format (pathA-v1, pathA-v1.1) are rebuilt from their
+trade list. pathA-v1.2 (format rebalance_book.v1) already keeps a balanced Decimal
+spot journal, so its entries are copied line for line, keyed
+`<version>/<book>:<ledger key>`, with the account names mapped to the ones used
+here (capital -> owner_capital, inventory_at_cost -> btc_position_cost).
 """
 
 from __future__ import annotations
@@ -82,18 +88,61 @@ def book_sql(state: dict, commit: str) -> list[str]:
     return out
 
 
+ACCOUNTS = {"capital": "owner_capital", "inventory_at_cost": "btc_position_cost"}
+COMMITS = ["pathA-v1=42920ba", "pathA-v1.1=5306f62", "pathA-v1.2=34028a6"]   # frozen/<version> heads
+
+
+def _version_and_portfolio(v: str, commit: str, label: str, start_equity) -> list[str]:
+    return [f"insert into trading.strategy_versions (label, code_commit, frozen_ref) values ({q(v)}, {q(commit)}, "
+            f"{q('frozen/' + v)}) on conflict (label) do nothing;",
+            "insert into trading.portfolios (label, owner_id, mode, currency, initial_equity, active_version_id) "
+            f"select {q(label)}, w.owner_id, 'SHADOW', 'USDT', {q(d(start_equity))}, "
+            f"(select id from trading.strategy_versions where label = {q(v)}) from trading.workspace_settings w "
+            "on conflict (label) do nothing;"]
+
+
+def rebalance_book_sql(state: dict, commit: str) -> list[str]:
+    """pathA-v1.2: copy each SpotLedger entry as it is; never re-derive amounts."""
+    v = state["rules_version"]
+    out: list[str] = []
+    for book, key in (("paper", "book"), ("buy_and_hold", "buy_and_hold")):
+        label = f"{v}/{book}"
+        out += _version_and_portfolio(v, commit, label, state["start_equity"])
+        for e in state[key]["entries"]:
+            lines = [(ACCOUNTS.get(a, a), Decimal(x)) for a, x in e["lines"]]
+            if sum(x for _, x in lines) != 0:
+                raise SystemExit(f"{label} entry {e['key']} does not balance: the state is not a valid book")
+            dd = e["data"]
+            memo = "starting cash" if e["kind"] == "open" else f"{dd.get('side')} {dd.get('qty')} BTC @ {dd.get('price')}"
+            out += _entry(f"{label}:{e['key']}", label, e["at"], memo, lines)
+        for h in state["history"]:
+            at = f"{h['date']}T23:59:59.999+00:00"
+            tr = d(h["equity"] if book == "paper" else h["buy_and_hold"])
+            ec = d(h["economic_equity"] if book == "paper" else h["buy_and_hold"])
+            exposure = d(tr * Decimal(str(h["weight_held_at_close"]))) if book == "paper" else None
+            out.append("insert into trading.equity_snapshots (portfolio_id, at, trading_equity, economic_equity, mark_price, exposure) "
+                       f"select id, {q(at)}, {q(tr)}, {q(ec)}, {q(d(h['close']))}, {q(exposure)} from trading.portfolios "
+                       f"where label = {q(label)} on conflict do nothing;")
+    return out
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default=str(ROOT))
-    ap.add_argument("--commit", action="append", default=["pathA-v1=42920ba"],
-                    help="version=commit of each frozen branch")
+    ap.add_argument("--commit", action="append", default=list(COMMITS),
+                    help="version=commit of each frozen branch (later values win)")
     args = ap.parse_args()
     commits = dict(c.split("=", 1) for c in args.commit)
     lines = ["begin;", "do $$ begin if not exists (select 1 from trading.workspace_settings) then "
              "raise exception 'trading.workspace_settings is empty: set the owner first'; end if; end $$;"]
     for p in sorted(Path(args.root).glob("*/state.json")):
         s = json.loads(p.read_text())
-        lines += book_sql(s, commits[s["rules_version"]])
+        if s["rules_version"] not in commits:
+            raise SystemExit(f"no frozen commit known for {s['rules_version']}: pass --commit {s['rules_version']}=<sha>")
+        if s.get("format") == "rebalance_book.v1":
+            lines += rebalance_book_sql(s, commits[s["rules_version"]])
+        else:
+            lines += book_sql(s, commits[s["rules_version"]])
     lines.append("commit;")
     print("\n".join(lines))
 
