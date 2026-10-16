@@ -29,6 +29,11 @@ MAX_FINDINGS = 8
 # Server-side tool allowlist (§7.10). v1 has no decision-time tools.
 SERVER_TOOL_ALLOWLIST: frozenset[str] = frozenset()
 
+# Proposal templates a code compiler exists for (§7.6). A BOUNDED_PROPOSAL graph may only name one
+# of these; a new template needs its own compiler and tests (docs/phase-5-r2-plan.md).
+PROPOSAL_TEMPLATES: frozenset[str] = frozenset({"pathA_spot_weight_v1"})
+SPOT_WEIGHTS: tuple[float, ...] = (0.0, 0.5, 1.0)
+
 
 def _aware(v: datetime) -> datetime:
     if v.tzinfo is None or v.utcoffset() is None:
@@ -168,6 +173,7 @@ class RoleKind(StrEnum):
     ANALYST = "analyst"
     SYNTHESIS = "synthesis"
     REVIEWER = "reviewer"
+    PROPOSER = "proposer"                  # BOUNDED_PROPOSAL: fills one allowlisted template
 
 
 # --- graph config (§7.6, §7.7, §7.9) ----------------------------------------
@@ -207,6 +213,7 @@ class AgentGraphConfig(_Strict):
     analyst_cutoff_ms: Annotated[int, Field(gt=0)] | None = None
     max_run_cost_usd: DecimalStr | None = None
     daily_cost_cap_usd: DecimalStr | None = None
+    proposal_template_id: Id | None = None         # BOUNDED_PROPOSAL only
 
     def role(self, role_id: str) -> AgentRole:
         return next(r for r in self.roles if r.role_id == role_id)
@@ -246,14 +253,27 @@ class AgentGraphConfig(_Strict):
         req, opt = set(self.required_roles), set(self.optional_roles)
         if req & opt:
             p.append(f"roles both required and optional {sorted(req & opt)}")
-        analysts = {r.role_id for r in self.roles if r.kind in (RoleKind.ANALYST, RoleKind.FILTER)}
+        analysts = {r.role_id for r in self.roles if r.kind in (RoleKind.ANALYST, RoleKind.FILTER, RoleKind.PROPOSER)}
         if req | opt != analysts:
             p.append("required + optional roles must equal the enabled analyst/filter roles")
 
         synth = self.roles_of(RoleKind.SYNTHESIS)
         reviewers = self.roles_of(RoleKind.REVIEWER)
         filters = self.roles_of(RoleKind.FILTER)
-        if self.capability_stage is CapabilityStage.FILTER_ONLY:
+        proposers = self.roles_of(RoleKind.PROPOSER)
+        bounded = self.capability_stage is CapabilityStage.BOUNDED_PROPOSAL
+        if proposers and not bounded:
+            p.append("proposer roles are only for BOUNDED_PROPOSAL")
+        if (self.proposal_template_id is not None) != bounded:
+            p.append("proposal_template_id is set exactly when the stage is BOUNDED_PROPOSAL")
+        if bounded:
+            if len(proposers) != 1 or len(self.roles) != 1:
+                p.append("BOUNDED_PROPOSAL uses exactly one proposer role and nothing else")
+            if self.synthesis_required or self.reviewer_enabled:
+                p.append("BOUNDED_PROPOSAL has no synthesis or reviewer")
+            if self.required_roles != tuple(r.role_id for r in proposers):
+                p.append("BOUNDED_PROPOSAL proposer role must be required")
+        elif self.capability_stage is CapabilityStage.FILTER_ONLY:
             if len(filters) != 1 or len(self.roles) != 1:
                 p.append("FILTER_ONLY uses exactly one filter role and nothing else")
             if self.synthesis_required or self.reviewer_enabled:
@@ -280,8 +300,9 @@ class AgentGraphConfig(_Strict):
     def lock_problems(self) -> list[str]:
         """Rules that must hold before a graph is locked or enabled (§7.6, §7.9: a draft with nulls cannot start)."""
         p: list[str] = []
-        if self.capability_stage is CapabilityStage.BOUNDED_PROPOSAL:
-            p.append("BOUNDED_PROPOSAL needs a template compiler and is not enabled in this version")
+        if self.capability_stage is CapabilityStage.BOUNDED_PROPOSAL and self.proposal_template_id not in PROPOSAL_TEMPLATES:
+            p.append(f"proposal_template_id {self.proposal_template_id} has no template compiler "
+                     f"(allowed: {sorted(PROPOSAL_TEMPLATES)})")
         for r in self.roles:
             for field in ("model_id", "prompt_version", "schema_version", "timeout_ms", "max_output_tokens"):
                 if getattr(r, field) is None:
@@ -289,7 +310,7 @@ class AgentGraphConfig(_Strict):
         for field in ("total_timeout_ms", "max_run_cost_usd", "daily_cost_cap_usd"):
             if getattr(self, field) is None:
                 p.append(f"{field} is null")
-        multi = self.capability_stage is not CapabilityStage.FILTER_ONLY
+        multi = self.capability_stage is CapabilityStage.MULTI_ANALYST_FILTER
         if multi and self.analyst_cutoff_ms is None:
             p.append("analyst_cutoff_ms is null")
         if p:
@@ -307,7 +328,7 @@ class AgentGraphConfig(_Strict):
             p.append("analyst_cutoff_ms exceeds total_timeout_ms")
         for r in self.roles:
             assert r.timeout_ms is not None
-            if r.kind in (RoleKind.ANALYST, RoleKind.FILTER) and r.timeout_ms > cutoff:
+            if r.kind in (RoleKind.ANALYST, RoleKind.FILTER, RoleKind.PROPOSER) and r.timeout_ms > cutoff:
                 p.append(f"{r.role_id}.timeout_ms exceeds the analyst cutoff")
             if r.kind in (RoleKind.SYNTHESIS, RoleKind.REVIEWER) and r.timeout_ms > self.total_timeout_ms - cutoff:
                 p.append(f"{r.role_id}.timeout_ms does not fit after the analyst cutoff")
@@ -315,7 +336,10 @@ class AgentGraphConfig(_Strict):
 
     def graph_hash(self) -> str:
         """sha256 of the canonical JSON form; changing any field makes a new graph/experiment version."""
-        canon = json.dumps(self.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+        d = self.model_dump(mode="json")
+        if d["proposal_template_id"] is None:
+            del d["proposal_template_id"]          # keeps the hashes of graphs locked before the field existed
+        canon = json.dumps(d, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(canon.encode()).hexdigest()
 
 
@@ -412,6 +436,36 @@ class SynthesisResult(_Strict):
     unresolved_conflicts: tuple[Text, ...] = ()
     missing_inputs: tuple[str, ...] = ()
     suggested_disposition: Disposition
+
+
+class ProposalReasonCode(StrEnum):
+    """Allowlist for the reason of a spot weight proposal (pathA_spot_weight_v1)."""
+    TREND_SUPPORTS_EXPOSURE = "TREND_SUPPORTS_EXPOSURE"
+    TREND_AGAINST_EXPOSURE = "TREND_AGAINST_EXPOSURE"
+    FUNDING_PRESSURE = "FUNDING_PRESSURE"
+    VOLATILITY_RISK = "VOLATILITY_RISK"
+    DRAWDOWN_RISK = "DRAWDOWN_RISK"
+    MIXED_CONTEXT = "MIXED_CONTEXT"
+    INSUFFICIENT_EVIDENCE = "INSUFFICIENT_EVIDENCE"
+
+
+def _spot_weight(v: float) -> float:
+    if v not in SPOT_WEIGHTS:
+        raise ValueError(f"target_weight must be one of {SPOT_WEIGHTS}")
+    return float(v)
+
+
+class SpotWeightProposal(_Strict):
+    """BOUNDED_PROPOSAL output for template pathA_spot_weight_v1: one long-or-flat BTC spot weight.
+    The model fills only these fields; code compiles it into a target (trading.analysis.pathA_proposer)."""
+    proposal_id: Id
+    snapshot_id: Id
+    template_id: Literal["pathA_spot_weight_v1"]
+    target_weight: Annotated[float, Field(strict=True), AfterValidator(_spot_weight)]   # strict: no bools or strings
+    reason_code: ProposalReasonCode
+    reason: Text
+    evidence_refs: Refs = ()
+    policy_version: Id
 
 
 class ProposalDraft(_Strict):
