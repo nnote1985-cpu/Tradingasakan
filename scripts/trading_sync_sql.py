@@ -18,7 +18,9 @@ HALTs and resumes go to trading.risk_events.
 The Phase 5 paired run (format paired_book.v1, docs/phase-5-paired-plan.md) becomes the portfolios
 `pathA-p5-r1/code`, `pathA-p5-r1/ai` and `pathA-p5-r1/buy_and_hold` (the Code arm's benchmark;
 the AI arm's is the same), each copied like a pathA-v1.2 book, and every question to the AI
-becomes a trading.agent_decisions row on the AI portfolio.
+becomes a trading.agent_decisions row on the AI portfolio. The r2 proposal run (format
+proposal_book.v1, docs/phase-5-r2-plan.md) becomes `pathA-p5-r2/code`, `/ai` and `/buy_and_hold`
+the same way; its proposals are not copied yet.
 
 futures-r7 (format trend_perp_book.v1, docs/futures-r7-book-plan.md) keeps a balanced perp
 journal (ShadowLedger: cash, realized_pnl, fees, funding); its entries are copied line for line
@@ -211,6 +213,14 @@ def paired_book_sql(state: dict, commit: str) -> list[str]:
     return out
 
 
+def proposal_book_sql(state: dict, commit: str) -> list[str]:
+    """Phase 5 r2: both arms and the Code arm's benchmark. Proposals stay in state.json for now:
+    trading.agent_decisions holds filter answers only (PR #12), not weight proposals."""
+    v = state["experiment_id"]
+    return (_spot_book_sql(v, commit, state["code"], f"{v}/code", f"{v}/buy_and_hold")
+            + _spot_book_sql(v, commit, state["ai"], f"{v}/ai", None))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default=str(ROOT))
@@ -233,6 +243,8 @@ def main() -> None:
             lines += trend_perp_book_sql(s, commits[v])
         elif s.get("format") == "paired_book.v1":
             lines += paired_book_sql(s, commits[v])
+        elif s.get("format") == "proposal_book.v1":
+            lines += proposal_book_sql(s, commits[v])
         elif s.get("format") == "rebalance_book.v1":
             lines += rebalance_book_sql(s, commits[v])
         else:

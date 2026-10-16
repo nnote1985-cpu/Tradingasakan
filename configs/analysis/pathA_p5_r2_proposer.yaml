@@ -1,0 +1,25 @@
+# Phase 5 r2 on path A: the AI proposes the daily BTC spot weight (docs/phase-5-r2-plan.md).
+# BOUNDED_PROPOSAL with the only compiled template, pathA_spot_weight_v1. Locked for the whole
+# run: changing any field changes graph_hash and starts r3. Effort (medium) and the prompt text
+# are pinned in trading.analysis.pathA_proposer (PROMPT_VERSION).
+analysis_profile:
+  graph_version: pathA_p5_r2_proposer
+  enabled: true
+  capability_stage: BOUNDED_PROPOSAL
+  proposal_template_id: pathA_spot_weight_v1
+  roles:
+    - role_id: proposer
+      kind: proposer
+      schema_version: spot_weight_proposal.v1
+      model_id: claude-opus-5-5
+      prompt_version: pathA_p5_r2_proposer_prompt_v1
+      timeout_ms: 120000
+      max_output_tokens: 16000
+      input_scopes: [snapshot_features]
+  required_roles: [proposer]
+  optional_roles: []
+  max_concurrency: 1
+  tools: []
+  total_timeout_ms: 120000
+  max_run_cost_usd: "0.50"
+  daily_cost_cap_usd: "1.00"
