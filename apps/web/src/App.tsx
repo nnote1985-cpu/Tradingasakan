@@ -4,7 +4,7 @@ import { AiTab } from "./AiTab";
 import { type ApiError, apiGet, type Overview, type RiskStatusResponse, supabase } from "./api";
 import { BookGroupCard } from "./BookGroupCard";
 import { FuturesTab } from "./FuturesTab";
-import { groupBooks } from "./books";
+import { groupBooks, isFutures } from "./books";
 import { ModeBadge } from "./ModeBadge";
 import { PortfolioTable } from "./PortfolioTable";
 import { ShadowBanner } from "./ShadowBanner";
@@ -36,7 +36,8 @@ function SignIn() {
 function SpotTab({ data }: { data: Overview }) {
   const risk = useQuery<RiskStatusResponse, ApiError>({ queryKey: ["risk-status"], queryFn: () => apiGet<RiskStatusResponse>("/api/v1/risk-status"), refetchInterval: 30_000 });
   const [showTable, setShowTable] = useState(false);
-  const groups = groupBooks(data.portfolios);
+  const spot = data.portfolios.filter((r) => !isFutures(r.label));
+  const groups = groupBooks(spot);
   return (
     <div className="space-y-4">
       <p className="text-sm text-[var(--text-secondary)]">
@@ -51,7 +52,7 @@ function SpotTab({ data }: { data: Overview }) {
           <button className="text-sm text-[var(--text-secondary)] underline" aria-expanded={showTable} onClick={() => setShowTable((s) => !s)}>
             {showTable ? "ซ่อนตาราง" : "ดูเป็นตาราง"}
           </button>
-          {showTable && <div className="mt-2 overflow-x-auto"><PortfolioTable rows={data.portfolios} /></div>}
+          {showTable && <div className="mt-2 overflow-x-auto"><PortfolioTable rows={spot} /></div>}
         </div>
       )}
     </div>
@@ -72,7 +73,7 @@ export function Dashboard() {
       <TabBar tab={tab} onSelect={setTab} />
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
         {tab === "futures" ? (
-          <FuturesTab />
+          <FuturesTab rows={q.data?.portfolios ?? []} />
         ) : tab === "options" ? (
           <NotOpen title="Options ยังไม่เปิด">จะเปิดเมื่อตัวจำลอง options ผ่านเทสต์ และจะเริ่มด้วยเงินสมมติเหมือนพอร์ตอื่น</NotOpen>
         ) : q.isPending ? (

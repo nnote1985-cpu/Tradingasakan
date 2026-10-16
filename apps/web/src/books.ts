@@ -38,3 +38,8 @@ export function groupBooks(rows: PortfolioRow[]): BookGroup[] {
   // Most recently updated first; ties by version, newest name first.
   return groups.sort((a, b) => (b.latest ?? "").localeCompare(a.latest ?? "") || b.version.localeCompare(a.version));
 }
+
+/** Futures books are labelled ``futures-<version>/<arm>``; every other book is BTC spot for now. */
+export function isFutures(label: string): boolean {
+  return label.startsWith("futures-");
+}

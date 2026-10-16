@@ -4,8 +4,9 @@ import { expect, test, vi } from "vitest";
 import { AiTab } from "../src/AiTab";
 import type { DecisionsResponse, EquitySeries, PortfolioRow } from "../src/api";
 import { Dashboard } from "../src/App";
+import { FuturesTab } from "../src/FuturesTab";
 import { BookGroupCard } from "../src/BookGroupCard";
-import { armOf, groupBooks } from "../src/books";
+import { armOf, groupBooks, isFutures } from "../src/books";
 import { money, pct } from "../src/format";
 import { ShadowBanner } from "../src/ShadowBanner";
 
@@ -173,4 +174,14 @@ test("with a single close the charts wait and say why", async () => {
   const { container } = render(<QueryClientProvider client={new QueryClient()}><BookGroupCard group={g} /></QueryClientProvider>);
   await waitFor(() => expect(container.querySelector("[data-testid=few-days]")?.textContent).toContain("1 วัน"));
   expect(container.querySelector("svg[role=img]")).toBeNull();
+});
+
+test("futures books show in the Futures tab above the backtests, and not in Spot", async () => {
+  const rows = [row("futures-r7/paper"), row("futures-r7/buy_and_hold"), row("pathA-v1.2/paper")];
+  const { container } = render(<QueryClientProvider client={new QueryClient()}><FuturesTab rows={rows} /></QueryClientProvider>);
+  expect(container.querySelectorAll("[data-testid=book-group]")).toHaveLength(1);
+  expect(container.querySelector("[data-testid=book-group] h2")?.textContent).toBe("futures-r7");
+  expect(container.querySelector("[data-testid=not-open]")).toBeNull();
+  await waitFor(() => expect(container.querySelector("[data-testid=backtest]")).not.toBeNull());
+  expect(groupBooks(rows.filter((r) => !isFutures(r.label))).map((g) => g.version)).toEqual(["pathA-v1.2"]);
 });
