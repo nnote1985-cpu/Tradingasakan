@@ -176,3 +176,9 @@ R11 +221.0% / 0.71 / 39.4% (21 flips); B&H +121.5% / 0.42 / 62.0%. **R11 passes.
 2022-07-01 → 2026-01-01, spot 0.10% + 2 bps: R10a +244.8% / Sharpe 1.02 / DD 26.0% (48 trades); R12 +182.8% / 0.97 / 21.7%
 (331 trades); B&H +339.2% / 0.88 / 35.4%. **R12 fails** (Sharpe below R10a; DD cut 4.3 points, short of the declared 5).
 Vol sizing helped only the high-vol 2024 drawdown; the low-vol sideways drawdowns of 2023 and 2025 are unchanged.
+
+## C1 confirmation of R10a and R11 (2026-10-16, docs/research/c1-confirm-band-plan.md) — C1 SPENT
+
+2020-04-15 → 2022-01-01 (never simulated before): path A +347.8% / Sharpe 1.76 / DD 27.4%; **R10a +443.0% / 1.93 / 23.2%
+(confirmed)**; R7 +123.1% / 0.66 / 46.4%; **R11 +246.9% / 0.99 / 34.8% (confirmed vs R7, but below B&H)**; B&H +572.4% / 1.53 /
+53.2%. R10a also meets Note's objective vs B&H on C1. C2 (2026-01 → 2026-10) is the only unseen historical set left.
