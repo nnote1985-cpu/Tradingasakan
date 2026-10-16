@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { AiTab } from "./AiTab";
+import { AssetTab } from "./AssetTab";
 import { type ApiError, apiGet, type Overview, type RiskStatusResponse, supabase } from "./api";
 import { BookGroupCard } from "./BookGroupCard";
 import { FuturesTab } from "./FuturesTab";
@@ -83,6 +84,8 @@ export function Dashboard() {
           <p>กำลังโหลด…</p>
         ) : q.isError ? (
           <div role="alert"><p>{q.error.message ?? "โหลดข้อมูลไม่สำเร็จ"}</p><button className="mt-2 rounded border px-3 py-1" onClick={() => void q.refetch()}>ลองใหม่</button>{["invalid_token", "missing_token"].includes(q.error.code) && <button className="ml-2 rounded border px-3 py-1" onClick={() => void supabase?.auth.signOut({ scope: "local" })}>เข้าสู่ระบบใหม่</button>}</div>
+        ) : tab === "asset" ? (
+          <AssetTab rows={q.data.portfolios} />
         ) : tab === "ai" ? (
           <AiTab rows={q.data.portfolios} />
         ) : (

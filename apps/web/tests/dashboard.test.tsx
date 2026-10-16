@@ -183,7 +183,7 @@ test("the AI tab shows locked settings and the helped-or-missed scorecard, count
 test("tabs switch through the URL hash; futures and options say they are not open yet", async () => {
   window.location.hash = "";
   const { container } = render(<QueryClientProvider client={new QueryClient()}><Dashboard /></QueryClientProvider>);
-  expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Spot", "Futures", "Options", "AI", "กลยุทธ์"]);
+  expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Spot", "สินทรัพย์", "Futures", "Options", "AI", "กลยุทธ์"]);
   await waitFor(() => expect(container.querySelectorAll("[data-testid=arm-tile]")).toHaveLength(2));
   fireEvent.click(screen.getByRole("tab", { name: "Options" }));
   expect(window.location.hash).toBe("#options");
