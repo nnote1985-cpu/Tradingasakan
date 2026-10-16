@@ -41,6 +41,8 @@ GRAPH_FILE = CONFIG_DIR / "pathA_p5_filter.yaml"
 PROMPT_VERSION = "pathA_p5_filter_prompt_v1"
 FILTER_POLICY = "pathA_p5_filter_v1"            # the policy_version the model must echo
 EFFORT: Literal["medium"] = "medium"
+# Not ANTHROPIC_API_KEY: that name belongs to the session running this code.
+KEY_ENV = "P5_ANTHROPIC_KEY"
 # USD per million tokens (input, output): Anthropic list price, checked 2026-10-16. Reports use
 # the tokens the API returned; a price change means a new revision, not a silent edit.
 PRICES: dict[str, tuple[Decimal, Decimal]] = {"claude-opus-5-5": (Decimal("4"), Decimal("20"))}
@@ -124,12 +126,12 @@ class AnthropicProvider:
     """Claude through the official SDK. SDK retries are off: one attempt, as §7.4 requires.
     No ``fallbacks``: the plan forbids a silent model swap, so a refusal is a reliability failure."""
 
-    def __init__(self, model_id: str):
+    def __init__(self, model_id: str, api_key: str):
         import anthropic
 
         self.model_id = model_id
         self._anthropic = anthropic
-        self._client = anthropic.Anthropic(max_retries=0)
+        self._client = anthropic.Anthropic(api_key=api_key, max_retries=0)
 
     def ask(self, system: str, user: str, schema: dict[str, Any], max_tokens: int, timeout_s: float) -> ProviderReply:
         a = self._anthropic

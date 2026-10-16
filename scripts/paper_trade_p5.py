@@ -5,7 +5,7 @@
 docs/phase-5-paired-plan.md. Inputs, signals and timing are those of scripts/paper_trade_v12.py
 (pathA-v1.2). The Code arm takes the Code target; the AI arm asks the locked filter
 (configs/analysis/pathA_p5_filter.yaml) before any increase, and once a day records a diagnostic
-answer that changes nothing. The run does not open without ANTHROPIC_API_KEY in the environment;
+answer that changes nothing. The run does not open without P5_ANTHROPIC_KEY in the environment;
 --mock is for dry runs on a copied state only. State lives under
 /mnt/project-files/paper-trading/pathA-p5-r1/.
 """
@@ -99,8 +99,8 @@ def main() -> None:
     assert model is not None
     if args.mock:
         provider: pf.Provider = pf.MockProvider(args.mock)
-    elif os.environ.get("ANTHROPIC_API_KEY"):
-        provider = pf.AnthropicProvider(model)
+    elif key := os.environ.get(pf.KEY_ENV):
+        provider = pf.AnthropicProvider(model, key)
     else:
         provider = NoKey(model)
 
@@ -109,7 +109,7 @@ def main() -> None:
     state_path = Path(args.state)
     book = PairedBook(json.loads(state_path.read_text())) if state_path.exists() else None
     if book is None and isinstance(provider, NoKey):
-        raise SystemExit("no ANTHROPIC_API_KEY in the environment: the paired run does not open without the AI")
+        raise SystemExit(f"no {pf.KEY_ENV} in the environment: the paired run does not open without the AI")
 
     start = end - timedelta(days=400)
     daily = daily_klines(SYMBOL, start, end)
