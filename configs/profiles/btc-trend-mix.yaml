@@ -1,0 +1,20 @@
+# Bot profile (docs/strategy-library.md). Change anything here => bump `version`.
+# Draft: not attached to any paper book yet.
+profile_id: btc-trend-mix
+version: 1
+name: BTC trend mix
+status: draft
+instrument: BTCUSDT_SPOT
+decision_clock: 1d
+combine: average            # mean of the weights, rounded down to 0 / 0.5 / 1
+strategies:
+  - number: 5                   # EMA + MACD Trend Following
+    timeframe: 1d
+  - number: 6                   # Momentum
+    timeframe: 1d
+  - number: 7                   # SMA trend regime
+    timeframe: 1d
+    params: {sma: 100}
+risk_profile: spot.v1
+ai_mode: "off"
+notes: Example profile; strategies untested on our data.

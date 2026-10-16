@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import { AiTab } from "../src/AiTab";
 import type { DecisionsResponse, EquitySeries, PortfolioRow } from "../src/api";
@@ -26,6 +26,24 @@ vi.mock("../src/api", () => ({
           note: "ยังไม่ได้ยืนยัน",
           points: [p("2022-04-11", "10000.00", "10000.00", "0", "0"), p("2022-04-12", "9850.05", "10128.35", "0.014995", "0")],
         }],
+      };
+    }
+    if (path === "/api/v1/bot-profiles") {
+      return {
+        items: [{
+          profile_id: "btc-macd-rsi", version: 1, name: "BTC MACD with trend filter", status: "draft", instrument: "BTCUSDT_SPOT", decision_clock: "1d",
+          combine: "main_with_filters", risk_profile: "spot.v1", ai_mode: "off", notes: "", hash: "abcdef0123456789",
+          strategies: [
+            { number: 1, template_id: "macd_cross", version: "1.0", name: "MACD Crossover", timeframe: "4h", params: { fast: 12, slow: 26, signal: 9 } },
+            { number: 7, template_id: "sma_regime", version: "1.0", name: "SMA trend regime", timeframe: "1d", params: { sma: 100 } },
+          ],
+        }],
+      };
+    }
+    if (path === "/api/v1/strategies") {
+      return {
+        items: [{ number: 1, template_id: "macd_cross", version: "1.0", name: "MACD Crossover", family: "trend", timeframes: ["1h", "4h", "1d"], default_timeframe: "4h",
+          summary: "Long while MACD is above signal.", params: { fast: { default: 12, min: 5, max: 20 } }, evidence: "untested" }],
       };
     }
     if (path === "/api/v1/ai/settings") {
@@ -154,7 +172,7 @@ test("the AI tab shows locked settings and the helped-or-missed scorecard, count
 test("tabs switch through the URL hash; futures and options say they are not open yet", async () => {
   window.location.hash = "";
   const { container } = render(<QueryClientProvider client={new QueryClient()}><Dashboard /></QueryClientProvider>);
-  expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Spot", "Futures", "Options", "AI"]);
+  expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Spot", "Futures", "Options", "AI", "กลยุทธ์"]);
   await waitFor(() => expect(container.querySelectorAll("[data-testid=arm-tile]")).toHaveLength(2));
   fireEvent.click(screen.getByRole("tab", { name: "Options" }));
   expect(window.location.hash).toBe("#options");
@@ -184,4 +202,19 @@ test("futures books show in the Futures tab above the backtests, and not in Spot
   expect(container.querySelector("[data-testid=not-open]")).toBeNull();
   await waitFor(() => expect(container.querySelector("[data-testid=backtest]")).not.toBeNull());
   expect(groupBooks(rows.filter((r) => !isFutures(r.label))).map((g) => g.version)).toEqual(["pathA-v1.2"]);
+});
+
+test("the strategies tab shows bot profiles by strategy number and the library", async () => {
+  window.location.hash = "strategies";
+  const { container } = render(<QueryClientProvider client={new QueryClient()}><Dashboard /></QueryClientProvider>);
+  const view = within(container);
+  const card = await view.findByTestId("bot-profile");
+  expect(card.textContent).toContain("#1, #7");
+  expect(card.textContent).toContain("(หลัก)");
+  expect(card.textContent).toContain("(ตัวกรอง)");
+  expect(card.textContent).toContain("ร่าง ยังไม่ผูกกับพอร์ต");
+  const lib = await view.findByTestId("strategy-library");
+  expect(lib.textContent).toContain("MACD Crossover");
+  expect(lib.textContent).toContain("ยังไม่ทดสอบกับข้อมูลเรา");
+  window.location.hash = "";
 });
