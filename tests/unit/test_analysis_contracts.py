@@ -77,7 +77,9 @@ OK = AttemptStatus.SUCCESS
 
 def test_repo_graph_configs_are_valid_drafts_that_cannot_be_enabled():
     graphs = load_all(CONFIG_DIR)
-    assert set(graphs) == {"v1_filter", "multi_filter_draft_1"}
+    assert set(graphs) == {"v1_filter", "multi_filter_draft_1", "pathA_p5_filter"}
+    locked = graphs.pop("pathA_p5_filter")          # the Phase 5 run's filter, locked by docs/phase-5-paired-plan.md
+    assert locked.enabled and locked.lock_problems() == [] and locked.tools == ()
     for g in graphs.values():
         assert not g.enabled
         assert g.lock_problems(), "drafts keep nulls until provider discovery and experiment lock"

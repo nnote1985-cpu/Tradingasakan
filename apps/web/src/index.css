@@ -1,1 +1,72 @@
 @import "tailwindcss";
+
+/* Colour roles, light and dark (charts read these too). Series slots follow the
+   dataviz reference palette; the benchmark is a neutral grey so the strategy stays the subject. */
+:root {
+  color-scheme: light;
+  --surface-0: #f6f6f4;
+  --surface-1: #fcfcfb;
+  --border: #e4e3df;
+  --grid: #ecebe7;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #6f6e69;
+  --series-strategy: #2a78d6;
+  --series-ai: #eb6834;
+  --series-benchmark: #8a8984;
+  --series-cash: #b5b4ae;
+  --loss: #c53b3a;
+  --gain: #1d7f3f;
+  --shadow-bg: #1f2937;
+  --shadow-fg: #f9fafb;
+  --warn-bg: #fde68a;
+  --warn-fg: #451a03;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --surface-0: #121211;
+    --surface-1: #1a1a19;
+    --border: #2f2f2d;
+    --grid: #262624;
+    --text-primary: #f0efec;
+    --text-secondary: #c3c2b7;
+    --text-muted: #9a998f;
+    --series-strategy: #3987e5;
+    --series-ai: #d95926;
+    --series-benchmark: #8f8e88;
+    --series-cash: #5d5c57;
+    --loss: #e66767;
+    --gain: #4cb873;
+    --shadow-bg: #e5e7eb;
+    --shadow-fg: #111827;
+    --warn-bg: #78350f;
+    --warn-fg: #fef3c7;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-0: #121211;
+  --surface-1: #1a1a19;
+  --border: #2f2f2d;
+  --grid: #262624;
+  --text-primary: #f0efec;
+  --text-secondary: #c3c2b7;
+  --text-muted: #9a998f;
+  --series-strategy: #3987e5;
+  --series-ai: #d95926;
+  --series-benchmark: #8f8e88;
+  --series-cash: #5d5c57;
+  --loss: #e66767;
+  --gain: #4cb873;
+  --shadow-bg: #e5e7eb;
+  --shadow-fg: #111827;
+  --warn-bg: #78350f;
+  --warn-fg: #fef3c7;
+}
+
+body {
+  background: var(--surface-0);
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}

@@ -5,7 +5,8 @@
 
 It runs the frozen worktree's own scripts/paper_trade.py unchanged (the book's rules
 and code are the frozen ones); with --book pathA-v1.2 it runs scripts/paper_trade_v12.py
-from the frozen/pathA-v1.2 worktree instead and only observes it: every archive file fetched is
+from the frozen/pathA-v1.2 worktree instead, and with --book pathA-p5-r1 the Phase 5 paired
+run scripts/paper_trade_p5.py from frozen/pathA-p5-r1; it only observes them: every archive file fetched is
 logged with the time it arrived and its sha256, then the run's output, the state
 hash before and after, and the start and finish times. Each run is checked: a fill
 at or before its decision time, or a decision stamped before its data arrived,
@@ -64,12 +65,15 @@ def main(argv: list[str] | None = None) -> int:
     from trading.alerts import live_data
 
     ap = argparse.ArgumentParser()
-    ap.add_argument("--book", choices=("pathA-v1.1", "pathA-v1.2"), default="pathA-v1.1",
+    ap.add_argument("--book", choices=("pathA-v1.1", "pathA-v1.2", "pathA-p5-r1"), default="pathA-v1.1",
                     help="which frozen book to run; pathA-v1.1 is the default and runs exactly as before")
     known, _ = ap.parse_known_args(argv)
     if known.book == "pathA-v1.2":
         from trading.shadow.rebalance_book import RULES_VERSION
         script = "scripts/paper_trade_v12.py"
+    elif known.book == "pathA-p5-r1":
+        from trading.shadow.paired_book import EXPERIMENT_ID as RULES_VERSION
+        script = "scripts/paper_trade_p5.py"
     else:
         from trading.paper.ledger import RULES_VERSION
         script = "scripts/paper_trade.py"

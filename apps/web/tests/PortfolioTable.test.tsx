@@ -5,7 +5,8 @@ import { PortfolioTable } from "../src/PortfolioTable";
 
 const row = (over: Partial<PortfolioRow>): PortfolioRow => ({
   label: "pathA-v1.1", mode: "SHADOW", currency: "USDT", initial_equity: "10000", as_of: "2026-10-16T08:20:00+00:00",
-  trading_equity: "10012.5", economic_equity: "10012.25", high_water_mark: "10020", quality: "ok", stale: false, ...over,
+  trading_equity: "10012.5", economic_equity: "10012.25", high_water_mark: "10020", quality: "ok", stale: false,
+  return: "0.00125", drawdown: "0.000749", exposure_share: "0.5", ...over,
 });
 
 test("shows both equities as formatted decimal strings and flags stale data", () => {
