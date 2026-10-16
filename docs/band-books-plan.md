@@ -53,3 +53,18 @@ the wiring is handed over.
 ## Not in this PR
 
 No forward run, no daily-task change, no Supabase writes, nothing live.
+
+## Results (added after the code; no rule above was changed)
+
+- `tests/unit/test_band_books.py`, 7 tests, all pass: the latch equals `run_r10.latch` and
+  `run_r11.band_side` on random series with missing days (3 seeds); a 400-day (spot) and 300-day
+  (perp) window agrees with the full-history latch on every checked day; the spot book matches
+  `simulate_weights` and the perp book matches `run_r7.simulate` with R11 sides on daily equity
+  within 1e-6 and trade for trade; state files load only into the book that wrote them.
+- Also checked once on real data (not a test, the files are not in CI): on 2022–2025 and on C1 the
+  latch equals both research functions on every day, and the 400/300-day window latch equals the
+  full-history latch on every day.
+- Full suite: 438 tests pass; ruff and mypy clean. pathA-v1.2 and futures-r7 tests unchanged.
+- Smoke run of both scripts against live data with throwaway state (2026-10-16): both open on the
+  2026-10-15 close, R10a at 100% BTC and R11 long (close 82,195.40 above SMA100 × 1.02 = 75,124.51),
+  the same targets the running v1.2 and r7 books opened with.

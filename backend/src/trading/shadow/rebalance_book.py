@@ -41,6 +41,8 @@ def _px(x) -> Decimal:
 
 
 class PathABook:
+    rules_version = RULES_VERSION        # subclasses with other rules override this
+
     def __init__(self, state: dict | None = None, profile: RiskProfile = SPOT_V1):
         self.profile = profile
         if state is None:
@@ -55,7 +57,7 @@ class PathABook:
             self.bh_filled = False
             self.start_equity: str | None = None
         else:
-            if state.get("format") != BOOK_FORMAT or state.get("rules_version") != RULES_VERSION:
+            if state.get("format") != BOOK_FORMAT or state.get("rules_version") != self.rules_version:
                 raise ValueError("state belongs to another book format or rules version")
             if state.get("profile") != self._profile_dict():
                 raise ValueError("state was written with other loss limits")
@@ -68,7 +70,7 @@ class PathABook:
         return {k: str(v) for k, v in asdict(self.profile).items()}
 
     def to_dict(self) -> dict:
-        return {"format": BOOK_FORMAT, "rules_version": RULES_VERSION, "profile": self._profile_dict(),
+        return {"format": BOOK_FORMAT, "rules_version": self.rules_version, "profile": self._profile_dict(),
                 "book": self.book.to_dict(), "buy_and_hold": self.bh.to_dict(), "risk": self.risk.to_dict(),
                 "last_day": self.last_day, "weight": self.weight, "pending": self.pending,
                 "history": self.history, "trades": self.trades, "journal": self.journal,
