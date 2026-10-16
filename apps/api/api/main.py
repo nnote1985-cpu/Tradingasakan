@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from psycopg_pool import PoolTimeout
 
 from api.ai import ai_settings, scorecard
+from api.assets import ASSETS, AssetCache
 from api.auth import AuthError, Principal, RoleStore, TokenVerifier, authenticate
 from api.backtests import load_backtests
 from api.portfolios import NoPortfolios, PortfolioStore, Unavailable, decision_items, equity_series, overview_items, risk_items
@@ -22,8 +23,9 @@ from trading.contracts.enums import OperatorRole
 
 
 def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
-               portfolios: PortfolioStore | None = None) -> FastAPI:
+               portfolios: PortfolioStore | None = None, assets: AssetCache | None = None) -> FastAPI:
     store: PortfolioStore = portfolios or NoPortfolios()
+    market = assets or AssetCache()
     app = FastAPI(title="asakantrading API", version="0.1.0")
     if settings.allowed_origins:
         app.add_middleware(CORSMiddleware, allow_origins=list(settings.allowed_origins),
@@ -89,6 +91,16 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
     @app.get("/api/v1/backtests")
     async def backtests(market: str | None = None, p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
         return {"items": load_backtests(market)}
+
+    @app.get("/api/v1/assets")
+    async def asset_list(p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        return {"items": list(ASSETS.values())}
+
+    @app.get("/api/v1/assets/{symbol}")
+    async def asset(symbol: str, p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        if symbol not in ASSETS:
+            raise AuthError("not_found", "ยังไม่รองรับสินทรัพย์นี้", status=404)
+        return await market.get(symbol)
 
     @app.get("/api/v1/strategies")
     async def strategies(p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:

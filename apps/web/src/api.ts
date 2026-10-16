@@ -197,3 +197,27 @@ export type BotProfile = {
   strategies: ProfileStrategy[];
   hash: string;
 };
+
+export type AssetInfo = { symbol: string; base: string; name: string; live_stream: string };
+export type TrendState = "up" | "down" | "mixed";
+export type Timeframe = { timeframe: "1h" | "4h" | "1d"; bar_open: string | null; close: string | null; ema20: string | null; ema50: string | null; state: TrendState | null };
+export type AssetStatus = AssetInfo & {
+  available: boolean;
+  loading?: boolean;            // first download still running
+  failed?: boolean;             // last download failed and nothing is cached yet
+  refreshing?: boolean;
+  fetched_at?: string;
+  data_through?: string;        // last closed UTC day in the figures
+  stale?: boolean;
+  close?: string | null;
+  change?: { d1: string | null; d7: string | null; d30: string | null };
+  range_30d?: { high: string | null; low: string | null };
+  regime?: { sma100: string | null; dist_to_sma: string | null; trend_up: boolean | null };
+  timeframes?: Timeframe[];
+  funding?: { per_8h_7d: string | null; hot: boolean | null; estimated: boolean };
+  vol_30d?: string | null;
+  drawdown_365d?: string | null;
+  open_interest?: { usdt: string | null; change_7d: string | null } | null;
+  events?: string[];
+  missing_inputs?: string[];
+};

@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useState } from "react";
 
 export const TABS = [
   { key: "spot", label: "Spot" },
+  { key: "asset", label: "สินทรัพย์" },
   { key: "futures", label: "Futures" },
   { key: "options", label: "Options" },
   { key: "ai", label: "AI" },
