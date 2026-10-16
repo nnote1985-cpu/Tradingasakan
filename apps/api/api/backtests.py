@@ -29,12 +29,16 @@ def round_trips(fills: list[dict[str, str]], initial: Decimal, last_day: str, la
     """Pair open and close legs into trades. A trade's P&L is the equity after its close minus the
     equity before its open, so it includes both fees, slippage and the funding paid while held;
     the trades sum to the run's net. A trade still open at the end is marked to the last close."""
-    trades, before, cur = [], initial, None
+    trades: list[dict[str, Any]] = []
+    before = initial
+    cur: dict[str, Any] | None = None
     for f in fills:
         if f["action"] == "open":
             cur = {"n": len(trades) + 1, "side": f["side"], "entry_day": f["day"], "entry_price": f["price"],
                    "qty": f["qty"], "exit_day": None, "exit_price": None}
             continue
+        if cur is None:
+            raise ValueError(f"close without an open on {f['day']}")
         after = Decimal(f["equity"])
         trades.append(_close(cur, f["day"], f["price"], before, after))
         before, cur = after, None
