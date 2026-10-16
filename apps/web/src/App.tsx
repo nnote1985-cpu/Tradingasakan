@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { type ApiError, apiGet, type Overview, supabase } from "./api";
+import { type ApiError, apiGet, type Overview, type RiskStatusResponse, supabase } from "./api";
 import { BookGroupCard } from "./BookGroupCard";
 import { groupBooks } from "./books";
 import { ModeBadge } from "./ModeBadge";
@@ -33,6 +33,7 @@ function SignIn() {
 function OverviewPage() {
   // DEFAULT transport is REST polling (§21.3); paused automatically when the tab is hidden.
   const q = useQuery<Overview, ApiError>({ queryKey: ["overview"], queryFn: () => apiGet<Overview>("/api/v1/overview"), refetchInterval: 10_000 });
+  const risk = useQuery<RiskStatusResponse, ApiError>({ queryKey: ["risk-status"], queryFn: () => apiGet<RiskStatusResponse>("/api/v1/risk-status"), refetchInterval: 30_000 });
   const [showTable, setShowTable] = useState(false);
   if (q.isPending) return <p>กำลังโหลด…</p>;
   if (q.isError) return <p role="alert">{q.error.message ?? "โหลดข้อมูลไม่สำเร็จ"}</p>;
@@ -47,7 +48,10 @@ function OverviewPage() {
       <p className="text-sm text-[var(--text-secondary)]">
         ทุกพอร์ตเริ่มที่ 10,000 USDT ด้วยเงินสมมติ ราคาปิดรายวันตามเวลา UTC ตัวเลขเป็นมูลค่าหลังหักค่าธรรมเนียมและค่า AI
       </p>
-      {groups.length === 0 ? <p>ยังไม่มีพอร์ต</p> : groups.map((g) => <BookGroupCard key={g.version} group={g} />)}
+      {risk.data && !risk.data.available && (
+        <p className="text-xs text-[var(--text-muted)]">ยังไม่มีข้อมูลสถานะ HALT ในฐานข้อมูล</p>
+      )}
+      {groups.length === 0 ? <p>ยังไม่มีพอร์ต</p> : groups.map((g) => <BookGroupCard key={g.version} group={g} risk={risk.data?.portfolios} />)}
       {groups.length > 0 && (
         <div>
           <button className="text-sm text-[var(--text-secondary)] underline" aria-expanded={showTable} onClick={() => setShowTable((s) => !s)}>

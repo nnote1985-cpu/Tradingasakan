@@ -48,3 +48,29 @@ export async function apiGet<T>(path: string): Promise<T> {
   if (!res.ok) throw body as ApiError;
   return body as T;
 }
+export type RiskStatus = { label: string; halted: boolean; halted_since: string | null; halt_reason: string | null };
+export type RiskStatusResponse = { available: boolean; portfolios: RiskStatus[] };
+export type AgentDecision = {
+  proposal_id: string;
+  kind: "filter" | "diagnostic";
+  decided_on: string;
+  current_weight: string | null;
+  target_weight: string | null;
+  decision: string | null;
+  outcome: string;               // the decision on SUCCESS, else the attempt's failure (TIMEOUT, INVALID, ...)
+  reason_code: string | null;
+  reason: string | null;
+  attempt_status: string | null;
+  error_category: string | null;
+  model_id: string | null;
+  cost_usd: string | null;
+  latency_ms: number | null;
+  decided_at: string;
+};
+export type DecisionsResponse = {
+  available: boolean;
+  items: AgentDecision[];
+  counts: Record<string, Record<string, number>>;
+  cost_usd: string;
+  limit: number;
+};

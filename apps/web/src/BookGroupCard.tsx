@@ -1,5 +1,6 @@
 import { useQueries } from "@tanstack/react-query";
-import { type ApiError, apiGet, type EquitySeries, type PortfolioRow } from "./api";
+import { AiDecisions } from "./AiDecisions";
+import { type ApiError, apiGet, type EquitySeries, type PortfolioRow, type RiskStatus } from "./api";
 import { armOf, type BookGroup } from "./books";
 import { dayOf, money, pct } from "./format";
 import { Legend, LineChart, type Series } from "./LineChart";
@@ -9,7 +10,7 @@ function Signed({ v }: { v: string | null }) {
   return <span style={{ color: n > 0 ? "var(--gain)" : n < 0 ? "var(--loss)" : undefined }}>{pct(v)}</span>;
 }
 
-function ArmTile({ row }: { row: PortfolioRow }) {
+function ArmTile({ row, risk }: { row: PortfolioRow; risk?: RiskStatus }) {
   const arm = armOf(row.label);
   const costed = row.trading_equity !== null && row.economic_equity !== null && row.trading_equity !== row.economic_equity;
   return (
@@ -19,6 +20,11 @@ function ArmTile({ row }: { row: PortfolioRow }) {
         {arm.name}
         {row.stale && <span data-testid="stale" className="ml-auto rounded bg-[var(--warn-bg)] px-1 text-xs text-[var(--warn-fg)]">ข้อมูลเก่า</span>}
       </div>
+      {risk?.halted && (
+        <div data-testid="halted" role="status" className="mt-1 rounded bg-[var(--loss)] px-1.5 py-0.5 text-xs font-semibold text-white">
+          หยุด (HALT){risk.halted_since && ` ตั้งแต่ ${dayOf(risk.halted_since)}`}{risk.halt_reason && `: ${risk.halt_reason}`}
+        </div>
+      )}
       <div className="mt-1 text-lg font-semibold">{money(row.economic_equity, row.currency)}</div>
       {costed && <div className="text-xs text-[var(--text-muted)]">ก่อนหักค่า AI {money(row.trading_equity, row.currency)}</div>}
       <dl className="mt-2 grid grid-cols-3 gap-1 text-xs">
@@ -30,7 +36,7 @@ function ArmTile({ row }: { row: PortfolioRow }) {
   );
 }
 
-export function BookGroupCard({ group }: { group: BookGroup }) {
+export function BookGroupCard({ group, risk = [] }: { group: BookGroup; risk?: RiskStatus[] }) {
   const qs = useQueries({
     queries: group.rows.map((r) => ({
       queryKey: ["equity", r.label],
@@ -61,7 +67,7 @@ export function BookGroupCard({ group }: { group: BookGroup }) {
         </span>
       </header>
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        {group.rows.map((r) => <ArmTile key={r.label} row={r} />)}
+        {group.rows.map((r) => <ArmTile key={r.label} row={r} risk={risk.find((x) => x.label === r.label)} />)}
       </div>
       {failed && <p role="alert" className="text-sm text-[var(--loss)]">{failed.message ?? "โหลดกราฟไม่สำเร็จ"}</p>}
       {loaded.length > 0 && (
@@ -77,6 +83,7 @@ export function BookGroupCard({ group }: { group: BookGroup }) {
           </div>
         </div>
       )}
+      {group.rows.filter((r) => armOf(r.label).key === "ai").map((r) => <AiDecisions key={r.label} label={r.label} />)}
     </section>
   );
 }

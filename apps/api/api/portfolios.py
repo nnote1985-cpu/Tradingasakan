@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Protocol
 
+from psycopg import errors as pg_errors
 from psycopg_pool import AsyncConnectionPool
 
 STALE_AFTER = timedelta(hours=36)   # daily archive runs land about 8h after the UTC day closes
@@ -40,10 +41,32 @@ where p.label = %s order by e.at
 """
 
 
+# HALT state and AI decisions come from the Phase 5 migration (PR #12). Until it is applied the
+# relations do not exist; those endpoints then answer "available": false instead of failing.
+RISK_STATUS_SQL = """
+select label, halted, halted_since, halt_reason from trading.portfolio_risk_status order by label
+"""
+
+DECISIONS_SQL = """
+select d.proposal_id, d.kind, d.decided_on, d.current_weight::text, d.target_weight::text, d.decision,
+       d.reason_code, d.reason, d.attempt_status, d.error_category, d.model_id, d.cost_usd::text,
+       d.latency_ms, d.decided_at
+from trading.agent_decisions d join trading.portfolios p on p.id = d.portfolio_id
+where p.label = %s order by d.decided_at desc limit %s
+"""
+DECISIONS_LIMIT = 200
+
+
+class Unavailable(Exception):
+    """The table or view behind an endpoint has not been created yet."""
+
+
 class PortfolioStore(Protocol):
     async def overview_rows(self) -> list[tuple[Any, ...]]: ...
     async def portfolio(self, label: str) -> tuple[Any, ...] | None: ...
     async def equity_rows(self, label: str) -> list[tuple[Any, ...]]: ...
+    async def risk_rows(self) -> list[tuple[Any, ...]]: ...
+    async def decision_rows(self, label: str) -> list[tuple[Any, ...]]: ...
 
 
 class NoPortfolios:
@@ -54,6 +77,12 @@ class NoPortfolios:
         return None
 
     async def equity_rows(self, label: str) -> list[tuple[Any, ...]]:
+        return []
+
+    async def risk_rows(self) -> list[tuple[Any, ...]]:
+        return []
+
+    async def decision_rows(self, label: str) -> list[tuple[Any, ...]]:
         return []
 
 
@@ -75,6 +104,20 @@ class PgPortfolioStore:
         async with self.pool.connection() as conn:
             cur = await conn.execute(EQUITY_SQL, (label,))
             return list(await cur.fetchall())
+
+    async def _optional(self, sql: str, params: tuple[Any, ...] = ()) -> list[tuple[Any, ...]]:
+        try:
+            async with self.pool.connection() as conn:
+                cur = await conn.execute(sql, params)
+                return list(await cur.fetchall())
+        except pg_errors.UndefinedTable as e:
+            raise Unavailable from e
+
+    async def risk_rows(self) -> list[tuple[Any, ...]]:
+        return await self._optional(RISK_STATUS_SQL)
+
+    async def decision_rows(self, label: str) -> list[tuple[Any, ...]]:
+        return await self._optional(DECISIONS_SQL, (label, DECISIONS_LIMIT))
 
 
 def _ratio(num: Decimal, den: Decimal) -> str:
@@ -119,3 +162,28 @@ def equity_series(portfolio: tuple[Any, ...], rows: list[tuple[Any, ...]]) -> di
                        "return": _ratio(econ, start), "drawdown": str(dd)})
     return {"label": label, "mode": mode, "currency": currency, "initial_equity": initial,
             "points": points, "max_drawdown": str(max_dd.quantize(RATIO))}
+
+
+
+def risk_items(rows: list[tuple[Any, ...]]) -> list[dict[str, Any]]:
+    return [{"label": label, "halted": bool(halted), "halted_since": since.isoformat() if since else None, "halt_reason": reason}
+            for label, halted, since, reason in rows]
+
+
+def decision_items(rows: list[tuple[Any, ...]]) -> dict[str, Any]:
+    """Newest first. Only ``filter`` rows gate the AI arm; ``diagnostic`` rows are recorded and
+    never acted on, so they are counted apart. The cost total covers both (both are billed)."""
+    items: list[dict[str, Any]] = []
+    counts: dict[str, dict[str, int]] = {"filter": {}, "diagnostic": {}}
+    total = Decimal(0)
+    for (pid, kind, on, cur_w, tgt_w, decision, code, reason, status, err, model, cost, latency, at) in rows:
+        # A failed attempt is recorded as ABSTAIN by the policy; report it by its failure instead (§7.4).
+        outcome = decision if status == "SUCCESS" else (status or "UNKNOWN")
+        counts.setdefault(kind, {})
+        counts[kind][outcome] = counts[kind].get(outcome, 0) + 1
+        total += Decimal(cost or 0)
+        items.append({"proposal_id": pid, "kind": kind, "decided_on": str(on), "current_weight": cur_w, "target_weight": tgt_w,
+                      "decision": decision, "outcome": outcome, "reason_code": code, "reason": reason,
+                      "attempt_status": status, "error_category": err, "model_id": model, "cost_usd": cost,
+                      "latency_ms": latency, "decided_at": at.isoformat()})
+    return {"available": True, "items": items, "counts": counts, "cost_usd": str(total), "limit": DECISIONS_LIMIT}
