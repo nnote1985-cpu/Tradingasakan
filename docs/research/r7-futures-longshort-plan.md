@@ -109,3 +109,11 @@ Output: `/mnt/project-files/r7-results/`.
   phases) is not supported here, even though the set passes.
 - By the pre-declared rule this is a **pass** (net > 0 and Sharpe 0.43 > 0.42),
   by a margin far smaller than daily-return noise.
+
+## Decision after development (Note, 2026-10-16)
+
+Note chose to **keep C1 and C2 unspent** ("เก็บไว้ก่อน"): the pass margin is
+smaller than noise and the short side lost money, so spending the last clean
+data on R7 is not worth it. R7 is closed as "passed development, not
+confirmed". C1 (perp 2020-04-15 → 2022-01-01) and C2 (2026-01-01 → 2026-10-01)
+remain never simulated by any strategy.
