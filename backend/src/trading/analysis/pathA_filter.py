@@ -131,7 +131,7 @@ class AnthropicProvider:
 
         self.model_id = model_id
         self._anthropic = anthropic
-        self._client = anthropic.Anthropic(api_key=api_key, max_retries=0)
+        self._client = anthropic.Anthropic(api_key=api_key, base_url="https://api.anthropic.com", max_retries=0)  # pinned: ignore ANTHROPIC_BASE_URL
 
     def ask(self, system: str, user: str, schema: dict[str, Any], max_tokens: int, timeout_s: float) -> ProviderReply:
         a = self._anthropic
