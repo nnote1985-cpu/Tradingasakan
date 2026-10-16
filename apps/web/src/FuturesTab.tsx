@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { type ApiError, apiGet, type Backtest } from "./api";
+import { type ApiError, apiGet, type Backtest, type PortfolioRow, type RiskStatusResponse } from "./api";
+import { BookGroupCard } from "./BookGroupCard";
+import { groupBooks, isFutures } from "./books";
 import { money, pct } from "./format";
 import { Legend, LineChart, type Series } from "./LineChart";
 import { NotOpen } from "./tabs";
@@ -58,13 +60,22 @@ function BacktestCard({ b }: { b: Backtest }) {
 }
 
 /** Futures: daily SHADOW books will appear here once they exist; until then, backtests, clearly marked as history. */
-export function FuturesTab() {
+export function FuturesTab({ rows }: { rows: PortfolioRow[] }) {
+  const books = groupBooks(rows.filter((r) => isFutures(r.label)));
+  const risk = useQuery<RiskStatusResponse, ApiError>({ queryKey: ["risk-status"], queryFn: () => apiGet<RiskStatusResponse>("/api/v1/risk-status"), refetchInterval: 30_000, enabled: books.length > 0 });
   const q = useQuery<{ items: Backtest[] }, ApiError>({
     queryKey: ["backtests", "futures"], queryFn: () => apiGet<{ items: Backtest[] }>("/api/v1/backtests?market=futures"), staleTime: 300_000,
   });
   return (
     <div className="space-y-4">
-      <NotOpen title="ยังไม่มีพอร์ต Futures ที่รันทุกวัน">พอร์ตจำลอง R7 กำลังเตรียม ระหว่างนี้ดูผล backtest ย้อนหลังด้านล่างได้</NotOpen>
+      {books.length === 0 ? (
+        <NotOpen title="ยังไม่มีพอร์ต Futures ที่รันทุกวัน">พอร์ตจำลอง R7 กำลังเตรียม ระหว่างนี้ดูผล backtest ย้อนหลังด้านล่างได้</NotOpen>
+      ) : (
+        <>
+          <p className="text-sm text-[var(--text-secondary)]">BTCUSDT perpetual 1x ด้วยเงินสมมติ ราคาปิดรายวันตามเวลา UTC ตัวเลขหลังหักค่าธรรมเนียมและ funding</p>
+          {books.map((g) => <BookGroupCard key={g.version} group={g} risk={risk.data?.portfolios} />)}
+        </>
+      )}
       {q.isError && <p role="alert" className="text-sm text-[var(--loss)]">{q.error.message ?? "โหลดผล backtest ไม่สำเร็จ"}</p>}
       {q.data?.items.map((b) => <BacktestCard key={b.id} b={b} />)}
     </div>
