@@ -22,6 +22,17 @@ Every strategy maps closed bars to a BTC spot target weight in {0, 0.5, 1}: long
 | 6 | Momentum (rate of change) | 1d | lookback 20, threshold 0 |
 | 7 | SMA trend regime (the R3 / path A trend rule) | 1d | SMA 100 |
 | 8 | Donchian breakout | 4h | entry 20, exit 10 |
+| 9 | RSI2 (Connors) ¹ | 1d | RSI 2 ≤ 10 above SMA 200, exit above SMA 5 |
+| 10 | Bollinger Bands breakout ¹ | 4h | BB 20 × 2 on (high+low)/2, Ichimoku 9/26/52/26 filter |
+| 11 | Dual Thrust ¹ | 4h | range 21 bars, anchor 6 bars, up 0.71, down 0.67 |
+| 12 | KDJ ¹ | 1d | 9 / 3 / 3 |
+| 13 | Turtle Rules, System 1 ¹ | 1d | entry 20, exit 10, ATR 20, add at +0.5 ATR |
+
+¹ Long side of [jesse-ai/example-strategies](https://github.com/jesse-ai/example-strategies)
+(MIT, `docs/third_party/jesse-example-strategies-LICENSE.txt`), rewritten for closed bars and
+{0, 0.5, 1} weights. The originals' stops, ATR position sizing and shorts are left out; each
+rule's docstring in `catalog.py` says where it differs (for example Dual Thrust's anchor and
+Turtle's two steps 0.5 → 1 instead of up to 4 units).
 
 Rules:
 

@@ -126,3 +126,23 @@ def test_api_views_list_catalog_and_profiles():
     prof = {p["profile_id"]: p for p in profiles_view()["items"]}
     assert [s["number"] for s in prof["btc-macd-rsi"]["strategies"]] == [1, 7]
     assert prof["btc-macd-rsi"]["strategies"][0]["params"] == {"fast": 12, "slow": 26, "signal": 9}
+
+
+@pytest.mark.parametrize("no", sorted(catalog.CATALOG))
+def test_every_strategy_trades_on_4h(no):
+    w = catalog.get(no).signal(resample(H1, "4h"), timeframe="4h")
+    assert (w > 0).any() and (w == 0).any()
+
+
+def test_turtle_adds_the_second_half_after_entry():
+    w = catalog.get(13).signal(resample(H1, "1d"), timeframe="1d")
+    first_in = w[w > 0].index[0]
+    assert w[first_in] == 0.5 and (w == 1.0).any()
+
+
+def test_rsi2_needs_the_slow_sma_uptrend():
+    idx = pd.date_range(T0, periods=24 * 30, freq="1h", tz="UTC")
+    c = np.linspace(30_000, 10_000, len(idx))  # steady fall: RSI(2) is low, but always below the SMA
+    h1 = pd.DataFrame({"open": c, "high": c, "low": c, "close": c}, index=idx)
+    w = catalog.get(9).signal(resample(h1, "1d"), {"slow_sma": 50, "fast_sma": 3}, "1d")
+    assert (w == 0).all()
