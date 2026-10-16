@@ -189,7 +189,8 @@ class PathABook:
                                         "decided_on": p["decided_on"], "decided_at": p["decided_at"],
                                         "reason": p["kind"], **t})
                     log({"kind": "trade", "date": str(day.date()), "at": fill_at.isoformat(),
-                                  "weight": p["weight"], "reason": p["kind"], **t})
+                         "weight": p["weight"], "reason": p["kind"], "decided_on": p["decided_on"],
+                         "decided_at": p["decided_at"], **t})
                 if not self.bh_filled:
                     tb = self._rebalance(self.bh, "fill:buy_and_hold", fill_at, 1.0, o)
                     if tb:

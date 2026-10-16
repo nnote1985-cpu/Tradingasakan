@@ -4,7 +4,8 @@
     SSL_CERT_FILE=/root/.ccr/ca-bundle.crt uv run python /home/user/tradingasakan/scripts/paper_run.py
 
 It runs the frozen worktree's own scripts/paper_trade.py unchanged (the book's rules
-and code are the frozen ones) and only observes it: every archive file fetched is
+and code are the frozen ones); with --book pathA-v1.2 it runs scripts/paper_trade_v12.py
+from the frozen/pathA-v1.2 worktree instead and only observes it: every archive file fetched is
 logged with the time it arrived and its sha256, then the run's output, the state
 hash before and after, and the start and finish times. Each run is checked: a fill
 at or before its decision time, or a decision stamped before its data arrived,
@@ -61,9 +62,19 @@ def main(argv: list[str] | None = None) -> int:
     import argparse
 
     from trading.alerts import live_data
-    from trading.paper.ledger import RULES_VERSION
 
     ap = argparse.ArgumentParser()
+    ap.add_argument("--book", choices=("pathA-v1.1", "pathA-v1.2"), default="pathA-v1.1",
+                    help="which frozen book to run; pathA-v1.1 is the default and runs exactly as before")
+    known, _ = ap.parse_known_args(argv)
+    if known.book == "pathA-v1.2":
+        from trading.shadow.rebalance_book import RULES_VERSION
+        script = "scripts/paper_trade_v12.py"
+    else:
+        from trading.paper.ledger import RULES_VERSION
+        script = "scripts/paper_trade.py"
+    if RULES_VERSION != known.book:
+        raise SystemExit(f"this worktree's code is {RULES_VERSION}, not {known.book}: run it from frozen/{known.book}")
     ap.add_argument("--state", default=f"/mnt/project-files/paper-trading/{RULES_VERSION}/state.json",
                     help="book state (a copy for a dry run); runs.jsonl is written beside it")
     args = ap.parse_args(argv)
@@ -84,10 +95,10 @@ def main(argv: list[str] | None = None) -> int:
 
     live_data._get_verified = recording  # type: ignore[assignment]
     out = io.StringIO()
-    sys.argv = ["paper_trade.py", "--state", str(state)]
+    sys.argv = [Path(script).name, "--state", str(state)]
     try:
         with contextlib.redirect_stdout(out):
-            runpy.run_path("scripts/paper_trade.py", run_name="__main__")
+            runpy.run_path(script, run_name="__main__")
         rec["exit"] = "ok"
     except SystemExit as e:
         rec["exit"] = f"exit {e.code}"

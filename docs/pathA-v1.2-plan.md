@@ -75,3 +75,15 @@ adapter, nothing live.
   rounding of products could leave a fill entry unbalanced by about 1e-24 and
   refused. The bar_backtest equivalence tests still pass.
 - 221 backend tests pass; ruff and mypy are clean.
+
+## Forward run (added 2026-10-16, after Note chose "Start v1.2")
+
+- `scripts/paper_trade_v12.py` advances the forward book. It fetches the same inputs as
+  `scripts/paper_trade.py` and records the same decision-input snapshot. State, journal and
+  `runs.jsonl` live in `/mnt/project-files/paper-trading/pathA-v1.2/`. The first run opens
+  the book from 10,000 USDT cash.
+- The daily job runs it as
+  `scripts/paper_run.py --book pathA-v1.2` from the `frozen/pathA-v1.2` worktree. It is
+  recorded and checked the same way as v1.1: a hash-chained `runs.jsonl`, the
+  `trading.audit_events` anchor and `simulator_valid`. Without `--book`, `paper_run.py`
+  runs pathA-v1.1 exactly as before.
