@@ -8,7 +8,8 @@ and code are the frozen ones); with --book pathA-v1.2 it runs scripts/paper_trad
 from the frozen/pathA-v1.2 worktree instead, and with --book pathA-p5-r1 the Phase 5 paired
 run scripts/paper_trade_p5.py from frozen/pathA-p5-r1, with --book pathA-p5-r2 the r2 proposal run
 scripts/paper_trade_p5r2.py from frozen/pathA-p5-r2, and with --book futures-r7 the R7 perp book
-scripts/paper_trade_r7.py from frozen/futures-r7; it only observes them: every archive file fetched is
+scripts/paper_trade_r7.py from frozen/futures-r7 (and pathA-r10a / futures-r11, the band books of
+docs/band-books-plan.md, from their own frozen branches); it only observes them: every archive file fetched is
 logged with the time it arrived and its sha256, then the run's output, the state
 hash before and after, and the start and finish times. Each run is checked: a fill
 at or before its decision time, or a decision stamped before its data arrived,
@@ -67,7 +68,8 @@ def main(argv: list[str] | None = None) -> int:
     from trading.alerts import live_data
 
     ap = argparse.ArgumentParser()
-    ap.add_argument("--book", choices=("pathA-v1.1", "pathA-v1.2", "pathA-p5-r1", "pathA-p5-r2", "futures-r7"), default="pathA-v1.1",
+    ap.add_argument("--book", choices=("pathA-v1.1", "pathA-v1.2", "pathA-p5-r1", "pathA-p5-r2", "futures-r7",
+                                       "pathA-r10a", "futures-r11"), default="pathA-v1.1",
                     help="which frozen book to run; pathA-v1.1 is the default and runs exactly as before")
     known, _ = ap.parse_known_args(argv)
     if known.book == "pathA-v1.2":
@@ -82,6 +84,12 @@ def main(argv: list[str] | None = None) -> int:
     elif known.book == "futures-r7":
         from trading.shadow.trend_perp_book import RULES_VERSION
         script = "scripts/paper_trade_r7.py"
+    elif known.book == "pathA-r10a":
+        from trading.shadow.band_books import R10A_RULES_VERSION as RULES_VERSION
+        script = "scripts/paper_trade_r10a.py"
+    elif known.book == "futures-r11":
+        from trading.shadow.band_books import R11_RULES_VERSION as RULES_VERSION
+        script = "scripts/paper_trade_r11.py"
     else:
         from trading.paper.ledger import RULES_VERSION
         script = "scripts/paper_trade.py"
