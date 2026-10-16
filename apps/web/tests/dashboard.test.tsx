@@ -23,13 +23,14 @@ vi.mock("../src/api", () => ({
       };
     }
     const label = path.replace("/api/v1/portfolios/", "").replace("/equity", "");
-    return {
+    const series = {
       label, mode: "SHADOW", currency: "USDT", initial_equity: "10000", max_drawdown: "0.1",
       points: [
         { at: "2026-10-14T23:59:59.999+00:00", trading_equity: "11000", economic_equity: "11000", mark_price: "70000", exposure: "11000", quality: "ok", return: "0.1", drawdown: "0" },
         { at: "2026-10-15T23:59:59.999+00:00", trading_equity: "9900", economic_equity: "9900", mark_price: "63000", exposure: "0", quality: "ok", return: "-0.01", drawdown: "0.1" },
       ],
     };
+    return label.startsWith("one-day") ? { ...series, points: series.points.slice(0, 1) } : series;
   },
 }));
 
@@ -95,4 +96,11 @@ test("the AI arm lists its decisions; diagnostic answers are marked as having no
   expect(rows[0].textContent).toContain("ความเห็น (ไม่มีผล)");
   expect(rows[2].textContent).toContain("ผิดพลาด");
   expect(screen.getByText("$0.0250")).toBeTruthy();
+});
+
+test("with a single close the charts wait and say why", async () => {
+  const [g] = groupBooks([row("one-day/paper")]);
+  const { container } = render(<QueryClientProvider client={new QueryClient()}><BookGroupCard group={g} /></QueryClientProvider>);
+  await waitFor(() => expect(container.querySelector("[data-testid=few-days]")?.textContent).toContain("1 วัน"));
+  expect(container.querySelector("svg[role=img]")).toBeNull();
 });
