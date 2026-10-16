@@ -1,12 +1,48 @@
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from pydantic import BaseModel, ValidationError
 
+import trading.config as config
 from trading.config import Settings
 from trading.contracts.enums import TradingMode
 from trading.contracts.money import DecimalStr
 from trading.contracts.versions import StrategyVersion
+
+
+def test_load_settings_reads_dotenv_independent_of_working_directory(tmp_path, monkeypatch):
+    env_file = tmp_path / ".env"
+    env_file.write_text('SUPABASE_URL=https://example.supabase.co\nDATABASE_URL=postgresql://example\n'
+                        'ALLOWED_ORIGINS=["http://localhost:5173"]\n', encoding="utf-8")
+    monkeypatch.setattr(config, "ENV_FILE", env_file)
+    for name in ("SUPABASE_URL", "DATABASE_URL", "ALLOWED_ORIGINS"):
+        monkeypatch.delenv(name, raising=False)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    s = config.load_settings()
+    assert s.supabase_url == "https://example.supabase.co"
+    assert s.database_url == "postgresql://example"
+    assert s.allowed_origins == ("http://localhost:5173",)
+
+
+def test_load_settings_environment_overrides_dotenv(tmp_path, monkeypatch):
+    env_file = tmp_path / ".env"
+    env_file.write_text("SUPABASE_URL=https://file.supabase.co\n", encoding="utf-8")
+    monkeypatch.setattr(config, "ENV_FILE", env_file)
+    monkeypatch.setenv("SUPABASE_URL", "https://process.supabase.co")
+    assert config.load_settings().supabase_url == "https://process.supabase.co"
+
+
+def test_load_settings_missing_dotenv_is_optional(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "ENV_FILE", tmp_path / "missing.env")
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    assert config.load_settings().supabase_url is None
+
+
+def test_dotenv_path_is_repository_root():
+    assert config.ENV_FILE == Path(__file__).resolve().parents[2] / ".env"
 
 
 def test_defaults_are_shadow_and_live_disabled():

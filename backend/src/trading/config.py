@@ -1,6 +1,7 @@
 """Process configuration (BUILDPLAN v4.2 §21.6), validated at startup.
 
-Only references to secrets live here; values come from the environment.
+Only references to secrets live here; values come from the environment or the
+repository root .env file. Process environment variables take precedence.
 
 LIVE is refused outright in this build: there is no real order adapter, and
 setting APP_ENV=production or LIVE_ENABLED=true is not a live approval. Live
@@ -10,6 +11,7 @@ that ships an adapter and flips LIVE_SUPPORTED_IN_BUILD after review.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, model_validator
@@ -19,10 +21,11 @@ from trading.contracts.enums import TradingMode
 
 # Changed only by a reviewed code change that also adds a real order adapter.
 LIVE_SUPPORTED_IN_BUILD = False
+ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=None, extra="ignore", frozen=True)
+    model_config = SettingsConfigDict(env_file=None, env_file_encoding="utf-8", extra="ignore", frozen=True)
 
     app_env: Literal["development", "test", "staging", "production"] = "development"
     trading_mode: TradingMode = TradingMode.SHADOW
@@ -45,4 +48,4 @@ class Settings(BaseSettings):
 
 
 def load_settings() -> Settings:
-    return Settings()
+    return Settings(_env_file=ENV_FILE)

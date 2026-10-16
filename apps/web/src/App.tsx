@@ -32,11 +32,11 @@ function SignIn() {
 
 function OverviewPage() {
   // DEFAULT transport is REST polling (§21.3); paused automatically when the tab is hidden.
-  const q = useQuery<Overview, ApiError>({ queryKey: ["overview"], queryFn: () => apiGet<Overview>("/api/v1/overview"), refetchInterval: 10_000 });
+  const q = useQuery<Overview, ApiError>({ queryKey: ["overview"], queryFn: () => apiGet<Overview>("/api/v1/overview"), refetchInterval: 10_000, retry: false, networkMode: "always" });
   const risk = useQuery<RiskStatusResponse, ApiError>({ queryKey: ["risk-status"], queryFn: () => apiGet<RiskStatusResponse>("/api/v1/risk-status"), refetchInterval: 30_000 });
   const [showTable, setShowTable] = useState(false);
   if (q.isPending) return <p>กำลังโหลด…</p>;
-  if (q.isError) return <p role="alert">{q.error.message ?? "โหลดข้อมูลไม่สำเร็จ"}</p>;
+  if (q.isError) return <div role="alert"><p>{q.error.message ?? "โหลดข้อมูลไม่สำเร็จ"}</p><button className="mt-2 rounded border px-3 py-1" onClick={() => void q.refetch()}>ลองใหม่</button>{["invalid_token", "missing_token"].includes(q.error.code) && <button className="ml-2 rounded border px-3 py-1" onClick={() => void supabase?.auth.signOut({ scope: "local" })}>เข้าสู่ระบบใหม่</button>}</div>;
   const groups = groupBooks(q.data.portfolios);
   return (
     <section className="space-y-4">
