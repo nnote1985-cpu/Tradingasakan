@@ -5,8 +5,8 @@ Decided in ADR 0001 (decision 6), 2026-10-15. Applies until a separate cutover A
 | Store | Role | Written by | Key that makes re-runs safe |
 | --- | --- | --- | --- |
 | `/mnt/project-files/paper-trading/<version>/state.json` (+ `journal.md`) | **Source of truth.** Decisions are frozen here first. | `scripts/paper_trade.py` on the frozen branch only | ledger append order; never edited or reset by hand |
-| Supabase `paper.*` | Read-only mirror for queries | `scripts/supabase_sync_sql.py` | `(rules_version, seq)` for journal, unique rows for trades and daily equity |
-| Supabase `trading.*` | Mirror into the Phase 1 double-entry ledger | `scripts/trading_sync_sql.py` | `source_event_key` = `<version>/<book>:funding`, `…:fill:<filled_at>`; snapshots by `(portfolio, at)` |
+| Supabase `paper.*` | Read-only mirror for queries (pathA-v1 float format only; pathA-v1.2 is skipped) | `scripts/supabase_sync_sql.py` | `(rules_version, seq)` for journal, unique rows for trades and daily equity |
+| Supabase `trading.*` | Mirror into the Phase 1 double-entry ledger | `scripts/trading_sync_sql.py` | `source_event_key` = `<version>/<book>:funding`, `…:fill:<filled_at>`; for pathA-v1.2 `<version>/<book>:<ledger key>` (its spot journal copied line for line); snapshots by `(portfolio, at)` |
 
 Rules:
 
