@@ -56,3 +56,29 @@ Also reported: days the filter cut the weight, trades, the result with costs ×2
 passes is a candidate for a confirmation run on C2 (Note's separate approval) and, after the
 Phase 5 day-28 review, a forward paper book. A variant that fails is recorded and not retuned (no
 other thresholds, windows or targets are tried on this data).
+
+## Result (run once, 2026-10-16, `research/spike/run_r9.py`; outputs in `/mnt/project-files/r9-results/`)
+
+Data: 1,280 days in the window, no missing price, funding or vol days; the one-year median was not
+ready on the first 28 days (R9b neutral there, as declared). Vol was above 0.80 on 49 days, only 9 of
+them while path A held BTC. R9b scaled the weight on 309 days (0.75 on 432 days and 0.5 on 94 days of
+the whole window, any base weight).
+
+2022-07-01 → 2026-01-01, 10,000 USDT, fee 0.10% + 2 bps:
+
+| | Net | Sharpe | Max DD | Trades |
+| --- | --- | --- | --- | --- |
+| path A (base) | +176.5% | 0.843 | 35.1% | 82 |
+| R9a cap | +172.3% | 0.836 | 35.1% | 92 |
+| R9b target | +142.1% | 0.832 | 26.8% | 362 |
+| BTC buy & hold | +339.2% | 0.880 | 35.4% | 1 |
+
+By year (Sharpe, 2022 Jul–Dec / 2023 / 2024 / 2025): path A −1.77 / 1.48 / 1.23 / 0.17; R9a −1.77 /
+1.48 / 1.21 / 0.17; R9b −1.86 / 1.25 / 1.47 / 0.13. With costs ×2 the order is the same (path A 0.79,
+R9a 0.78, R9b 0.77; R9b max DD 28.0% vs 36.4%).
+
+**Verdict: both fail** criterion 1, since neither Sharpe is above path A's. R9a almost never acted,
+because path A is usually already out of BTC when vol is above 80%. R9b is the closer miss: it cut
+max drawdown by 8.3 points (35.1% → 26.8%) at nearly the same Sharpe (0.832 vs 0.843), paid for with
+lower return and 4× the trades. Neither meets Note's objective against buy & hold. As declared, no
+other thresholds, windows or targets are tried on this data, and C2 stays unspent.
