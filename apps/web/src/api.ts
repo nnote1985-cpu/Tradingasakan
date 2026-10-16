@@ -14,6 +14,27 @@ export type PortfolioRow = {
   high_water_mark: string | null;
   quality: string | null;
   stale: boolean;
+  return: string | null;          // fraction of initial equity, from economic equity
+  drawdown: string | null;        // fraction below the peak of economic equity
+  exposure_share: string | null;  // BTC exposure / economic equity at the last mark
+};
+export type EquityPoint = {
+  at: string;
+  trading_equity: string;
+  economic_equity: string;
+  mark_price: string | null;
+  exposure: string | null;
+  quality: string;
+  return: string;
+  drawdown: string;
+};
+export type EquitySeries = {
+  label: string;
+  mode: string;
+  currency: string;
+  initial_equity: string;
+  points: EquityPoint[];
+  max_drawdown: string;
 };
 export type Overview = { mode: string; live_enabled: boolean; portfolios: PortfolioRow[] };
 export type ApiError = { code: string; request_id: string | null; retryable: boolean; message: string };
