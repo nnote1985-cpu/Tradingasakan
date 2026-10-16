@@ -29,7 +29,8 @@ vi.mock("../src/api", () => ({
             { n: 1, side: "short", entry_day: "2022-04-12", entry_price: "39497.70", qty: "0.25317931", exit_day: "2022-04-20", exit_price: "41481.19", open: false, days: 8, pnl: "-513.09", return: "-0.051309" },
             { n: 2, side: "long", entry_day: "2022-04-20", entry_price: "41481.19", qty: "0.22870381", exit_day: null, exit_price: null, open: true, days: 2, pnl: "120.00", return: "0.012648" },
           ],
-          trade_stats: { count: 2, wins: 1, long_pnl: "120.00", short_pnl: "-513.09" },
+          trade_stats: { count: 2, wins: 1, long_pnl: "120.00", short_pnl: "-513.09",
+            closed: 1, closed_wins: 0, win_rate: "0.000000", closed_pnl: "-513.09", open_pnl: "120.00", net_pnl: "-393.09" },
         }],
       };
     }
@@ -77,7 +78,7 @@ vi.mock("../src/api", () => ({
         counts: { filter: { ALLOW: 1, TIMEOUT: 1 }, diagnostic: { VETO: 1 } },
         items: [
           { ...base, proposal_id: "d", kind: "diagnostic", decided_on: "2026-10-15", decision: "VETO", outcome: "VETO", reason_code: "TREND_WEAK", attempt_status: "SUCCESS", error_category: null, cost_usd: "0.012" },
-          { ...base, proposal_id: "f", kind: "filter", decided_on: "2026-10-15", decision: "ALLOW", outcome: "ALLOW", reason_code: "TREND_OK", attempt_status: "SUCCESS", error_category: null, cost_usd: "0.013" },
+          { ...base, proposal_id: "a", kind: "filter", decided_on: "2026-10-15", decision: "ALLOW", outcome: "ALLOW", reason_code: "TREND_OK", reason: "ราคายืนเหนือเส้นเฉลี่ย 50 วัน", attempt_status: "SUCCESS", error_category: null, cost_usd: "0.013" },
           { ...base, proposal_id: "t", kind: "filter", decided_on: "2026-10-14", decision: "ABSTAIN", outcome: "TIMEOUT", reason_code: "EXPIRED_DECISION", attempt_status: "TIMEOUT", error_category: "TIMEOUT", cost_usd: "0" },
         ],
       };
@@ -156,6 +157,11 @@ test("the AI tab lists decisions; diagnostic answers are marked as having no eff
   const rows = screen.getAllByTestId("decision-row");
   expect(rows[0].textContent).toContain("ความเห็น (ไม่มีผล)");
   expect(rows[2].textContent).toContain("ผิดพลาด");
+  expect(rows[2].textContent).toContain("ไม่ได้คำตอบ (TIMEOUT)");
+  expect(rows[1].textContent).toContain("ราคายืนเหนือเส้นเฉลี่ย 50 วัน");
+  await waitFor(() => expect(within(rows[1]).getByTestId("verdict").textContent).toBe("ช่วย: เลี่ยงขาดทุน"));
+  expect(rows[1].textContent).toContain("BTC 7 วันถัดมา −5.00%");
+  expect(within(rows[0]).queryByTestId("verdict")).toBeNull();   // diagnostic answers are not scored as help
   expect(screen.getByText("$0.0250")).toBeTruthy();
 });
 
@@ -187,6 +193,16 @@ test("tabs switch through the URL hash; futures and options say they are not ope
   await waitFor(() => expect(container.querySelector("[data-testid=backtest]")?.textContent).toContain("ผ่านช่วง dev แต่ยังไม่ยืนยัน"));
   expect(container.querySelector("[data-testid=backtest]")?.textContent).toContain("+103.37%");
   expect(screen.getByRole("img", { name: "มูลค่าพอร์ต R7" })).toBeTruthy();
+  const tiles = [...(container.querySelector("[data-testid=trade-summary]")?.children ?? [])].map((e) => e.textContent);
+  expect(tiles).toEqual([
+    "ไม้ทั้งหมด2ยังถืออยู่ 1 ไม้", "ปิดกำไร0", "ปิดขาดทุน1", "Win rate0.00%จาก 1 ไม้ที่ปิดแล้ว",
+    "กำไรสุทธิ-393.09ปิดแล้ว -513.09 · ยังถือ 120.00",
+  ]);
+  const open = container.querySelector("[data-testid=open-trade]")?.textContent;
+  expect(open).toContain("LONG");
+  expect(open).toContain("41,481.19");
+  expect(open).toContain("120.00 USDT (+1.26%)");
+  expect(open).toContain("ตีราคาที่ราคาปิด 2022-04-12");
   const trades = container.querySelector("[data-testid=trades]");
   expect(trades?.querySelector("summary")?.textContent).toContain("รายไม้ 2 ไม้ · กำไร 1 ไม้ · ขาดทุน 1 ไม้");
   expect([...(trades?.querySelectorAll("tbody tr") ?? [])].map((r) => r.textContent)).toEqual([
