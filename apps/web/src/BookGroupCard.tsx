@@ -1,5 +1,4 @@
 import { useQueries } from "@tanstack/react-query";
-import { AiDecisions } from "./AiDecisions";
 import { type ApiError, apiGet, type EquitySeries, type PortfolioRow, type RiskStatus } from "./api";
 import { armOf, type BookGroup } from "./books";
 import { dayOf, money, pct } from "./format";
@@ -88,7 +87,9 @@ export function BookGroupCard({ group, risk = [] }: { group: BookGroup; risk?: R
           </div>
         </div>
       )}
-      {group.rows.filter((r) => armOf(r.label).key === "ai").map((r) => <AiDecisions key={r.label} label={r.label} />)}
+      {group.paired && (
+        <a href="#ai" className="inline-block text-sm text-[var(--text-secondary)] underline">ดูการตัดสินใจและสกอร์ของ AI ในแท็บ AI</a>
+      )}
     </section>
   );
 }

@@ -203,3 +203,36 @@ def test_risk_and_decisions_before_the_phase5_migration_say_unavailable():
     c = _p5_client(missing=True)
     assert _get(c, "/api/v1/risk-status", _token(VIEWER)).json() == {"available": False, "portfolios": []}
     assert _get(c, "/api/v1/portfolios/pathA-p5-r1/ai/decisions", _token(VIEWER)).json()["available"] is False
+
+
+def test_ai_scorecard_judges_each_answer_by_the_later_btc_close():
+    from datetime import UTC, datetime
+
+    from api.ai import scorecard
+    marks = [(datetime(2026, 10, d, 23, 59, tzinfo=UTC), "1", "1", m, "0", "ok") for d, m in [(14, "70000"), (15, "63000"), (16, "63000")]]
+    items = [{"proposal_id": f"p{i}", "kind": k, "decided_on": day, "outcome": o}
+             for i, (k, day, o) in enumerate([("filter", "2026-10-14", "VETO"), ("filter", "2026-10-14", "ALLOW"),
+                                              ("filter", "2026-10-14", "TIMEOUT"), ("filter", "2026-10-15", "ALLOW"),
+                                              ("diagnostic", "2026-10-16", "VETO")])]
+    s = scorecard(items, marks, horizon=1)
+    assert [i["verdict"] for i in s["items"]] == ["avoided_loss", "allowed_loss", "avoided_loss", "flat", "pending"]
+    assert s["items"][0]["forward_return"] == "-0.100000" and s["items"][4]["forward_return"] is None
+    assert s["counts"] == {"filter": {"avoided_loss": 2, "allowed_loss": 1, "flat": 1}, "diagnostic": {"pending": 1}}
+    assert s["diagnostic_only"] is True
+    up = [(datetime(2026, 10, d, tzinfo=UTC), "1", "1", m, "0", "ok") for d, m in [(14, "100"), (15, "110")]]
+    held, allowed = scorecard([items[0], items[1]], up, horizon=1)["items"]
+    assert (held["verdict"], allowed["verdict"]) == ("missed_gain", "allowed_gain")
+
+
+def test_ai_settings_and_scorecard_endpoints():
+    c = _p5_client()
+    s = _get(c, "/api/v1/ai/settings", _token(VIEWER)).json()
+    assert s["locked"] is True and s["capability_stage"] == "FILTER_ONLY" and s["model_id"] == "claude-opus-5-5"
+    assert s["monthly_cap_usd"] == "5" and s["timebox_days"] == 28
+    assert _get(c, "/api/v1/ai/settings", _token(STRANGER)).status_code == 403
+    sc = _get(c, "/api/v1/portfolios/pathA-p5-r1/ai/ai-scorecard", _token(VIEWER)).json()
+    assert sc["available"] and sc["horizon_days"] == 7 and sc["diagnostic_only"] is True
+    assert [i["verdict"] for i in sc["items"]] == ["pending", "pending", "pending"]   # 7 days have not passed yet
+    assert _get(c, "/api/v1/portfolios/nope/ai-scorecard", _token(VIEWER)).status_code == 404
+    gone = _get(_p5_client(missing=True), "/api/v1/portfolios/pathA-p5-r1/ai/ai-scorecard", _token(VIEWER)).json()
+    assert gone["available"] is False and gone["items"] == []

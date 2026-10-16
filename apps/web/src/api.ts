@@ -96,3 +96,39 @@ export type DecisionsResponse = {
   cost_usd: string;
   limit: number;
 };
+
+export type AiSettings = {
+  experiment_id: string;
+  graph_version: string;
+  locked: boolean;
+  capability_stage: string;
+  model_id: string;
+  effort: string;
+  prompt_version: string;
+  prompt_hash: string;
+  policy_version: string;
+  context_profile: string;
+  tools: string[];
+  timeout_ms: number;
+  max_attempts: number;
+  max_run_cost_usd: string;
+  daily_cost_cap_usd: string;
+  monthly_cap_usd: string;
+  timebox_days: number;
+};
+export type Verdict = "avoided_loss" | "missed_gain" | "allowed_gain" | "allowed_loss" | "flat" | "pending";
+export type ScorecardItem = {
+  proposal_id: string;
+  kind: "filter" | "diagnostic";
+  decided_on: string;
+  outcome: string;
+  forward_return: string | null;   // BTC close change over horizon_days, decimal string
+  verdict: Verdict;
+};
+export type ScorecardResponse = {
+  available: boolean;
+  horizon_days: number;
+  items: ScorecardItem[];
+  counts: Record<string, Partial<Record<Verdict, number>>>;
+  diagnostic_only: boolean;
+};
