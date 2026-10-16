@@ -17,6 +17,7 @@
 | R5 | `pathA-v1` | R3 บน BTC × R4 (น้ำหนัก = trend × funding) | BTC พอร์ตแบบ spot ใช้ราคา perp เป็นตัวแทน |
 | R6a / R6b | `run_r6.py` | สัญญาณ v1 เฉพาะ LONG, ไม่มี TP/time exit, ออกด้วย stop / trend exit / channel exit 10 แท่ง 4h; R6a เสี่ยง 0.5%, R6b ใช้เงินทั้งหมด | BTCUSDT **spot** (ราคา spot จริง) |
 | R8a / R8b | `run_r8.py` | path A × 0.5 when bid depth within 2% is in its trailing-90-day bottom 20% (R8a), and also 7-day OI change in its top 20% (R8b) | BTC spot model, perp prices, Binance bookDepth + metrics |
+| R9a / R9b | `run_r9.py` | path A × 0.5 when 30-day realised vol > 80%/yr (R9a); path A × min(1, trailing-1y median vol / vol) floored to 0.25 steps (R9b) | BTC spot model, perp prices |
 | R7 | `run_r7.py` | long เมื่อปิดเหนือ SMA100 รายวัน, short เมื่อต่ำกว่า, 1x, คิด funding | BTCUSDT **perp** |
 
 `pathA-v1` ยังเป็นชื่อของพอร์ตจำลองที่ตรึงไว้ เปลี่ยนไม่ได้โดยไม่เปิดพอร์ตใหม่
@@ -148,3 +149,9 @@ hash ของ parquet อาจเปลี่ยนตามเวอร์ช
 2023-04-01 → 2026-01-01, spot 0.10% + 2 bps: path A +103.3% / Sharpe 0.75 / DD 35.1%; R8a +55.9% / 0.50 / 33.0%
 (280 trades); R8b +84.1% / 0.66 / 34.3% (134 trades); B&H +207.5% / 0.90 / 32.0%. Both fail (Sharpe below path A).
 Window overlaps data path A was built on; C2 not used.
+
+## R9 (2026-10-16, docs/research/r9-volatility-filter-plan.md)
+
+2022-07-01 → 2026-01-01, spot 0.10% + 2 bps: path A +176.5% / Sharpe 0.84 / DD 35.1% (82 trades); R9a +172.3% / 0.84 / 35.1%
+(92 trades, 9 days cut); R9b +142.1% / 0.83 / 26.8% (362 trades); B&H +339.2% / 0.88 / 35.4%. Both fail (Sharpe below
+path A). R9b cut max DD by 8.3 points at nearly the same Sharpe. Window overlaps data path A was built on; C2 not used.
