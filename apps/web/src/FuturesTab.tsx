@@ -17,6 +17,50 @@ const BH = { key: "bh", name: "ซื้อถือเฉยๆ", color: "var(-
 const SIDE_TH = { long: "Long", short: "Short" };
 const tone = (v: string) => (v.startsWith("-") ? "text-[var(--loss)]" : Number(v) > 0 ? "text-[var(--gain)]" : "");
 
+function Tile({ title, value, sub, cls = "" }: { title: string; value: string; sub?: string; cls?: string }) {
+  return (
+    <div className="rounded-lg border border-[var(--border)] p-2">
+      <div className="text-xs text-[var(--text-muted)]">{title}</div>
+      <div className={`mt-0.5 text-lg font-medium tabular-nums ${cls}`}>{value}</div>
+      {sub && <div className="text-xs text-[var(--text-muted)]">{sub}</div>}
+    </div>
+  );
+}
+
+/** Headline counts. Win rate is over closed trades only; a held trade has no result yet. */
+function TradeSummary({ stats }: { stats: NonNullable<Backtest["trade_stats"]> }) {
+  const held = stats.count - stats.closed;
+  const losses = stats.closed - stats.closed_wins;
+  return (
+    <div data-testid="trade-summary" className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+      <Tile title="ไม้ทั้งหมด" value={String(stats.count)} sub={held ? `ยังถืออยู่ ${held} ไม้` : "ปิดครบแล้ว"} />
+      <Tile title="ปิดกำไร" value={String(stats.closed_wins)} cls="text-[var(--gain)]" />
+      <Tile title="ปิดขาดทุน" value={String(losses)} cls="text-[var(--loss)]" />
+      <Tile title="Win rate" value={stats.win_rate === null ? "–" : pct(stats.win_rate, true)} sub={`จาก ${stats.closed} ไม้ที่ปิดแล้ว`} />
+      <Tile title="กำไรสุทธิ" value={money(stats.net_pnl)} cls={tone(stats.net_pnl)}
+        sub={held ? `ปิดแล้ว ${money(stats.closed_pnl)} · ยังถือ ${money(stats.open_pnl)}` : "USDT"} />
+    </div>
+  );
+}
+
+/** The position still held at the end of the run, marked to the last close. R7 exits on its trend signal: it has no fixed TP or SL. */
+function OpenTrade({ t, asOf }: { t: BacktestTrade; asOf: string }) {
+  const long = t.side === "long";
+  return (
+    <div data-testid="open-trade" className="rounded-lg border border-[var(--border)] p-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className={`rounded px-2 py-0.5 text-xs font-semibold text-white ${long ? "bg-[var(--gain)]" : "bg-[var(--loss)]"}`}>{SIDE_TH[t.side].toUpperCase()}</span>
+        <span className="text-sm">เข้าที่ <span className="font-medium tabular-nums">{money(t.entry_price)}</span></span>
+        <span className="rounded bg-[var(--warn-bg)] px-1.5 text-xs text-[var(--warn-fg)]">ยังถืออยู่</span>
+        <span className={`ml-auto text-lg font-medium tabular-nums ${tone(t.pnl)}`}>{money(t.pnl, "USDT")} <span className="text-sm">({pct(t.return)})</span></span>
+      </div>
+      <p className="mt-1 text-xs text-[var(--text-muted)]">
+        เปิดเมื่อ {t.entry_day} · ถือมา {t.days} วัน · ตีราคาที่ราคาปิด {asOf} · ออกเมื่อสัญญาณเทรนด์กลับ ไม่มี TP/SL ตายตัว
+      </p>
+    </div>
+  );
+}
+
 /** One row per trade (open to close). P&L includes both fees, slippage and the funding paid while held. */
 function TradeList({ trades, stats }: { trades: BacktestTrade[]; stats: NonNullable<Backtest["trade_stats"]> }) {
   return (
@@ -82,6 +126,8 @@ function BacktestCard({ b }: { b: Backtest }) {
         ถือ long {s.days_long} วัน, short {s.days_short} วัน, เปิดสถานะ {s.flips} ครั้ง · ค่าธรรมเนียม {money(s.fees, "USDT")} · funding จ่ายสุทธิ {money(s.funding_paid, "USDT")}
       </p>
       <p className="text-sm">{b.note}</p>
+      {b.trade_stats && <TradeSummary stats={b.trade_stats} />}
+      {b.trades?.filter((t) => t.open).map((t) => <OpenTrade key={t.n} t={t} asOf={b.points.at(-1)?.day ?? b.range[1]} />)}
       <Legend series={equity} />
       <div>
         <h3 className="text-sm font-medium text-[var(--text-secondary)]">มูลค่าพอร์ต (USDT หลังหักค่าใช้จ่าย)</h3>

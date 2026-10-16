@@ -166,7 +166,11 @@ export type Backtest = {
   note: string;
   points: BacktestPoint[];
   trades?: BacktestTrade[];
-  trade_stats?: { count: number; wins: number; long_pnl: string; short_pnl: string };
+  trade_stats?: {
+    count: number; wins: number; long_pnl: string; short_pnl: string;
+    closed: number; closed_wins: number; win_rate: string | null;   // closed trades only
+    closed_pnl: string; open_pnl: string; net_pnl: string;
+  };
 };
 
 export type ParamBound = { default: number; min: number; max: number };

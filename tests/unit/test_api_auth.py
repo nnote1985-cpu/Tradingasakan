@@ -280,4 +280,7 @@ def test_round_trips_pair_legs_and_mark_an_open_trade():
     t = round_trips(fills, Decimal("100"), "2024-01-10", Decimal("104.8"))
     assert [(x["side"], x["days"], x["pnl"], x["return"], x["open"]) for x in t] == [
         ("long", 4, "9.80", "0.098000", False), ("short", 5, "-5.00", "-0.045537", True)]
-    assert trade_stats(t) == {"count": 2, "wins": 1, "long_pnl": "9.80", "short_pnl": "-5.00"}
+    assert trade_stats(t) == {"count": 2, "wins": 1, "long_pnl": "9.80", "short_pnl": "-5.00",
+                              "closed": 1, "closed_wins": 1, "win_rate": "1.000000",
+                              "closed_pnl": "9.80", "open_pnl": "-5.00", "net_pnl": "4.80"}
+    assert trade_stats([])["win_rate"] is None

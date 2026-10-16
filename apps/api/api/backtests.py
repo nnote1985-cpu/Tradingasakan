@@ -55,9 +55,17 @@ def _close(t: dict[str, Any], day: str, price: str | None, before: Decimal, afte
 
 
 def trade_stats(trades: list[dict[str, Any]]) -> dict[str, Any]:
+    """Win rate counts closed trades only: a trade still open has no result yet."""
     pnl = {s: sum((Decimal(t["pnl"]) for t in trades if t["side"] == s), Decimal(0)) for s in ("long", "short")}
+    closed = [t for t in trades if not t["open"]]
+    closed_wins = sum(Decimal(t["pnl"]) > 0 for t in closed)
+    closed_pnl = sum((Decimal(t["pnl"]) for t in closed), Decimal(0))
+    open_pnl = sum((Decimal(t["pnl"]) for t in trades if t["open"]), Decimal(0))
     return {"count": len(trades), "wins": sum(Decimal(t["pnl"]) > 0 for t in trades),
-            "long_pnl": str(pnl["long"]), "short_pnl": str(pnl["short"])}
+            "long_pnl": str(pnl["long"]), "short_pnl": str(pnl["short"]),
+            "closed": len(closed), "closed_wins": closed_wins,
+            "win_rate": str((Decimal(closed_wins) / len(closed)).quantize(RATIO)) if closed else None,
+            "closed_pnl": str(closed_pnl), "open_pnl": str(open_pnl), "net_pnl": str(closed_pnl + open_pnl)}
 
 
 def load_backtests(market: str | None = None, results_dir: Path = RESULTS_DIR) -> list[dict[str, Any]]:
