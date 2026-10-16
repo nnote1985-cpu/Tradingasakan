@@ -29,6 +29,912 @@
   "passes": true
  },
  "note": "ผ่านเกณฑ์ช่วง dev แบบเฉียด ฝั่ง short ขาดทุน ยังไม่ได้ยืนยันกับข้อมูลที่ไม่เคยเห็น (Note เลือกเก็บ C1/C2 ไว้)",
+ "fills": [
+  {
+   "day": "2022-04-12",
+   "action": "open",
+   "side": "short",
+   "price": "39497.70",
+   "qty": "0.25317931",
+   "equity": "9995.00"
+  },
+  {
+   "day": "2022-04-20",
+   "action": "close",
+   "side": "short",
+   "price": "41481.19",
+   "qty": "0.25317931",
+   "equity": "9486.91"
+  },
+  {
+   "day": "2022-04-20",
+   "action": "open",
+   "side": "long",
+   "price": "41481.19",
+   "qty": "0.22870381",
+   "equity": "9482.16"
+  },
+  {
+   "day": "2022-04-22",
+   "action": "close",
+   "side": "long",
+   "price": "40441.61",
+   "qty": "0.22870381",
+   "equity": "9237.61"
+  },
+  {
+   "day": "2022-04-22",
+   "action": "open",
+   "side": "short",
+   "price": "40441.61",
+   "qty": "0.22841843",
+   "equity": "9232.99"
+  },
+  {
+   "day": "2022-09-13",
+   "action": "close",
+   "side": "short",
+   "price": "22390.48",
+   "qty": "0.22841843",
+   "equity": "13447.40"
+  },
+  {
+   "day": "2022-09-13",
+   "action": "open",
+   "side": "long",
+   "price": "22390.48",
+   "qty": "0.60058570",
+   "equity": "13440.68"
+  },
+  {
+   "day": "2022-09-14",
+   "action": "close",
+   "side": "long",
+   "price": "20158.57",
+   "qty": "0.60058570",
+   "equity": "12090.54"
+  },
+  {
+   "day": "2022-09-14",
+   "action": "open",
+   "side": "short",
+   "price": "20158.57",
+   "qty": "0.59977186",
+   "equity": "12084.50"
+  },
+  {
+   "day": "2022-11-05",
+   "action": "close",
+   "side": "short",
+   "price": "21141.83",
+   "qty": "0.59977186",
+   "equity": "11574.15"
+  },
+  {
+   "day": "2022-11-05",
+   "action": "open",
+   "side": "long",
+   "price": "21141.83",
+   "qty": "0.54745249",
+   "equity": "11568.36"
+  },
+  {
+   "day": "2022-11-08",
+   "action": "close",
+   "side": "long",
+   "price": "20574.38",
+   "qty": "0.54745249",
+   "equity": "11244.10"
+  },
+  {
+   "day": "2022-11-08",
+   "action": "open",
+   "side": "short",
+   "price": "20574.38",
+   "qty": "0.54650945",
+   "equity": "11238.47"
+  },
+  {
+   "day": "2023-01-12",
+   "action": "close",
+   "side": "short",
+   "price": "17939.19",
+   "qty": "0.54650945",
+   "equity": "12700.75"
+  },
+  {
+   "day": "2023-01-12",
+   "action": "open",
+   "side": "long",
+   "price": "17939.19",
+   "qty": "0.70798916",
+   "equity": "12694.40"
+  },
+  {
+   "day": "2023-03-11",
+   "action": "close",
+   "side": "long",
+   "price": "20136.27",
+   "qty": "0.70798916",
+   "equity": "14007.44"
+  },
+  {
+   "day": "2023-03-11",
+   "action": "open",
+   "side": "short",
+   "price": "20136.27",
+   "qty": "0.69563222",
+   "equity": "14000.44"
+  },
+  {
+   "day": "2023-03-12",
+   "action": "close",
+   "side": "short",
+   "price": "20451.39",
+   "qty": "0.69563222",
+   "equity": "13773.79"
+  },
+  {
+   "day": "2023-03-12",
+   "action": "open",
+   "side": "long",
+   "price": "20451.39",
+   "qty": "0.67348936",
+   "equity": "13766.91"
+  },
+  {
+   "day": "2023-05-25",
+   "action": "close",
+   "side": "long",
+   "price": "26308.64",
+   "qty": "0.67348936",
+   "equity": "17478.80"
+  },
+  {
+   "day": "2023-05-25",
+   "action": "open",
+   "side": "short",
+   "price": "26308.64",
+   "qty": "0.66437496",
+   "equity": "17470.06"
+  },
+  {
+   "day": "2023-05-27",
+   "action": "close",
+   "side": "short",
+   "price": "26695.14",
+   "qty": "0.66437496",
+   "equity": "17213.30"
+  },
+  {
+   "day": "2023-05-27",
+   "action": "open",
+   "side": "long",
+   "price": "26695.14",
+   "qty": "0.64481035",
+   "equity": "17204.69"
+  },
+  {
+   "day": "2023-06-02",
+   "action": "close",
+   "side": "long",
+   "price": "26799.94",
+   "qty": "0.64481035",
+   "equity": "17239.06"
+  },
+  {
+   "day": "2023-06-02",
+   "action": "open",
+   "side": "short",
+   "price": "26799.94",
+   "qty": "0.64325007",
+   "equity": "17230.44"
+  },
+  {
+   "day": "2023-06-03",
+   "action": "close",
+   "side": "short",
+   "price": "27233.25",
+   "qty": "0.64325007",
+   "equity": "16947.16"
+  },
+  {
+   "day": "2023-06-03",
+   "action": "open",
+   "side": "long",
+   "price": "27233.25",
+   "qty": "0.62229674",
+   "equity": "16938.69"
+  },
+  {
+   "day": "2023-06-06",
+   "action": "close",
+   "side": "long",
+   "price": "25709.46",
+   "qty": "0.62229674",
+   "equity": "15969.99"
+  },
+  {
+   "day": "2023-06-06",
+   "action": "open",
+   "side": "short",
+   "price": "25709.46",
+   "qty": "0.62117195",
+   "equity": "15962.01"
+  },
+  {
+   "day": "2023-06-07",
+   "action": "close",
+   "side": "short",
+   "price": "27226.94",
+   "qty": "0.62117195",
+   "equity": "15009.93"
+  },
+  {
+   "day": "2023-06-07",
+   "action": "open",
+   "side": "long",
+   "price": "27226.94",
+   "qty": "0.55128961",
+   "equity": "15002.43"
+  },
+  {
+   "day": "2023-06-08",
+   "action": "close",
+   "side": "long",
+   "price": "26320.63",
+   "qty": "0.55128961",
+   "equity": "14492.05"
+  },
+  {
+   "day": "2023-06-08",
+   "action": "open",
+   "side": "short",
+   "price": "26320.63",
+   "qty": "0.55059646",
+   "equity": "14484.80"
+  },
+  {
+   "day": "2023-06-21",
+   "action": "close",
+   "side": "short",
+   "price": "28296.36",
+   "qty": "0.55059646",
+   "equity": "13416.00"
+  },
+  {
+   "day": "2023-06-21",
+   "action": "open",
+   "side": "long",
+   "price": "28296.36",
+   "qty": "0.47412477",
+   "equity": "13409.30"
+  },
+  {
+   "day": "2023-08-18",
+   "action": "close",
+   "side": "long",
+   "price": "26604.38",
+   "qty": "0.47412477",
+   "equity": "12415.18"
+  },
+  {
+   "day": "2023-08-18",
+   "action": "open",
+   "side": "short",
+   "price": "26604.38",
+   "qty": "0.46665938",
+   "equity": "12408.97"
+  },
+  {
+   "day": "2023-10-17",
+   "action": "close",
+   "side": "short",
+   "price": "28492.00",
+   "qty": "0.46665938",
+   "equity": "11555.93"
+  },
+  {
+   "day": "2023-10-17",
+   "action": "open",
+   "side": "long",
+   "price": "28492.00",
+   "qty": "0.40558497",
+   "equity": "11550.15"
+  },
+  {
+   "day": "2024-05-02",
+   "action": "close",
+   "side": "long",
+   "price": "58296.04",
+   "qty": "0.40558497",
+   "equity": "21570.28"
+  },
+  {
+   "day": "2024-05-02",
+   "action": "open",
+   "side": "short",
+   "price": "58296.04",
+   "qty": "0.37001272",
+   "equity": "21559.49"
+  },
+  {
+   "day": "2024-05-04",
+   "action": "close",
+   "side": "short",
+   "price": "62866.27",
+   "qty": "0.37001272",
+   "equity": "19860.23"
+  },
+  {
+   "day": "2024-05-04",
+   "action": "open",
+   "side": "long",
+   "price": "62866.27",
+   "qty": "0.31591236",
+   "equity": "19850.30"
+  },
+  {
+   "day": "2024-05-11",
+   "action": "close",
+   "side": "long",
+   "price": "60765.84",
+   "qty": "0.31591236",
+   "equity": "19156.94"
+  },
+  {
+   "day": "2024-05-11",
+   "action": "open",
+   "side": "short",
+   "price": "60765.84",
+   "qty": "0.31525828",
+   "equity": "19147.36"
+  },
+  {
+   "day": "2024-05-14",
+   "action": "close",
+   "side": "short",
+   "price": "62924.78",
+   "qty": "0.31525828",
+   "equity": "18468.68"
+  },
+  {
+   "day": "2024-05-14",
+   "action": "open",
+   "side": "long",
+   "price": "62924.78",
+   "qty": "0.29350408",
+   "equity": "18459.45"
+  },
+  {
+   "day": "2024-05-15",
+   "action": "close",
+   "side": "long",
+   "price": "61538.19",
+   "qty": "0.29350408",
+   "equity": "18039.06"
+  },
+  {
+   "day": "2024-05-15",
+   "action": "open",
+   "side": "short",
+   "price": "61538.19",
+   "qty": "0.29313606",
+   "equity": "18030.04"
+  },
+  {
+   "day": "2024-05-16",
+   "action": "close",
+   "side": "short",
+   "price": "66188.64",
+   "qty": "0.29313606",
+   "equity": "16659.45"
+  },
+  {
+   "day": "2024-05-16",
+   "action": "open",
+   "side": "long",
+   "price": "66188.64",
+   "qty": "0.25169660",
+   "equity": "16651.12"
+  },
+  {
+   "day": "2024-06-15",
+   "action": "close",
+   "side": "long",
+   "price": "66026.49",
+   "qty": "0.25169660",
+   "equity": "16458.17"
+  },
+  {
+   "day": "2024-06-15",
+   "action": "open",
+   "side": "short",
+   "price": "66026.49",
+   "qty": "0.24926610",
+   "equity": "16449.94"
+  },
+  {
+   "day": "2024-07-16",
+   "action": "close",
+   "side": "short",
+   "price": "64693.54",
+   "qty": "0.24926610",
+   "equity": "16891.23"
+  },
+  {
+   "day": "2024-07-16",
+   "action": "open",
+   "side": "long",
+   "price": "64693.54",
+   "qty": "0.26109606",
+   "equity": "16882.78"
+  },
+  {
+   "day": "2024-07-18",
+   "action": "close",
+   "side": "long",
+   "price": "64042.99",
+   "qty": "0.26109606",
+   "equity": "16703.38"
+  },
+  {
+   "day": "2024-07-18",
+   "action": "open",
+   "side": "short",
+   "price": "64042.99",
+   "qty": "0.26081519",
+   "equity": "16695.03"
+  },
+  {
+   "day": "2024-07-20",
+   "action": "close",
+   "side": "short",
+   "price": "66641.23",
+   "qty": "0.26081519",
+   "equity": "16011.92"
+  },
+  {
+   "day": "2024-07-20",
+   "action": "open",
+   "side": "long",
+   "price": "66641.23",
+   "qty": "0.24027051",
+   "equity": "16003.92"
+  },
+  {
+   "day": "2024-08-03",
+   "action": "close",
+   "side": "long",
+   "price": "61471.40",
+   "qty": "0.24027051",
+   "equity": "14712.00"
+  },
+  {
+   "day": "2024-08-03",
+   "action": "open",
+   "side": "short",
+   "price": "61471.40",
+   "qty": "0.23933077",
+   "equity": "14704.64"
+  },
+  {
+   "day": "2024-08-24",
+   "action": "close",
+   "side": "short",
+   "price": "64032.80",
+   "qty": "0.23933077",
+   "equity": "14088.47"
+  },
+  {
+   "day": "2024-08-24",
+   "action": "open",
+   "side": "long",
+   "price": "64032.80",
+   "qty": "0.22001962",
+   "equity": "14081.43"
+  },
+  {
+   "day": "2024-08-27",
+   "action": "close",
+   "side": "long",
+   "price": "62795.14",
+   "qty": "0.22001962",
+   "equity": "13800.64"
+  },
+  {
+   "day": "2024-08-27",
+   "action": "open",
+   "side": "short",
+   "price": "62795.14",
+   "qty": "0.21977239",
+   "equity": "13793.74"
+  },
+  {
+   "day": "2024-09-19",
+   "action": "close",
+   "side": "short",
+   "price": "61747.65",
+   "qty": "0.21977239",
+   "equity": "14018.18"
+  },
+  {
+   "day": "2024-09-19",
+   "action": "open",
+   "side": "long",
+   "price": "61747.65",
+   "qty": "0.22702365",
+   "equity": "14011.17"
+  },
+  {
+   "day": "2024-10-02",
+   "action": "close",
+   "side": "long",
+   "price": "60764.54",
+   "qty": "0.22702365",
+   "equity": "13751.64"
+  },
+  {
+   "day": "2024-10-02",
+   "action": "open",
+   "side": "short",
+   "price": "60764.54",
+   "qty": "0.22631031",
+   "equity": "13744.77"
+  },
+  {
+   "day": "2024-10-05",
+   "action": "close",
+   "side": "short",
+   "price": "62066.71",
+   "qty": "0.22631031",
+   "equity": "13449.37"
+  },
+  {
+   "day": "2024-10-05",
+   "action": "open",
+   "side": "long",
+   "price": "62066.71",
+   "qty": "0.21669214",
+   "equity": "13442.64"
+  },
+  {
+   "day": "2024-10-10",
+   "action": "close",
+   "side": "long",
+   "price": "60594.18",
+   "qty": "0.21669214",
+   "equity": "13110.22"
+  },
+  {
+   "day": "2024-10-10",
+   "action": "open",
+   "side": "short",
+   "price": "60594.18",
+   "qty": "0.21636104",
+   "equity": "13103.66"
+  },
+  {
+   "day": "2024-10-12",
+   "action": "close",
+   "side": "short",
+   "price": "62521.50",
+   "qty": "0.21636104",
+   "equity": "12681.74"
+  },
+  {
+   "day": "2024-10-12",
+   "action": "open",
+   "side": "long",
+   "price": "62521.50",
+   "qty": "0.20283813",
+   "equity": "12675.40"
+  },
+  {
+   "day": "2025-02-12",
+   "action": "close",
+   "side": "long",
+   "price": "95712.25",
+   "qty": "0.20283813",
+   "equity": "18675.50"
+  },
+  {
+   "day": "2025-02-12",
+   "action": "open",
+   "side": "short",
+   "price": "95712.25",
+   "qty": "0.19512128",
+   "equity": "18666.16"
+  },
+  {
+   "day": "2025-02-13",
+   "action": "close",
+   "side": "short",
+   "price": "97835.86",
+   "qty": "0.19512128",
+   "equity": "18244.38"
+  },
+  {
+   "day": "2025-02-13",
+   "action": "open",
+   "side": "long",
+   "price": "97835.86",
+   "qty": "0.18647950",
+   "equity": "18235.26"
+  },
+  {
+   "day": "2025-02-14",
+   "action": "close",
+   "side": "long",
+   "price": "96541.29",
+   "qty": "0.18647950",
+   "equity": "17982.16"
+  },
+  {
+   "day": "2025-02-14",
+   "action": "open",
+   "side": "short",
+   "price": "96541.29",
+   "qty": "0.18626394",
+   "equity": "17973.17"
+  },
+  {
+   "day": "2025-02-15",
+   "action": "close",
+   "side": "short",
+   "price": "97464.69",
+   "qty": "0.18626394",
+   "equity": "17795.13"
+  },
+  {
+   "day": "2025-02-15",
+   "action": "open",
+   "side": "long",
+   "price": "97464.69",
+   "qty": "0.18258025",
+   "equity": "17786.23"
+  },
+  {
+   "day": "2025-02-17",
+   "action": "close",
+   "side": "long",
+   "price": "96047.79",
+   "qty": "0.18258025",
+   "equity": "17516.21"
+  },
+  {
+   "day": "2025-02-17",
+   "action": "open",
+   "side": "short",
+   "price": "96047.79",
+   "qty": "0.18236972",
+   "equity": "17507.45"
+  },
+  {
+   "day": "2025-02-21",
+   "action": "close",
+   "side": "short",
+   "price": "98272.45",
+   "qty": "0.18236972",
+   "equity": "17107.00"
+  },
+  {
+   "day": "2025-02-21",
+   "action": "open",
+   "side": "long",
+   "price": "98272.45",
+   "qty": "0.17407723",
+   "equity": "17098.44"
+  },
+  {
+   "day": "2025-02-22",
+   "action": "close",
+   "side": "long",
+   "price": "96108.77",
+   "qty": "0.17407723",
+   "equity": "16713.04"
+  },
+  {
+   "day": "2025-02-22",
+   "action": "open",
+   "side": "short",
+   "price": "96108.77",
+   "qty": "0.17389717",
+   "equity": "16704.69"
+  },
+  {
+   "day": "2025-04-23",
+   "action": "close",
+   "side": "short",
+   "price": "93423.58",
+   "qty": "0.17389717",
+   "equity": "17240.55"
+  },
+  {
+   "day": "2025-04-23",
+   "action": "open",
+   "side": "long",
+   "price": "93423.58",
+   "qty": "0.18454171",
+   "equity": "17231.93"
+  },
+  {
+   "day": "2025-08-26",
+   "action": "close",
+   "side": "long",
+   "price": "110042.09",
+   "qty": "0.18454171",
+   "equity": "19895.59"
+  },
+  {
+   "day": "2025-08-26",
+   "action": "open",
+   "side": "short",
+   "price": "110042.09",
+   "qty": "0.18079980",
+   "equity": "19885.64"
+  },
+  {
+   "day": "2025-08-27",
+   "action": "close",
+   "side": "short",
+   "price": "111732.34",
+   "qty": "0.18079980",
+   "equity": "19573.66"
+  },
+  {
+   "day": "2025-08-27",
+   "action": "open",
+   "side": "long",
+   "price": "111732.34",
+   "qty": "0.17518350",
+   "equity": "19563.88"
+  },
+  {
+   "day": "2025-08-28",
+   "action": "close",
+   "side": "long",
+   "price": "111172.66",
+   "qty": "0.17518350",
+   "equity": "19453.99"
+  },
+  {
+   "day": "2025-08-28",
+   "action": "open",
+   "side": "short",
+   "price": "111172.66",
+   "qty": "0.17498895",
+   "equity": "19444.26"
+  },
+  {
+   "day": "2025-08-29",
+   "action": "close",
+   "side": "short",
+   "price": "112529.80",
+   "qty": "0.17498895",
+   "equity": "19201.36"
+  },
+  {
+   "day": "2025-08-29",
+   "action": "open",
+   "side": "long",
+   "price": "112529.80",
+   "qty": "0.17063355",
+   "equity": "19191.76"
+  },
+  {
+   "day": "2025-08-30",
+   "action": "close",
+   "side": "long",
+   "price": "108310.73",
+   "qty": "0.17063355",
+   "equity": "18460.61"
+  },
+  {
+   "day": "2025-08-30",
+   "action": "open",
+   "side": "short",
+   "price": "108310.73",
+   "qty": "0.17044123",
+   "equity": "18451.38"
+  },
+  {
+   "day": "2025-09-09",
+   "action": "close",
+   "side": "short",
+   "price": "112035.10",
+   "qty": "0.17044123",
+   "equity": "17839.88"
+  },
+  {
+   "day": "2025-09-09",
+   "action": "open",
+   "side": "long",
+   "price": "112035.10",
+   "qty": "0.15923474",
+   "equity": "17830.96"
+  },
+  {
+   "day": "2025-09-10",
+   "action": "close",
+   "side": "long",
+   "price": "111477.60",
+   "qty": "0.15923474",
+   "equity": "17729.09"
+  },
+  {
+   "day": "2025-09-10",
+   "action": "open",
+   "side": "short",
+   "price": "111477.60",
+   "qty": "0.15903721",
+   "equity": "17720.22"
+  },
+  {
+   "day": "2025-09-11",
+   "action": "close",
+   "side": "short",
+   "price": "113919.58",
+   "qty": "0.15903721",
+   "equity": "17326.57"
+  },
+  {
+   "day": "2025-09-11",
+   "action": "open",
+   "side": "long",
+   "price": "113919.58",
+   "qty": "0.15209475",
+   "equity": "17317.91"
+  },
+  {
+   "day": "2025-09-23",
+   "action": "close",
+   "side": "long",
+   "price": "112582.18",
+   "qty": "0.15209475",
+   "equity": "17079.34"
+  },
+  {
+   "day": "2025-09-23",
+   "action": "open",
+   "side": "short",
+   "price": "112582.18",
+   "qty": "0.15170553",
+   "equity": "17070.80"
+  },
+  {
+   "day": "2025-09-30",
+   "action": "close",
+   "side": "short",
+   "price": "114279.95",
+   "qty": "0.15170553",
+   "equity": "16820.32"
+  },
+  {
+   "day": "2025-09-30",
+   "action": "open",
+   "side": "long",
+   "price": "114279.95",
+   "qty": "0.14718521",
+   "equity": "16811.91"
+  },
+  {
+   "day": "2025-10-11",
+   "action": "close",
+   "side": "long",
+   "price": "112692.46",
+   "qty": "0.14718521",
+   "equity": "16530.42"
+  },
+  {
+   "day": "2025-10-11",
+   "action": "open",
+   "side": "short",
+   "price": "112692.46",
+   "qty": "0.14668611",
+   "equity": "16522.15"
+  }
+ ],
  "points": [
   {
    "day": "2022-04-11",

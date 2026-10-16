@@ -1,5 +1,6 @@
 import time
 import uuid
+from decimal import Decimal
 
 import jwt
 import pytest
@@ -246,6 +247,15 @@ def test_backtests_list_r7_with_drawdowns_and_need_a_viewer():
     assert r7["points"][0] == {"day": "2022-04-11", "strategy": "10000.00", "buy_and_hold": "10000.00",
                                "strategy_drawdown": "0.000000", "buy_and_hold_drawdown": "0.000000"}
     assert max(p["strategy_drawdown"] for p in r7["points"]) == r7["summary"]["max_dd"]
+    trades = r7["trades"]
+    assert len(trades) == r7["summary"]["flips"] == r7["trade_stats"]["count"] and "fills" not in r7
+    assert trades[0] == {"n": 1, "side": "short", "entry_day": "2022-04-12", "entry_price": "39497.70", "qty": "0.25317931",
+                         "exit_day": "2022-04-20", "exit_price": "41481.19", "open": False, "days": 8,
+                         "pnl": "-513.09", "return": "-0.051309"}
+    assert trades[-1]["open"] is True and trades[-1]["exit_day"] is None
+    # every trade's P&L includes its fees and funding, so together they give the run's net
+    assert sum(Decimal(t["pnl"]) for t in trades) == Decimal(r7["points"][-1]["strategy"]) - Decimal(r7["initial_equity"])
+    assert Decimal(r7["trade_stats"]["long_pnl"]) + Decimal(r7["trade_stats"]["short_pnl"]) == sum(Decimal(t["pnl"]) for t in trades)
     assert _get(c, "/api/v1/backtests?market=options", _token(VIEWER)).json() == {"items": []}
     assert _get(c, "/api/v1/backtests", _token(STRANGER)).status_code == 403
 
@@ -260,3 +270,14 @@ def test_backtest_drawdowns_follow_the_running_peak(tmp_path):
     assert [p["strategy_drawdown"] for p in x["points"]] == ["0.000000", "0.000000", "0.250000"]
     assert [p["buy_and_hold_drawdown"] for p in x["points"]] == ["0.000000", "0.100000", "0.010000"]
     assert load_backtests("spot", tmp_path) == []
+
+
+def test_round_trips_pair_legs_and_mark_an_open_trade():
+    from api.backtests import round_trips, trade_stats
+    fills = [{"day": "2024-01-01", "action": "open", "side": "long", "price": "100", "qty": "1", "equity": "99.9"},
+             {"day": "2024-01-05", "action": "close", "side": "long", "price": "110", "qty": "1", "equity": "109.8"},
+             {"day": "2024-01-05", "action": "open", "side": "short", "price": "110", "qty": "1", "equity": "109.7"}]
+    t = round_trips(fills, Decimal("100"), "2024-01-10", Decimal("104.8"))
+    assert [(x["side"], x["days"], x["pnl"], x["return"], x["open"]) for x in t] == [
+        ("long", 4, "9.80", "0.098000", False), ("short", 5, "-5.00", "-0.045537", True)]
+    assert trade_stats(t) == {"count": 2, "wins": 1, "long_pnl": "9.80", "short_pnl": "-5.00"}

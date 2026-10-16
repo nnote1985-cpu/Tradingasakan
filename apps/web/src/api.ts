@@ -134,6 +134,19 @@ export type ScorecardResponse = {
 };
 
 export type BacktestPoint = { day: string; strategy: string; buy_and_hold: string; strategy_drawdown: string; buy_and_hold_drawdown: string };
+export type BacktestTrade = {
+  n: number;
+  side: "long" | "short";
+  entry_day: string;
+  entry_price: string;
+  qty: string;
+  exit_day: string | null;        // null while still held at the end of the run
+  exit_price: string | null;
+  open: boolean;
+  days: number;
+  pnl: string;                    // after fees, slippage and funding while held
+  return: string;
+};
 export type Backtest = {
   id: string;
   name: string;
@@ -152,6 +165,8 @@ export type Backtest = {
   };
   note: string;
   points: BacktestPoint[];
+  trades?: BacktestTrade[];
+  trade_stats?: { count: number; wins: number; long_pnl: string; short_pnl: string };
 };
 
 export type ParamBound = { default: number; min: number; max: number };

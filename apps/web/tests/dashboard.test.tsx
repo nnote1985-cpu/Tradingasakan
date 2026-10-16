@@ -25,6 +25,11 @@ vi.mock("../src/api", () => ({
             flips: 57, days_long: 757, days_short: 603, fees: "903.89", funding_paid: "3478.14", log_return_long_days: "0.787719", log_return_short_days: "-0.077869", passes: true },
           note: "ยังไม่ได้ยืนยัน",
           points: [p("2022-04-11", "10000.00", "10000.00", "0", "0"), p("2022-04-12", "9850.05", "10128.35", "0.014995", "0")],
+          trades: [
+            { n: 1, side: "short", entry_day: "2022-04-12", entry_price: "39497.70", qty: "0.25317931", exit_day: "2022-04-20", exit_price: "41481.19", open: false, days: 8, pnl: "-513.09", return: "-0.051309" },
+            { n: 2, side: "long", entry_day: "2022-04-20", entry_price: "41481.19", qty: "0.22870381", exit_day: null, exit_price: null, open: true, days: 2, pnl: "120.00", return: "0.012648" },
+          ],
+          trade_stats: { count: 2, wins: 1, long_pnl: "120.00", short_pnl: "-513.09" },
         }],
       };
     }
@@ -182,6 +187,12 @@ test("tabs switch through the URL hash; futures and options say they are not ope
   await waitFor(() => expect(container.querySelector("[data-testid=backtest]")?.textContent).toContain("ผ่านช่วง dev แต่ยังไม่ยืนยัน"));
   expect(container.querySelector("[data-testid=backtest]")?.textContent).toContain("+103.37%");
   expect(screen.getByRole("img", { name: "มูลค่าพอร์ต R7" })).toBeTruthy();
+  const trades = container.querySelector("[data-testid=trades]");
+  expect(trades?.querySelector("summary")?.textContent).toContain("รายไม้ 2 ไม้ · กำไร 1 ไม้ · ขาดทุน 1 ไม้");
+  expect([...(trades?.querySelectorAll("tbody tr") ?? [])].map((r) => r.textContent)).toEqual([
+    "1Short2022-04-1239,497.702022-04-2041,481.198-513.09−5.13%",
+    "2Long2022-04-2041,481.19ยังถืออยู่ (ตีราคาสิ้นช่วง)–2120.00+1.26%",
+  ]);
   fireEvent.click(screen.getByRole("tab", { name: "AI" }));
   await waitFor(() => expect(container.querySelector("[data-testid=ai-settings]")).not.toBeNull());
   expect(screen.getByRole("tab", { name: "AI" }).getAttribute("aria-selected")).toBe("true");
