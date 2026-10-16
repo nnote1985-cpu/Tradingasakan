@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from psycopg_pool import PoolTimeout
 
 from api.auth import AuthError, Principal, RoleStore, TokenVerifier, authenticate
 from api.portfolios import NoPortfolios, PortfolioStore, overview_items
@@ -37,6 +38,12 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
         return JSONResponse(status_code=exc.status, content={
             "code": exc.code, "request_id": getattr(request.state, "request_id", None),
             "retryable": False, "message": exc.message_th})
+
+    @app.exception_handler(PoolTimeout)
+    async def database_unavailable(request: Request, exc: PoolTimeout) -> JSONResponse:
+        return JSONResponse(status_code=503, content={
+            "code": "database_unavailable", "request_id": getattr(request.state, "request_id", None),
+            "retryable": True, "message": "เชื่อมต่อฐานข้อมูลไม่ได้ กรุณาตรวจ DATABASE_URL ในไฟล์ .env ของ Backend"})
 
     async def principal(request: Request) -> Principal:
         return await authenticate(request.headers.get("authorization"), verifier, roles)
@@ -74,7 +81,7 @@ def app_from_env() -> FastAPI:   # uvicorn --factory api.main:app_from_env
     s = load_settings()
     if not s.supabase_url or not s.database_url:
         raise RuntimeError("SUPABASE_URL and DATABASE_URL are required")
-    pool = AsyncConnectionPool(s.database_url, open=False)
+    pool = AsyncConnectionPool(s.database_url, open=False, timeout=5)
     app = create_app(s, SupabaseJwtVerifier(s.supabase_url), PgRoleStore(pool), PgPortfolioStore(pool))
     app.router.on_startup.append(pool.open)
     app.router.on_shutdown.append(pool.close)

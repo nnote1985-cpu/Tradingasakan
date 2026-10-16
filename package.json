@@ -1,0 +1,11 @@
+{
+  "name": "tradingasakan",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs"
+  }
+}
