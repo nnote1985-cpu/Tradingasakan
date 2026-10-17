@@ -14,7 +14,7 @@ const worker = (over: Partial<WorkerStatus> = {}): WorkerStatus => ({
   clock: { offset_ms: 25, status: "OK", signing_paused: false }, account_ok: true, deadman_ok: true,
   streams: { klines: { connected: true, connects: 1, silent_ms: 900, error: null }, account: { connected: false, connects: 2, silent_ms: null, error: "timeout" } },
   quote_age_ms: 200, bars: { last_1m: 1792227600000, last_1d: 1792195200000, gaps: 0, revisions: 0 },
-  persist: { ok: true, pending: 0, epoch: 1 }, epoch: { epoch: 1, opened_at: now },
+  persist: { ok: true, pending: 0, epoch: 1 }, execution: null, epoch: { epoch: 1, opened_at: now },
   reconcile: { verdict: "DISCREPANCY", checked_at: now, differences: ["order 9 (web_1) was not placed by the bot"], open_orders: 1 },
   balances: [{ asset: "BTC", free: "1", locked: "0" }, { asset: "USDT", free: "9000", locked: "1000" }], asset_count: 412, trades: 3,
   ...over,
@@ -47,4 +47,18 @@ test("a silent worker is flagged with what to do", async () => {
   show();
   expect(await screen.findByRole("alert")).toBeTruthy();
   expect(screen.getByText("ไม่ตอบ")).toBeTruthy();
+});
+
+test("execution shows today's orders, unknown orders and the conformance cycle", async () => {
+  const execution = {
+    safety: "SOFT_PAUSED", open_orders: 1, waiting: 0, orders_today: 4, cancels_today: 1, last_error: null,
+    unresolved: [{ client_order_id: "tak-abc", state: "RECONCILING", for_s: 42 }],
+    counts: { sent: 4, filled: 2, canceled: 1, rejected: 0, expired: 0, unknown: 1 },
+    conformance: { book: "tn-conformance-v1", cycle: "20261017T0800Z", cycles_done: 1, note: "limit-near: acknowledged" },
+  };
+  response.current = { available: true, workers: [worker({ execution })] };
+  show();
+  expect(await screen.findByText(/วันนี้ส่ง 4/)).toBeTruthy();
+  expect(screen.getByText(/tak-abc RECONCILING มา 42 วินาที/)).toBeTruthy();
+  expect(screen.getByText(/20261017T0800Z · limit-near: acknowledged · ครบ 1 รอบ/)).toBeTruthy();
 });

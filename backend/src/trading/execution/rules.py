@@ -43,6 +43,10 @@ class TradingRules:
     def round_qty(self, qty: Decimal) -> Decimal:
         return _to_step(qty, self.step_size, ROUND_FLOOR)
 
+    def qty_for_notional(self, notional: Decimal, price: Decimal) -> Decimal:
+        """The smallest quantity on the step whose value at ``price`` reaches ``notional`` (never below min_qty)."""
+        return max(_to_step(notional / price, self.step_size, ROUND_CEILING), self.min_qty)
+
     def round_price(self, price: Decimal, side: Side) -> Decimal:
         return _to_step(price, self.tick_size, ROUND_FLOOR if side is Side.BUY else ROUND_CEILING)
 

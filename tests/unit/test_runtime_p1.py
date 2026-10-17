@@ -426,3 +426,53 @@ def test_worker_persists_heartbeat_and_keeps_records_through_an_outage(tmp_path)
     assert rec.got == [("bar", 1)] and w.persist_ok is True
     w.alerts.flush()
     assert any("could not write to Supabase" in m for m in sink.sent) and any("writing to Supabase again" in m for m in sink.sent)
+
+
+# --- P4: the executor inside the worker ----------------------------------------------------------------------
+
+class _ExecutorFake:
+    def __init__(self, fenced: bool = False) -> None:
+        self.safety, self.started, self.fenced = AccountSafety(), False, fenced
+        self.ticks: list[tuple[int, bool]] = []
+
+    def start(self, token):
+        self.started = True
+
+    def tick(self, token, *, ready):
+        from trading.runtime.executor import LeaseFenced
+
+        if self.fenced:
+            raise LeaseFenced("token 1 is not the current unexpired lease")
+        self.ticks.append((token, ready))
+        self.safety.recovered(T0, reconciled=True) if self.safety.state.value == "RECOVERING" else None
+
+    def drain_records(self):
+        return [("trade", "t1")]
+
+    def body(self):
+        return {"safety": self.safety.state.value, "open_orders": 0}
+
+
+def test_worker_runs_the_executor_only_when_signing_is_allowed(tmp_path):
+    w, _, http, t = _worker(tmp_path)
+    ex = _ExecutorFake()
+    w.executor = ex  # type: ignore[assignment]
+    rec = _RecorderFake()
+    w.recorder = rec  # type: ignore[assignment]
+    w.start()
+    assert ex.started and rec.got == [("trade", "t1")]
+    t[0] += 2
+    w.tick()
+    assert ex.ticks == [(1, True)] and w.state.safety == "RUNNING"
+    assert json.loads((tmp_path / "hb.json").read_text())["execution"] == {"safety": "RUNNING", "open_orders": 0}
+    w.state.signing_paused = True
+    w.tick()
+    assert ex.ticks[-1] == (1, False)
+
+
+def test_a_fenced_order_write_stops_the_worker(tmp_path):
+    w, _, _, _ = _worker(tmp_path)
+    w.executor = _ExecutorFake(fenced=True)  # type: ignore[assignment]
+    w.start()
+    with pytest.raises(LeaseLost):
+        w.tick()

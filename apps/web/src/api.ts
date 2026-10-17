@@ -226,6 +226,18 @@ export type AssetStatus = AssetInfo & {
   missing_inputs?: string[];
 };
 export type StreamStatus = { connected: boolean; connects: number; silent_ms: number | null; error: string | null };
+export type WorkerExecution = {
+  safety: string;
+  open_orders: number;
+  unresolved: { client_order_id: string; state: string; for_s: number }[];
+  waiting: number;
+  orders_today: number;
+  cancels_today: number;
+  counts: Record<string, number>;
+  last_error: string | null;
+  conformance: { book: string; cycle: string | null; cycles_done: number; note: string } | null;
+};
+
 export type WorkerStatus = {
   account: string;
   owner: string;
@@ -245,6 +257,7 @@ export type WorkerStatus = {
   quote_age_ms: number | null;
   bars: { last_1m: number | null; last_1d: number | null; gaps: number | null; revisions: number | null };
   persist: { ok: boolean | null; pending: number; epoch: number | null } | null;
+  execution: WorkerExecution | null;
   epoch: { epoch: number; opened_at: string | null } | null;
   reconcile: { verdict: string; checked_at: string | null; differences: string[]; open_orders: number } | null;
   balances: { asset: string; free: string; locked: string }[];

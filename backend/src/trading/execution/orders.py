@@ -7,6 +7,10 @@ terminal status never removes fills, so CANCELED or EXPIRED may carry a filled
 quantity that still has to be managed as a position (§13.2 example).
 UNKNOWN (no answer after a submit) can only move to RECONCILING; while the
 facts stay unclear the order stays there instead of being forced terminal.
+An intent that is never sent ends EXPIRED (TTL passed, or its claim belonged
+to a stopped writer before it sent anything) or REJECTED (refused by the
+pre-trade check). SUBMITTING may end REJECTED when the exchange answers the
+submit with a refusal.
 """
 
 from __future__ import annotations
@@ -38,8 +42,8 @@ S = OrderState
 _RESOLVED = {S.ACKNOWLEDGED, S.PARTIALLY_FILLED, S.FILLED, S.CANCELED, S.REJECTED, S.EXPIRED}
 TERMINAL = frozenset({S.FILLED, S.CANCELED, S.REJECTED, S.EXPIRED})
 TRANSITIONS: dict[OrderState, frozenset[OrderState]] = {
-    S.INTENT: frozenset({S.SUBMITTING}),
-    S.SUBMITTING: frozenset({S.ACKNOWLEDGED, S.UNKNOWN}),
+    S.INTENT: frozenset({S.SUBMITTING, S.EXPIRED, S.REJECTED}),
+    S.SUBMITTING: frozenset({S.ACKNOWLEDGED, S.UNKNOWN, S.REJECTED}),
     S.ACKNOWLEDGED: frozenset({S.PARTIALLY_FILLED, S.FILLED, S.CANCELED, S.REJECTED, S.EXPIRED}),
     S.PARTIALLY_FILLED: frozenset({S.FILLED, S.CANCELED, S.EXPIRED}),
     S.UNKNOWN: frozenset({S.RECONCILING}),

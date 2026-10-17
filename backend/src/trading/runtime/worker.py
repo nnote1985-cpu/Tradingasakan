@@ -16,6 +16,12 @@ restarts it, and the new run waits for the lease like any other owner.
 Since P3 the worker also writes durable records (bars, trades, account
 checks, heartbeat) through :class:`trading.runtime.persist.Recorder` every
 10 s on the lease connection.
+
+Since P4 an :class:`~trading.runtime.executor.Executor` (when given) runs
+every tick after the lease renewal: it reconciles orders left by an earlier
+run, decides when RECOVERING may become RUNNING, and sends and follows
+Testnet orders. It is only ready while the clock check allows signing and
+the Testnet key passed its account check.
 """
 
 from __future__ import annotations
@@ -40,10 +46,12 @@ from trading.runtime.alerts import AlertQueue, Severity
 from trading.runtime.clock import ClockReading, ClockStatus, reading
 from trading.runtime.credentials import TestnetCredentials, mask
 from trading.runtime.deadman import PING_EVERY_S, DeadMan
+from trading.runtime.executor import LeaseFenced
 from trading.runtime.persist import Recorder
 
 WORKER_MODES = frozenset({TradingMode.SHADOW, TradingMode.TESTNET})
 HttpGet = Callable[[str, dict[str, str]], tuple[int, Any]]
+HttpSend = Callable[[str, str, dict[str, str]], tuple[int, Any, dict[str, str]]]
 http_get = endpoints.get_json
 
 
@@ -67,20 +75,64 @@ class Feeds(Protocol):
     def problems(self) -> list[tuple[Severity, str, str]]: ...
 
 
+class OrderRunner(Protocol):
+    """The P4 executor, as the worker sees it."""
+    safety: AccountSafety
+    started: bool
+
+    def start(self, token: int) -> None: ...
+    def tick(self, token: int, *, ready: bool) -> None: ...
+    def drain_records(self) -> list[Any]: ...
+    def body(self) -> dict[str, Any]: ...
+
+
 class LeaseStore(Protocol):
     def acquire_lease(self, owner: str, now: datetime, ttl: timedelta) -> Any: ...
     def load_safety(self) -> AccountSafety: ...
 
 
 class TestnetRest:
-    """Read-only Testnet REST for P1: server time and the account check. Every URL passes the endpoint guards."""
+    """Testnet REST: server time, the account check and (since P4) signed order calls. Every URL passes the endpoint guards.
+
+    ``call`` sends one request and never retries it. After a 429 or 418 it refuses further
+    calls until the Retry-After time has passed, so a ban is not extended by more traffic.
+    """
 
     __test__ = False
 
-    def __init__(self, creds: TestnetCredentials | None, get: HttpGet = http_get, wall_ms: Callable[[], float] | None = None) -> None:
-        self.creds, self._get = creds, get
+    def __init__(self, creds: TestnetCredentials | None, get: HttpGet = http_get, wall_ms: Callable[[], float] | None = None,
+                 send: HttpSend = endpoints.request_json) -> None:
+        self.creds, self._get, self._send = creds, get, send
         self._wall_ms = wall_ms or (lambda: time.time() * 1000)
         self.offset_ms = 0.0
+        self.blocked_until_ms = 0.0
+
+    @property
+    def rate_limited(self) -> bool:
+        return self._wall_ms() < self.blocked_until_ms
+
+    def call(self, method: str, path: str, params: dict[str, Any], *, signed: bool = True) -> tuple[int, Any]:
+        """One Testnet request. Raises :class:`RateLimited` without sending while a Retry-After is running."""
+        if self.rate_limited:
+            raise endpoints.RateLimited(f"Binance asked us to wait {int((self.blocked_until_ms - self._wall_ms()) / 1000)} s more")
+        if signed:
+            if self.creds is None:
+                raise WorkerRefused("no Testnet credentials loaded")
+            q = urllib.parse.urlencode(params | {"recvWindow": 5000, "timestamp": int(self._wall_ms() + self.offset_ms)})
+            q += "&signature=" + urllib.parse.quote(self.creds.sign(q), safe="")
+            url = endpoints.rest_url(endpoints.Venue.SPOT_TESTNET, path, q)
+            endpoints.check_signed(url)
+            headers = {"X-MBX-APIKEY": self.creds.api_key}
+        else:
+            url = endpoints.rest_url(endpoints.Venue.SPOT_TESTNET, path, urllib.parse.urlencode(params))
+            endpoints.check_public(url, method)
+            headers = {}
+        status, data, hdrs = self._send(method, url, headers)
+        if status in (418, 429):
+            wait = next((v for k, v in hdrs.items() if k.lower() == "retry-after"), "60")
+            self.blocked_until_ms = self._wall_ms() + 1000 * (float(wait) if str(wait).replace(".", "", 1).isdigit() else 60.0)
+            raise endpoints.RateLimited(f"Binance answered HTTP {status}; waiting {wait} s")
+        return status, data
 
     def clock(self) -> ClockReading:
         url = endpoints.rest_url(endpoints.Venue.SPOT_TESTNET, "/api/v3/time")
@@ -140,7 +192,7 @@ class WorkerState:
 class Worker:
     def __init__(self, settings: Settings, cfg: WorkerConfig, rest: TestnetRest, alerts: AlertQueue, *,
                  deadman: DeadMan | None = None, store: LeaseStore | None = None, feeds: Feeds | None = None,
-                 recorder: Recorder | None = None,
+                 recorder: Recorder | None = None, executor: OrderRunner | None = None,
                  now: Callable[[], datetime] = lambda: datetime.now(UTC), monotonic: Callable[[], float] = time.monotonic,
                  log: Callable[[str], None] = print) -> None:
         if settings.trading_mode not in WORKER_MODES:
@@ -152,7 +204,7 @@ class Worker:
                 raise WorkerRefused("TESTNET execution needs Testnet credentials")
         self.settings, self.cfg, self.rest, self.alerts = settings, cfg, rest, alerts
         self.deadman, self.store, self.now, self.mono, self.log = deadman, store, now, monotonic, log
-        self.feeds, self.recorder = feeds, recorder
+        self.feeds, self.recorder, self.executor = feeds, recorder, executor
         self.persist_ok: bool | None = None
         self.state = WorkerState()
 
@@ -175,6 +227,7 @@ class Worker:
             self._sync_bars()
         if self.feeds is not None:
             self.feeds.start()
+        self._start_executor()
         self.alerts.flush()
         t = self.mono()
         s._due |= {"clock": t + self.cfg.clock_every_s, "deadman": t + self.cfg.deadman_every_s, "flush": t + self.cfg.flush_every_s,
@@ -191,6 +244,7 @@ class Worker:
         if self._due("flush", self.cfg.flush_every_s):
             self.alerts.flush()
         self._drain_feeds()
+        self._run_executor()
         self._heartbeat()
         if self._due("persist", self.cfg.persist_every_s):
             self._persist()
@@ -284,6 +338,30 @@ class Worker:
         for severity, key, text in self.feeds.problems():
             self.alerts.push(severity, key, text)
 
+    def _start_executor(self) -> None:
+        ex, token = self.executor, self.state.lease_token
+        if ex is None or ex.started or token is None:
+            return
+        try:
+            ex.start(token)
+        except Exception as e:  # noqa: BLE001 - retried next tick; orders stay blocked until it works
+            self.alerts.push(Severity.WARNING, "executor", f"could not load stored orders: {type(e).__name__}; retrying")
+
+    def _run_executor(self) -> None:
+        ex, token = self.executor, self.state.lease_token
+        if ex is None or token is None:
+            return
+        if not ex.started:
+            self._start_executor()
+            if not ex.started:
+                return
+        try:
+            ex.tick(token, ready=not self.state.signing_paused and self.state.account_ok is True)
+        except LeaseFenced as e:
+            self.alerts.push(Severity.CRITICAL, "lease", f"order write refused by the fencing token; stopping: {e}")
+            raise LeaseLost(str(e)) from e
+        self.state.safety = ex.safety.state.value
+
     def _sync_bars(self) -> None:
         assert self.recorder is not None and self.feeds is not None
         try:
@@ -298,7 +376,7 @@ class Worker:
         """Write queued feed records and the heartbeat. A failure keeps the records for the next try."""
         if self.recorder is None:
             return
-        records: list[Any] = []
+        records: list[Any] = self.executor.drain_records() if self.executor is not None else []
         if self.feeds is not None:
             while True:
                 try:
@@ -325,6 +403,8 @@ class Worker:
                  "execution_enabled": self.settings.testnet_execution_enabled}
         if self.feeds is not None:
             body["feeds"] = self.feeds.health()
+        if self.executor is not None:
+            body["execution"] = self.executor.body()
         if self.recorder is not None:
             body["persist"] = {"ok": self.persist_ok, "pending": len(self.recorder.pending), "epoch": self.recorder.epoch,
                                **self.recorder.counts}

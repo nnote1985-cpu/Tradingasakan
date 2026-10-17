@@ -42,6 +42,10 @@ class EndpointRefused(RuntimeError):
     pass
 
 
+class RateLimited(RuntimeError):
+    """Binance answered 429/418, or its Retry-After has not passed yet. The request was not carried out."""
+
+
 def _parse(url: str, scheme: str = "https") -> urllib.parse.SplitResult:
     u = urllib.parse.urlsplit(url)
     if u.scheme != scheme:
@@ -98,13 +102,25 @@ def opener() -> urllib.request.OpenerDirector:
 
 def get_json(url: str, headers: dict[str, str]) -> tuple[int, Any]:
     """GET through the no-redirect opener; returns (status, parsed JSON or None). Callers check the URL first."""
-    req = urllib.request.Request(url, headers={"User-Agent": "tradingasakan-worker", **headers})
+    status, data, _ = request_json("GET", url, headers)
+    return status, data
+
+
+def request_json(method: str, url: str, headers: dict[str, str], timeout: float = 10) -> tuple[int, Any, dict[str, str]]:
+    """One request through the no-redirect opener, never retried here: (status, parsed JSON or None, response headers).
+
+    Network errors and timeouts propagate; for an order submit the caller treats them as an unknown outcome.
+    Callers check the URL first.
+    """
+    if method not in ("GET", "POST", "DELETE"):
+        raise EndpointRefused(f"method {method} is not used")
+    req = urllib.request.Request(url, method=method, headers={"User-Agent": "tradingasakan-worker", **headers})
     try:
-        with opener().open(req, timeout=10) as r:
-            status, body = int(r.status), r.read()
+        with opener().open(req, timeout=timeout) as r:
+            status, body, hdrs = int(r.status), r.read(), dict(r.headers.items())
     except urllib.error.HTTPError as e:
-        status, body = e.code, e.read()
+        status, body, hdrs = e.code, e.read(), dict(e.headers.items()) if e.headers else {}
     try:
-        return status, json.loads(body) if body else None
+        return status, json.loads(body) if body else None, hdrs
     except ValueError:
-        return status, None
+        return status, None, hdrs

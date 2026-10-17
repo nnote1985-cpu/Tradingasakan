@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { type ApiError, apiGet, type WorkerStatus, type WorkersResponse } from "./api";
+import { type ApiError, apiGet, type WorkerExecution, type WorkerStatus, type WorkersResponse } from "./api";
 
 // Read-only status of the Testnet worker (testnet-development-plan.md §9). The worker writes this to
 // Supabase about every 10 s; nothing on this page sends a command to it. Pause/resume come with P5.
@@ -29,6 +29,27 @@ function Row({ label, ok, children }: { label: string; ok?: boolean | null; chil
       <span className="w-40 shrink-0 text-[var(--text-secondary)]">{label}</span>
       <span>{ok !== undefined && <Dot ok={ok} />}{children}</span>
     </div>
+  );
+}
+
+function ExecutionRows({ x }: { x: WorkerExecution }) {
+  const c = x.counts;
+  return (
+    <>
+      <Row label="คำสั่ง Testnet" ok={!x.last_error && x.unresolved.length === 0}>
+        วันนี้ส่ง {x.orders_today} · ยกเลิก {x.cancels_today} · เปิดอยู่ {x.open_orders}
+        {" "}· รอบนี้ เต็ม {c.filled ?? 0} ยกเลิก {c.canceled ?? 0} ถูกปฏิเสธ {c.rejected ?? 0} หมดอายุ {c.expired ?? 0}
+        {x.last_error && <span className="text-[var(--loss)]"> · {x.last_error}</span>}
+      </Row>
+      {x.unresolved.length > 0 && (
+        <ul role="alert" className="ml-40 list-disc pl-6 text-sm text-[var(--loss)]">
+          {x.unresolved.map((u) => <li key={u.client_order_id}>{u.client_order_id} {u.state} มา {u.for_s} วินาที (ยังไม่เปิดคำสั่งใหม่จนกว่าจะรู้ผล)</li>)}
+        </ul>
+      )}
+      <Row label="Conformance (ทดสอบระบบ)">
+        {x.conformance ? `${x.conformance.cycle ?? "–"} · ${x.conformance.note || "–"} · ครบ ${x.conformance.cycles_done} รอบ` : "ปิดอยู่"}
+      </Row>
+    </>
   );
 }
 
@@ -76,6 +97,7 @@ function WorkerCard({ w }: { w: WorkerStatus }) {
           {w.asset_count > w.balances.length && <span className="text-[var(--text-muted)]"> · รวม {w.asset_count} สินทรัพย์</span>}
         </Row>
         <Row label="รอบบัญชี (epoch)">{w.epoch ? `#${w.epoch.epoch} เริ่ม ${ago(w.epoch.opened_at)} · เทรด ${w.trades} รายการ` : "ยังไม่เปิด"}</Row>
+        {w.execution && <ExecutionRows x={w.execution} />}
         {w.persist && (
           <Row label="บันทึกลง Supabase" ok={w.persist.ok}>
             {w.persist.ok === false ? "เขียนไม่ได้ กำลังลองใหม่" : "ปกติ"} · รอเขียน {w.persist.pending}
