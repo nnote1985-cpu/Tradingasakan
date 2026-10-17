@@ -287,6 +287,7 @@ def _v12_sql(tmp_path, state: dict) -> str:
     (tmp_path / v).mkdir()
     (tmp_path / v / "state.json").write_text(json.dumps(state))
     extra = [] if v == "pathA-v1.2" else ["--commit", f"{v}=abcdef1"]
+    extra.append("--risk-and-agent-tables")
     return subprocess.run([sys.executable, str(ROOT / "scripts/trading_sync_sql.py"), "--root", str(tmp_path), *extra],
                           check=True, capture_output=True, text=True).stdout
 
@@ -330,6 +331,13 @@ def test_pathA_v12_sync_copies_the_spot_journal(db, tmp_path, halt):
     assert bad == []
     sells = sum(1 for e in state["book"]["entries"] if e["data"].get("side") == "SELL")
     assert sells == 1 and (state["risk"]["halted"] is halt)
+    halted = db.execute("select halted, halt_reason from trading.portfolio_risk_status where label = %s",
+                        (f"{label}/paper",)).fetchone()
+    assert halted[0] is halt and (halted[1] is not None) is halt
+    n_risk = db.execute("select count(*) from trading.risk_events where source_event_key like %s",
+                        (f"{label}/paper:%",)).fetchone()[0]
+    assert n_risk == sum(1 for e in state["journal"] if e["kind"] in ("alert", "halt", "resume"))
+
 
 
 def _load(name: str, rel: str):
@@ -376,3 +384,29 @@ def test_perp_and_paired_books_land_balanced_and_once(db, tmp_path, which):
         tol = Decimal(len(ledger["entries"])) * Decimal("1e-17")
         assert set(a for a, v in rows.items() if v) == set(a for a, v in want.items() if v)
         assert all(abs(rows[a] - want[a]) <= tol for a in want if want[a])
+
+
+def test_paired_run_risk_and_agent_tables(db, tmp_path):
+    """With --risk-and-agent-tables, AI answers and HALTs land in their own append-only tables."""
+    import sys
+    from decimal import Decimal
+
+    state = _load("p5_tests", "tests/unit/test_phase5_paired.py").paid_halting_state()
+    (tmp_path / "pathA-p5-r1").mkdir()
+    (tmp_path / "pathA-p5-r1" / "state.json").write_text(json.dumps(state))
+    sql = subprocess.run([sys.executable, str(ROOT / "scripts/trading_sync_sql.py"), "--root", str(tmp_path),
+                          "--risk-and-agent-tables"], check=True, capture_output=True, text=True).stdout
+    db.execute("insert into trading.workspace_settings (owner_id) values (gen_random_uuid()) on conflict do nothing")
+    db.execute(sql)
+    db.execute(sql)
+    rows = db.execute("select kind, decision, cost_usd from trading.agent_decisions d join trading.portfolios p "
+                      "on p.id = d.portfolio_id where p.label = 'pathA-p5-r1/ai'").fetchall()
+    assert len(rows) == len(state["filter_log"]) + len(state["diagnostics"])
+    assert sum(r[2] for r in rows) == sum(Decimal(r["cost_usd"]) for r in state["filter_log"] + state["diagnostics"])
+    costs = db.execute("select sum(l.amount) from trading.journal_lines l join trading.journal_entries e on e.id = l.entry_id "
+                       "where e.source_event_key like 'pathA-p5-r1/ai:%' and l.ledger_account = 'operating_costs'").fetchone()[0]
+    assert costs == sum(r[2] for r in rows)
+    status = dict(db.execute("select label, halted from trading.portfolio_risk_status where label like 'pathA-p5-r1/%'").fetchall())
+    assert status == {"pathA-p5-r1/code": True, "pathA-p5-r1/ai": True, "pathA-p5-r1/buy_and_hold": False}
+    with pytest.raises(psycopg.errors.RaiseException):
+        db.execute("update trading.agent_decisions set decision = 'VETO'")
