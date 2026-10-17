@@ -36,10 +36,14 @@ Form defaults are examples, not researched or approved trading settings.
   same key conflicts.
 - Status is always `draft`; `execution_supported` is always false. Unknown
   fields such as `bot_id`, `mode`, activation or trading credentials are refused.
-- Stored locally on the **API host**, at `var/profiles/drafts.sqlite3`, with
-  revision time, author and content hash. This file is not the Supabase database
-  and is not synchronized across hosts. Use persistent disk and include the file
-  in host backups; relocating the API without it will not carry drafts over.
+- Stored in Supabase, table `trading.bot_profile_drafts` (migration
+  `20261017085024_bot_profile_drafts.sql`): one append-only row per revision with
+  time, author and content hash. RLS is on and only the API's service connection
+  reads it; no worker or executor reads it. Moving the API to another host keeps
+  the drafts.
+- A save that loses the race to another editor gets 409. The form stays; the
+  page shows the newer revision and lets the editor either save this form on top
+  of it (as the next revision) or open the newer revision instead.
 - Restarting the API or refreshing the browser preserves saved drafts. Unsaved
   editors survive app-tab navigation in the query cache, but are not saved on
   disk. Browser reload while the editor is mounted prompts about unsaved input.
