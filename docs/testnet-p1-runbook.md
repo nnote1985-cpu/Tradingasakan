@@ -86,3 +86,18 @@ Task เริ่มเองตอน logon, รันแบบซ่อนห�
 | Worker ตัวที่สอง (RT07) | ผ่าน: ตัวที่สองหยุดเองด้วย "another worker holds the writer lease" (exit 3) |
 | ปิดเว็บแล้ว worker เดินต่อ (RT01) | worker เป็น process แยกจาก API และไม่ import โค้ดเว็บ (test); heartbeat เดินขณะที่ไม่ได้เปิดเว็บ |
 | Alert ของ worker เข้า Telegram | ผ่าน: started, clock WARN, stopped และ CRITICAL lease เข้าแชทบอทของ Note ครบ |
+
+## 9. P2: feeds (ราคาและบัญชี)
+
+ตั้งแต่ P2 worker รัน feed สามตัวใน thread ของตัวเอง (`trading.ingest`)
+- แท่งราคา 1m และ 1d ของ BTCUSDT จาก Mainnet public (`data-stream.binance.vision`) เก็บที่ `var\ingest\bars\` และ backfill จาก REST (`data-api.binance.vision`) ตอนเริ่มและทุกครั้งที่ต่อใหม่ (1m ย้อน 2 วัน, 1d ย้อน 150 วันสำหรับ SMA100)
+- ราคา bid/ask ของ BTCUSDT บน Testnet (bookTicker)
+- user stream ของบัญชี Testnet ผ่าน WebSocket API (`session.logon` ด้วย key Ed25519) และเทียบกับ REST account/openOrders ตอนเริ่ม หลังต่อใหม่ และทุก 30 วินาที
+
+ถ้าไม่ตรงกัน = CRITICAL; ราคาเงียบเกิน 10 วินาที, kline เงียบเกิน 3 นาที หรือ user stream หลุด = WARNING (หลังเริ่มได้ 30 วินาที)
+สถานะอยู่ใน `feeds` ของ `var\worker\heartbeat.json` ปิด feed ได้ด้วย `setx WORKER_FEEDS off`
+
+หลัง `git pull` ให้รีสตาร์ท task เพื่อโหลดโค้ดใหม่:
+```
+powershell -Command "Stop-ScheduledTask 'Tradingasakan Testnet worker'; Start-ScheduledTask 'Tradingasakan Testnet worker'"
+```

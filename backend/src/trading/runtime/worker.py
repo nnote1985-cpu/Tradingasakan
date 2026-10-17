@@ -39,6 +39,7 @@ from trading.runtime.deadman import PING_EVERY_S, DeadMan
 
 WORKER_MODES = frozenset({TradingMode.SHADOW, TradingMode.TESTNET})
 HttpGet = Callable[[str, dict[str, str]], tuple[int, Any]]
+http_get = endpoints.get_json
 
 
 class WorkerRefused(RuntimeError):
@@ -49,22 +50,19 @@ class LeaseLost(RuntimeError):
     pass
 
 
+class Feeds(Protocol):
+    """The P2 ingestion service, as the worker sees it."""
+    events: Any
+
+    def start(self) -> None: ...
+    def stop(self, timeout: float = 5) -> None: ...
+    def health(self) -> dict[str, Any]: ...
+    def problems(self) -> list[tuple[Severity, str, str]]: ...
+
+
 class LeaseStore(Protocol):
     def acquire_lease(self, owner: str, now: datetime, ttl: timedelta) -> Any: ...
     def load_safety(self) -> AccountSafety: ...
-
-
-def http_get(url: str, headers: dict[str, str]) -> tuple[int, Any]:
-    req = urllib.request.Request(url, headers={"User-Agent": "tradingasakan-worker", **headers})
-    try:
-        with endpoints.opener().open(req, timeout=10) as r:
-            status, body = int(r.status), r.read()
-    except urllib.error.HTTPError as e:
-        status, body = e.code, e.read()
-    try:
-        return status, json.loads(body) if body else None
-    except ValueError:
-        return status, None
 
 
 class TestnetRest:
@@ -89,15 +87,20 @@ class TestnetRest:
         self.offset_ms = r.offset_ms
         return r
 
-    def account(self) -> tuple[int, Any]:
+    def _signed(self, path: str, params: dict[str, Any]) -> tuple[int, Any]:
         if self.creds is None:
             raise WorkerRefused("no Testnet credentials loaded")
-        q = urllib.parse.urlencode({"omitZeroBalances": "true", "recvWindow": 5000,
-                                    "timestamp": int(self._wall_ms() + self.offset_ms)})
+        q = urllib.parse.urlencode(params | {"recvWindow": 5000, "timestamp": int(self._wall_ms() + self.offset_ms)})
         q += "&signature=" + urllib.parse.quote(self.creds.sign(q), safe="")
-        url = endpoints.rest_url(endpoints.Venue.SPOT_TESTNET, "/api/v3/account", q)
+        url = endpoints.rest_url(endpoints.Venue.SPOT_TESTNET, path, q)
         endpoints.check_signed(url)
         return self._get(url, {"X-MBX-APIKEY": self.creds.api_key})
+
+    def account(self) -> tuple[int, Any]:
+        return self._signed("/api/v3/account", {"omitZeroBalances": "true"})
+
+    def open_orders(self, symbol: str) -> tuple[int, Any]:
+        return self._signed("/api/v3/openOrders", {"symbol": symbol})
 
 
 @dataclass
@@ -127,7 +130,7 @@ class WorkerState:
 
 class Worker:
     def __init__(self, settings: Settings, cfg: WorkerConfig, rest: TestnetRest, alerts: AlertQueue, *,
-                 deadman: DeadMan | None = None, store: LeaseStore | None = None,
+                 deadman: DeadMan | None = None, store: LeaseStore | None = None, feeds: Feeds | None = None,
                  now: Callable[[], datetime] = lambda: datetime.now(UTC), monotonic: Callable[[], float] = time.monotonic,
                  log: Callable[[str], None] = print) -> None:
         if settings.trading_mode not in WORKER_MODES:
@@ -139,6 +142,7 @@ class Worker:
                 raise WorkerRefused("TESTNET execution needs Testnet credentials")
         self.settings, self.cfg, self.rest, self.alerts = settings, cfg, rest, alerts
         self.deadman, self.store, self.now, self.mono, self.log = deadman, store, now, monotonic, log
+        self.feeds = feeds
         self.state = WorkerState()
 
     # --- lifecycle ----------------------------------------------------------
@@ -156,6 +160,8 @@ class Worker:
         if self.rest.creds is not None:
             self._check_account()
         self._ping()
+        if self.feeds is not None:
+            self.feeds.start()
         self.alerts.flush()
         t = self.mono()
         s._due |= {"clock": t + self.cfg.clock_every_s, "deadman": t + self.cfg.deadman_every_s, "flush": t + self.cfg.flush_every_s}
@@ -169,9 +175,12 @@ class Worker:
             self._ping()
         if self._due("flush", self.cfg.flush_every_s):
             self.alerts.flush()
+        self._drain_feeds()
         self._heartbeat()
 
     def stop(self, reason: str) -> None:
+        if self.feeds is not None:
+            self.feeds.stop()
         self.alerts.push(Severity.INFO, "stop", f"worker stopped: {reason}")
 
     def run(self, should_stop: Callable[[], bool], sleep: Callable[[float], None] = time.sleep) -> None:
@@ -246,12 +255,26 @@ class Worker:
             self.alerts.push(Severity.WARNING, "deadman", "dead-man ping failed; the external monitor may alert soon")
         self.state.deadman_ok = ok
 
+    def _drain_feeds(self) -> None:
+        if self.feeds is None:
+            return
+        while True:
+            try:
+                severity, key, text = self.feeds.events.get_nowait()
+            except Exception:  # noqa: BLE001 - queue.Empty
+                break
+            self.alerts.push(severity, key, text)
+        for severity, key, text in self.feeds.problems():
+            self.alerts.push(severity, key, text)
+
     def _heartbeat(self) -> None:
         s = self.state
         s.last_tick_at = self.now().isoformat(timespec="seconds")
         body = {k: v for k, v in s.__dict__.items() if not k.startswith("_")}
         body |= {"pid": os.getpid(), "owner": self.cfg.owner, "mode": self.settings.trading_mode.value,
                  "execution_enabled": self.settings.testnet_execution_enabled}
+        if self.feeds is not None:
+            body["feeds"] = self.feeds.health()
         path = self.cfg.heartbeat_path
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
