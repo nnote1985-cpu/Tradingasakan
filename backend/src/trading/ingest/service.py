@@ -259,6 +259,8 @@ class IngestService:
                 "bars_1m_last_open": s1m.last_open, "bars_1d_last_open": s1d.last_open,
                 "bar_gaps": len(s1m.gaps) + len(s1d.gaps), "bar_revisions": s1m.revisions + s1d.revisions,
                 "quote_age_ms": self.quotes.age_ms(SYMBOL, now),
+                "quote_bid": None if (q := self.quotes.latest.get(SYMBOL)) is None else str(q.bid),
+                "quote_ask": None if q is None else str(q.ask),
                 "balances": {a: str(b.free + b.locked) for a, b in self.account.balances.items() if a in ("BTC", "USDT")},
                 "open_orders": len(self.account.open_orders), "fills": len(self.account.fills),
                 "reconcile": self.last_reconcile.get("verdict"),

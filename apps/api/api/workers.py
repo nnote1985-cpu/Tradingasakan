@@ -10,6 +10,7 @@ exist and the endpoint answers ``"available": false``.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Any, Protocol
 
 from psycopg import errors as pg_errors
@@ -61,6 +62,36 @@ order by t.traded_at desc, t.trade_id desc
 limit %s
 """
 ACTIVITY_LIMIT = 50
+PNL_ASSETS = ("BTC", "USDT")        # the bot trades BTCUSDT only; other Testnet assets are not marked
+
+BALANCES_SQL = """
+select e.epoch, e.opened_at, a.asset,
+       coalesce((e.opening_balances -> a.asset ->> 'free')::numeric, 0) + coalesce((e.opening_balances -> a.asset ->> 'locked')::numeric, 0),
+       (select b.free + b.locked from trading.exec_balances b where b.account = e.account and b.epoch = e.epoch and b.asset = a.asset)
+from trading.exec_account_epochs e cross join unnest(%s::text[]) as a(asset)
+where e.account = %s and e.status = 'OPEN'
+order by a.asset
+"""
+
+PNL_SQL = """
+select coalesce(i.book, ''),
+       count(*) filter (where t.side = 'BUY'), count(*) filter (where t.side = 'SELL'),
+       sum(case when t.side = 'BUY' then t.qty else -t.qty end)
+         - coalesce(sum(t.commission) filter (where t.commission_asset = 'BTC'), 0),
+       sum(case when t.side = 'SELL' then t.qty * t.price else -t.qty * t.price end)
+         - coalesce(sum(t.commission) filter (where t.commission_asset = 'USDT'), 0),
+       coalesce(sum(t.commission) filter (where t.commission_asset = 'BNB'), 0),
+       sum(t.qty * t.price),
+       (array_agg(t.price order by t.traded_at desc, t.trade_id desc))[1]
+from trading.exec_trades t
+join trading.exec_account_epochs e on e.account = t.account and e.epoch = t.epoch and e.status = 'OPEN'
+left join trading.exec_intents i on i.client_order_id = t.client_order_id
+where t.account = %s and t.symbol = 'BTCUSDT'
+group by 1
+order by 1
+"""
+
+MARK_SQL = "select body -> 'feeds' ->> 'quote_bid' from trading.worker_heartbeats where account = %s"
 
 
 class Unavailable(Exception):
@@ -70,6 +101,7 @@ class Unavailable(Exception):
 class WorkerStore(Protocol):
     async def worker_rows(self) -> list[tuple[Any, ...]]: ...
     async def activity_rows(self, account: str, limit: int) -> tuple[list[tuple[Any, ...]], list[tuple[Any, ...]]]: ...
+    async def pnl_rows(self, account: str) -> tuple[list[tuple[Any, ...]], list[tuple[Any, ...]], str | None]: ...
 
 
 class NoWorkers:
@@ -77,6 +109,9 @@ class NoWorkers:
         raise Unavailable
 
     async def activity_rows(self, account: str, limit: int) -> tuple[list[tuple[Any, ...]], list[tuple[Any, ...]]]:
+        raise Unavailable
+
+    async def pnl_rows(self, account: str) -> tuple[list[tuple[Any, ...]], list[tuple[Any, ...]], str | None]:
         raise Unavailable
 
 
@@ -99,6 +134,17 @@ class PgWorkerStore:
                 orders = list(await (await conn.execute(ORDERS_SQL, (account, limit))).fetchall())
                 trades = list(await (await conn.execute(TRADES_SQL, (account, limit))).fetchall())
                 return orders, trades
+        except pg_errors.UndefinedTable as e:
+            raise Unavailable from e
+
+
+    async def pnl_rows(self, account: str) -> tuple[list[tuple[Any, ...]], list[tuple[Any, ...]], str | None]:
+        try:
+            async with self.pool.connection() as conn:
+                balances = list(await (await conn.execute(BALANCES_SQL, (list(PNL_ASSETS), account))).fetchall())
+                books = list(await (await conn.execute(PNL_SQL, (account,))).fetchall())
+                mark = await (await conn.execute(MARK_SQL, (account,))).fetchone()
+                return balances, books, None if mark is None else mark[0]
         except pg_errors.UndefinedTable as e:
             raise Unavailable from e
 
@@ -145,3 +191,44 @@ def activity_items(orders: list[tuple[Any, ...]], trades: list[tuple[Any, ...]])
                     "commission": fee, "commission_asset": asset, "client_order_id": cid or None, "book": book, "leg": leg}
                    for at, epoch, tid, side, qty, price, quote, fee, asset, cid, book, leg in trades],
     }
+
+
+def _txt(d: Decimal | None, places: int | None = None) -> str | None:
+    if d is None:
+        return None
+    if places is not None:
+        d = d.quantize(Decimal(1).scaleb(-places))
+    n = d.normalize()
+    if n == 0:
+        return "0"
+    return format(n.quantize(Decimal(1)) if n == n.to_integral_value() else n, "f")
+
+
+def pnl_items(balances: list[tuple[Any, ...]], books: list[tuple[Any, ...]], mark_text: str | None) -> dict[str, Any]:
+    """Balances at the epoch's opening vs now, and each book's trading result in USDT (testnet-development-plan.md §8.6).
+
+    BTC is marked at the latest Testnet bid the worker saw, or the last trade price when that is missing. A book's
+    result is its USDT flow (sells minus buys minus USDT fees) plus its net BTC (buys minus sells minus BTC fees) at
+    that mark. Fees paid in BNB are listed apart and not converted. The epoch change covers everything that moved
+    the BTC and USDT balances, including activity outside the bot.
+    """
+    last_trade = next((r[7] for r in books if r[7] is not None), None)
+    mark = Decimal(mark_text) if mark_text else last_trade
+    epoch = opened = None
+    rows = []
+    change = Decimal(0) if mark is not None and balances else None
+    for ep, at, asset, opening, now in balances:
+        epoch, opened = ep, at
+        opening, now = Decimal(opening), (None if now is None else Decimal(now))
+        diff = None if now is None else now - opening
+        rows.append({"asset": asset, "opening": _txt(opening), "now": _txt(now), "change": _txt(diff)})
+        if change is not None and diff is not None and mark is not None:
+            change += diff if asset == "USDT" else diff * mark
+    out_books = []
+    for book, buys, sells, base_net, quote_net, bnb_fees, volume, _last in books:
+        pnl = None if mark is None else Decimal(quote_net) + Decimal(base_net) * mark
+        out_books.append({"book": book or None, "buys": buys, "sells": sells, "btc_net": _txt(Decimal(base_net)),
+                          "usdt_net": _txt(Decimal(quote_net), 8), "bnb_fees": _txt(Decimal(bnb_fees)), "volume": _txt(Decimal(volume), 2),
+                          "pnl_usdt": _txt(pnl, 4)})
+    return {"epoch": epoch, "opened_at": _iso(opened), "mark": _txt(mark), "mark_source": "quote" if mark_text else "last_trade" if mark else None,
+            "balances": rows, "equity_change_usdt": _txt(change, 4), "books": out_books}

@@ -275,6 +275,14 @@ export type WorkerTrade = {
   commission: string; commission_asset: string | null; client_order_id: string | null; book: string | null; leg: string | null;
 };
 
-export type WorkerActivity = { available: boolean; orders: WorkerOrder[]; trades: WorkerTrade[] };
+export type WorkerPnl = {
+  epoch: number | null; opened_at: string | null; mark: string | null; mark_source: "quote" | "last_trade" | null;
+  balances: { asset: string; opening: string; now: string | null; change: string | null }[];
+  equity_change_usdt: string | null;
+  books: { book: string | null; buys: number; sells: number; btc_net: string; usdt_net: string; bnb_fees: string; volume: string;
+           pnl_usdt: string | null }[];
+};
+
+export type WorkerActivity = { available: boolean; orders: WorkerOrder[]; trades: WorkerTrade[]; pnl: WorkerPnl | null };
 
 export type WorkersResponse = { available: boolean; workers: WorkerStatus[] };
