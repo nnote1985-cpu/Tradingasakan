@@ -74,3 +74,15 @@ Task เริ่มเองตอน logon, รันแบบซ่อนห�
 
 ใช้ `deploy/systemd/tradingasakan-worker.service` ใส่ค่าใน `/etc/tradingasakan/worker.env` (mode 600) และเปิด NTP
 แล้วรัน `scripts/testnet_discovery.py` บน VPS ก่อน (ADR 0002 §2)
+
+## 8. ผล drill บน PC ของ Note (2026-10-17)
+
+| Drill | ผล |
+| --- | --- |
+| `--once` ครั้งแรก | key ผ่าน (Ed25519), lease token 1, dead-man ok; นาฬิกา +567 ms (WARN) |
+| แก้นาฬิกา | `w32tm /stripchart` เดิม +0.54 s เทียบ time.windows.com → หลังตั้ง `MaxAllowedPhaseOffset=0` และ resync เหลือ ±2 ms; worker วัดได้ +25 ms (OK) |
+| ปิด worker แล้วได้ alert จากภายนอก (RT41) | ผ่าน: healthchecks ส่ง "My First Check is DOWN" เข้า Telegram ~6 นาทีหลัง ping สุดท้าย |
+| Scheduled task | ผ่าน: เริ่ม 03:40:02 UTC, lease token 2, clock OK, account ok, dead-man ok |
+| Worker ตัวที่สอง (RT07) | ผ่าน: ตัวที่สองหยุดเองด้วย "another worker holds the writer lease" (exit 3) |
+| ปิดเว็บแล้ว worker เดินต่อ (RT01) | worker เป็น process แยกจาก API และไม่ import โค้ดเว็บ (test); heartbeat เดินขณะที่ไม่ได้เปิดเว็บ |
+| Alert ของ worker เข้า Telegram | รอ Note ยืนยันในแชทกับบอทของตัวเอง |
