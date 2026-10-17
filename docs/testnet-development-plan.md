@@ -118,7 +118,7 @@ DEFAULT startup ใช้ SHADOW เพื่อพัฒนา; เมื่อ
 - Streaming loops อยู่ Worker; Scheduler ใช้ polling ข่าว/backfill/reconcile/maintenance ไม่ใช้ Browser หรือ Edge Function เป็น long-running trading loop
 - API worker scaling/multiple browser tabs ต้องไม่สร้าง order writer เพิ่มโดยอัตโนมัติ
 - Key อยู่เฉพาะ Gateway/Account worker ที่ต้องใช้ ห้ามใส่ใน VITE_* หรือส่งใน Chat/logs
-- **Host (decision ของ Note ใน P0):** Claude cloud ใช้ไม่ได้ (HTTP 451 จาก Binance) และ PC ของ Note ไม่ได้เปิดตลอด ตัวเลือก: (ก) PC ของ Note สำหรับ P1–P4 ที่ไม่ต้องเปิดตลอด แล้ว VPS ก่อน soak P5 (ข) VPS ตั้งแต่ P1 ต้องอยู่ในประเทศที่ Binance อนุญาต ตรวจจาก Host จริงว่า testnet.binance.vision และ stream เข้าได้ บันทึกประเทศ/ผู้ให้บริการ/งบต่อเดือน/clock sync (NTP) ใน ADR P0
+- **Host — Note เลือกแล้ว 2026-10-17: PC ก่อน แล้ว VPS** (P1–P4 บน PC ของ Note; VPS ก่อนเริ่ม soak P5) ตัวเลือกที่พิจารณา: Claude cloud ใช้ไม่ได้ (HTTP 451 จาก Binance) และ PC ของ Note ไม่ได้เปิดตลอด ตัวเลือก: (ก) PC ของ Note สำหรับ P1–P4 ที่ไม่ต้องเปิดตลอด แล้ว VPS ก่อน soak P5 (ข) VPS ตั้งแต่ P1 ต้องอยู่ในประเทศที่ Binance อนุญาต ตรวจจาก Host จริงว่า testnet.binance.vision และ stream เข้าได้ บันทึกประเทศ/ผู้ให้บริการ/งบต่อเดือน/clock sync (NTP) ใน ADR P0
 - Process manager รีสตาร์ท worker เองเมื่อล่ม (systemd หรือ container restart policy) และเริ่มทุกครั้งผ่าน RECOVERING ตาม §8.3
 
 ### 2.3 การแจ้งเตือนออกนอกระบบ
