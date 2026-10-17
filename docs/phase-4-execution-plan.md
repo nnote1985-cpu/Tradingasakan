@@ -1,5 +1,12 @@
 # Phase 4 (Execution MVP): scope and acceptance, declared before the code
 
+> **Superseded (2026-10-17).** Note approved `docs/testnet-development-plan.md`
+> (PR #42) as the main plan. Its §10.2 maps this plan's work onto P3/P4 and
+> settles the defaults that conflicted. In particular, quotes may be at most
+> **5 s** old before a submit (instead of 60 s), and tn-r10a-code-v1 starts with
+> a 2,000 USDT allocation. This file is kept as the record of what PRs #31 and
+> #32 were declared against.
+
 Written 2026-10-16, before any Phase 4 code. Note chose to start Phase 4 on
 2026-10-16 ("งั้นเริ่ม phase 4 เลย"). BUILDPLAN v4.2 §24: deliverables
 "adapter, reservations/outbox, protection, Guardian"; gate "ต้องผ่านก่อนส่ง
@@ -48,7 +55,7 @@ testnet orders ต่อเนื่อง/Live". Rules come from §12–§15, �
    - Pre-trade checks (vnpy RiskManager style), testnet DEFAULTs:
      max notional per order 2,000 USDT; max 1 order per second; max 2 active
      orders; max 20 orders per UTC day; max 50 cancels per day; price
-     freshness 60 s; reject if the limit price is more than 1% from the latest
+     freshness 5 s (was 60 s; changed by testnet-development-plan.md §4.2); reject if the limit price is more than 1% from the latest
      mark; quantity must pass LOT_SIZE and MIN_NOTIONAL.
    - Risk reservation: reserved risk turns into position risk on fill and is
      released only for quantity confirmed unfilled (§12.2).
