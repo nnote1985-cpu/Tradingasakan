@@ -124,7 +124,9 @@ DEFAULT startup ใช้ SHADOW เพื่อพัฒนา; เมื่อ
 ### 2.3 การแจ้งเตือนออกนอกระบบ
 
 - ใช้ Telegram ผ่าน scripts/telegram_notify.py ที่มีแล้ว (token ใน environment ของ Host; mask ใน log/error)
-- ส่งทันทีเมื่อ: HALTING/HALTED, UNKNOWN order ค้างเกิน 30 วินาที, reconcile discrepancy, RESET_SUSPECTED, feed/account stream เงียบเกิน freshness, worker restart, credential error และ Testnet order ที่ fill แล้ว (สรุป)
+- **critical** (ส่งทันที): HALTING/HALTED, UNKNOWN order ค้างเกิน 30 วินาที, reconcile discrepancy, RESET_SUSPECTED, credential error
+- **warning**: feed/account stream เงียบเกิน freshness, worker restart
+- **info**: Testnet fills และสรุปรายวัน 07:05 น. เวลาไทย (หลังแท่งรายวันปิด)
 - Dead-man switch ภายนอก: worker ping บริการ uptime monitor ภายนอก Host ทุก 1 นาที ถ้าไม่มี ping 5 นาที บริการนั้นแจ้ง Telegram เอง เพราะถ้า Host ดับทั้งเครื่อง heartbeat ใน DB จะไม่มีใครเห็น
 - ช่องแจ้งเตือนล่มต้องไม่หยุด Guardian; บันทึก alert ที่ส่งไม่ได้ไว้ส่งซ้ำ
 
@@ -564,7 +566,7 @@ PR #30–#32 เป็นของ thread งาน Phase 4 การแก้ b
 ข้อกำหนด P10 (Futures) เพิ่มจาก v1.1:
 
 - Leverage cap 1x ใน code และตั้ง isolated margin ที่ Exchange ตอนเริ่ม; อ่านกลับมาตรวจก่อนทุก entry
-- Exchange-side STOP_MARKET reduce-only วางทันทีหลัง entry fill ที่ ≥25% จากราคาเข้า (§8.5) และตรวจว่า active ถูก side/quantity หลัง partial fill
+- Exchange-side STOP_MARKET reduce-only วางภายใน 5 วินาทีหลัง entry fill ที่ ≥25% จากราคาเข้า (§8.5) และตรวจว่า active ถูก side/quantity หลัง partial fill; ถ้าวางไม่ได้ Guardian ลดสถานะ
 - Guardian เฝ้า mark price, margin ratio และระยะถึง liquidation ทุก event; HALT 25% เช็กต่อเนื่อง ไม่รอปิดวัน
 - Dead-man switch: ถ้า worker เงียบเกิน 5 นาที ระบบภายนอกแจ้งเตือน; stop ฝั่ง Exchange ยังคุ้มครองระหว่างนั้น
 - Funding ที่ถูกหัก/ได้รับจริงจาก Testnet; ไม่ใช้ Spot endpoints/key
@@ -617,6 +619,10 @@ PR #30–#32 เป็นของ thread งาน Phase 4 การแก้ b
 | RT38 | credential ขาด/ผิดenvironment/revoked | no new submit; incident; ไม่ fallback Mainnet |
 | RT39 | manual Testnet orders นอกบอต | detect reconciliation discrepancy/ownership conflict; pause entries |
 | RT40 | restart ขณะมี open order/partial inventory | reconcile ก่อน start strategy; protection/ownership verified |
+| RT41 | Host ดับทั้งเครื่อง | external dead-man แจ้ง Telegram ภายใน 5 นาที |
+| RT42 | Telegram ล่ม/ตอบช้า | Guardian และ Gateway ทำงานต่อ; alert ถูกเก็บไว้ส่งซ้ำ |
+| RT43 | conformance กับ strategy อยู่ account เดียวกัน | block การรันคู่; inventory/ledger ไม่ปน |
+| RT44 | Futures entry fill แล้ววาง stop ไม่ได้ใน 5 วินาที | Guardian ลดสถานะและแจ้ง critical |
 
 ## 12. Evaluation และ Definition of Done
 
