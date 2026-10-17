@@ -66,7 +66,7 @@ Task เริ่มเองตอน logon, รันแบบซ่อนห�
 | Drill | ทำอย่างไร | ผลที่ต้องได้ |
 | --- | --- | --- |
 | ปิดเว็บแล้ว worker เดินต่อ (RT01) | ปิด browser และ API | `last_tick_at` ใน heartbeat.json ยังขยับทุก 2 วินาที |
-| ปิด worker แล้วได้ alert จากภายนอก (RT41) | `Stop-ScheduledTask 'Tradingasakan Testnet worker'` | healthchecks แจ้ง Telegram ภายใน ~6 นาที |
+| ปิด worker แล้วได้ alert จากภายนอก (RT41) | `powershell -ExecutionPolicy Bypass -File scripts\windows\stop-worker.ps1` | healthchecks แจ้ง Telegram ภายใน ~6 นาที |
 | Worker ตัวที่สอง (RT07) | รัน `--once` อีกหน้าต่างขณะ task เดินอยู่ | ตัวที่สองหยุดพร้อม alert "another worker holds the writer lease" |
 | Telegram ล่ม (RT42) | ตั้ง `TELEGRAM_BOT_TOKEN` ผิดชั่วคราวแล้วรัน `--once` | worker ไม่ล่ม; alert ค้างใน `var\worker\alerts.jsonl` และส่งเมื่อ token ถูก |
 
@@ -86,3 +86,27 @@ Task เริ่มเองตอน logon, รันแบบซ่อนห�
 | Worker ตัวที่สอง (RT07) | ผ่าน: ตัวที่สองหยุดเองด้วย "another worker holds the writer lease" (exit 3) |
 | ปิดเว็บแล้ว worker เดินต่อ (RT01) | worker เป็น process แยกจาก API และไม่ import โค้ดเว็บ (test); heartbeat เดินขณะที่ไม่ได้เปิดเว็บ |
 | Alert ของ worker เข้า Telegram | ผ่าน: started, clock WARN, stopped และ CRITICAL lease เข้าแชทบอทของ Note ครบ |
+
+## 9. P2: feeds (ราคาและบัญชี)
+
+ตั้งแต่ P2 worker รัน feed สามตัวใน thread ของตัวเอง (`trading.ingest`)
+- แท่งราคา 1m และ 1d ของ BTCUSDT จาก Mainnet public (`data-stream.binance.vision`) เก็บที่ `var\ingest\bars\` และ backfill จาก REST (`data-api.binance.vision`) ตอนเริ่มและทุกครั้งที่ต่อใหม่ (1m ย้อน 2 วัน, 1d ย้อน 150 วันสำหรับ SMA100)
+- ราคา bid/ask ของ BTCUSDT บน Testnet (bookTicker)
+- user stream ของบัญชี Testnet ผ่าน WebSocket API (`session.logon` ด้วย key Ed25519) และเทียบกับ REST account/openOrders ตอนเริ่ม หลังต่อใหม่ และทุก 30 วินาที
+
+ถ้าไม่ตรงกัน = CRITICAL; ราคาเงียบเกิน 10 วินาที, kline เงียบเกิน 3 นาที หรือ user stream หลุด = WARNING (หลังเริ่มได้ 30 วินาที)
+สถานะอยู่ใน `feeds` ของ `var\worker\heartbeat.json` ปิด feed ได้ด้วย `setx WORKER_FEEDS off`
+
+หลัง `git pull` ให้รีสตาร์ท worker เพื่อโหลดโค้ดใหม่ (อย่าใช้ `Stop-ScheduledTask` อย่างเดียว เพราะมันปิดแค่ลูป PowerShell
+ส่วน Python ยังค้างอยู่ ถือ lease และไฟล์ log ไว้):
+```
+powershell -ExecutionPolicy Bypass -File scripts\windows\restart-worker.ps1
+```
+หยุดถาวร: `powershell -ExecutionPolicy Bypass -File scripts\windows\stop-worker.ps1`
+
+ผลบน PC ของ Note (2026-10-17 03:57 UTC, lease token 3): klines/quotes/account เชื่อมต่อทั้งสาม, 1m ล่าสุด 03:56 UTC,
+1d ล่าสุด 2026-10-16 (แท่งที่ปิดแล้ว), gaps 0, revisions 0, quote age ~2 s, reconcile MATCH (10,000 USDT, 1 BTC, ไม่มี order ค้าง)
+
+Drill ตัดเน็ต ~1 นาที (2026-10-17 ~04:00 UTC): การต่อ Supabase เพื่อต่อ lease ล้มก่อน worker จึงหยุดเอง (exit 3, alert "database unreachable")
+และ loop เริ่มใหม่เมื่อเน็ตกลับ (lease token 4, เริ่ม 04:00:18) ตัวใหม่ backfill จาก REST จน 1m ล่าสุด 03:59 UTC, bar_gaps 0, reconcile MATCH
+นี่ทดสอบทาง restart + backfill (RT05) ส่วนทาง reconnect ใน process เดียว (RT03) ทดสอบด้วย fixture ใน tests/unit/test_ingest_p2.py

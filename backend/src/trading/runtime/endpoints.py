@@ -10,6 +10,8 @@ request to another host.
 
 from __future__ import annotations
 
+import json
+import urllib.error
 import urllib.parse
 import urllib.request
 from enum import StrEnum
@@ -26,16 +28,24 @@ SIGNED_HOSTS = frozenset({"testnet.binance.vision"})
 PUBLIC_HOSTS = frozenset({"testnet.binance.vision", "api.binance.com", "data-api.binance.vision", "fapi.binance.com",
                           "data.binance.vision"})
 _SIGNING_PARAMS = frozenset({"signature", "timestamp", "recvwindow"})
+# Market data streams (unauthenticated) and the Testnet WebSocket API (logon with a Testnet key only).
+STREAM_URL = {
+    "mainnet_market": "wss://data-stream.binance.vision/ws",
+    "testnet_market": "wss://stream.testnet.binance.vision/ws",
+    "testnet_ws_api": "wss://ws-api.testnet.binance.vision/ws-api/v3",
+}
+PUBLIC_STREAM_HOSTS = frozenset({"data-stream.binance.vision", "stream.testnet.binance.vision"})
+SIGNED_STREAM_HOSTS = frozenset({"ws-api.testnet.binance.vision"})
 
 
 class EndpointRefused(RuntimeError):
     pass
 
 
-def _parse(url: str) -> urllib.parse.SplitResult:
+def _parse(url: str, scheme: str = "https") -> urllib.parse.SplitResult:
     u = urllib.parse.urlsplit(url)
-    if u.scheme != "https":
-        raise EndpointRefused(f"only https is allowed, got {u.scheme or 'no scheme'}")
+    if u.scheme != scheme:
+        raise EndpointRefused(f"only {scheme} is allowed, got {u.scheme or 'no scheme'}")
     if u.username or u.password or u.port is not None:
         raise EndpointRefused("user info and explicit ports are not allowed")
     return u
@@ -67,6 +77,14 @@ def check_public(url: str, method: str, headers: dict[str, str] | None = None) -
         raise EndpointRefused("public client must not send signed parameters")
 
 
+def check_stream(url: str, *, signed: bool) -> None:
+    """Raise unless ``url`` is an allowed wss stream: public market data, or the Testnet WebSocket API when ``signed``."""
+    host = _parse(url, "wss").hostname or ""
+    allowed = SIGNED_STREAM_HOSTS if signed else PUBLIC_STREAM_HOSTS
+    if host not in allowed:
+        raise EndpointRefused(f"{'signed' if signed else 'public'} stream may not connect to {host}")
+
+
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req: urllib.request.Request, fp: Any, code: int, msg: str, headers: Any,
                          newurl: str) -> NoReturn:
@@ -76,3 +94,17 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 def opener() -> urllib.request.OpenerDirector:
     """An opener that never follows redirects."""
     return urllib.request.build_opener(_NoRedirect)
+
+
+def get_json(url: str, headers: dict[str, str]) -> tuple[int, Any]:
+    """GET through the no-redirect opener; returns (status, parsed JSON or None). Callers check the URL first."""
+    req = urllib.request.Request(url, headers={"User-Agent": "tradingasakan-worker", **headers})
+    try:
+        with opener().open(req, timeout=10) as r:
+            status, body = int(r.status), r.read()
+    except urllib.error.HTTPError as e:
+        status, body = e.code, e.read()
+    try:
+        return status, json.loads(body) if body else None
+    except ValueError:
+        return status, None
