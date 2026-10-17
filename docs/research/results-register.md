@@ -16,6 +16,11 @@
 | R4 | `funding_overlay_v3` (v3) | ถือ BTC ลดเหลือ 50% เมื่อ funding เฉลี่ย 7 วัน > 0.09%/วัน | BTC พอร์ตแบบ spot ใช้ราคา perp เป็นตัวแทน |
 | R5 | `pathA-v1` | R3 บน BTC × R4 (น้ำหนัก = trend × funding) | BTC พอร์ตแบบ spot ใช้ราคา perp เป็นตัวแทน |
 | R6a / R6b | `run_r6.py` | สัญญาณ v1 เฉพาะ LONG, ไม่มี TP/time exit, ออกด้วย stop / trend exit / channel exit 10 แท่ง 4h; R6a เสี่ยง 0.5%, R6b ใช้เงินทั้งหมด | BTCUSDT **spot** (ราคา spot จริง) |
+| R8a / R8b | `run_r8.py` | path A × 0.5 when bid depth within 2% is in its trailing-90-day bottom 20% (R8a), and also 7-day OI change in its top 20% (R8b) | BTC spot model, perp prices, Binance bookDepth + metrics |
+| R9a / R9b | `run_r9.py` | path A × 0.5 when 30-day realised vol > 80%/yr (R9a); path A × min(1, trailing-1y median vol / vol) floored to 0.25 steps (R9b) | BTC spot model, perp prices |
+| R10a / R10b | `run_r10.py` | path A with a sticky trend state: in above SMA100 × 1.02, out below × 0.98 (R10a); in/out after 3 closes above/below SMA100 (R10b) | BTC spot model, perp prices |
+| R11 | `run_r11.py` | R7 long/short with a sticky side: long above SMA100 × 1.02, short below × 0.98 | BTCUSDT **perp**, 1x, funding |
+| R12 | `run_r12.py` | R10a weight × R9b vol scale | BTC spot model, perp prices |
 | R7 | `run_r7.py` | long เมื่อปิดเหนือ SMA100 รายวัน, short เมื่อต่ำกว่า, 1x, คิด funding | BTCUSDT **perp** |
 
 `pathA-v1` ยังเป็นชื่อของพอร์ตจำลองที่ตรึงไว้ เปลี่ยนไม่ได้โดยไม่เปิดพอร์ตใหม่
@@ -141,3 +146,46 @@ hash ของ parquet อาจเปลี่ยนตามเวอร์ช
   แต่ไม่มีสคริปต์ไหนจำลองผลกลยุทธ์บนช่วงนี้ ทุกรายงานก่อนหน้ามี `holdout_simulated: false`
 - ครั้งแรกที่จำลองผล: **2026-10-15 08:57 UTC** commit d4f77a7 กฎ pathA-v1 (42920ba) อนุมัติโดย Note
 - จากนี้ช่วงนี้ **ใช้พัฒนาต่อได้ แต่ห้ามเรียกว่าข้อมูลยืนยันที่ไม่เคยเห็น** ข้อมูลยืนยันใหม่ต้องเป็นข้อมูลหลัง 2025-12-31 ที่ยังไม่ได้ใช้ หรือข้อมูล forward
+
+## R8 (2026-10-16, docs/research/r8-depth-oi-filter-plan.md)
+
+2023-04-01 → 2026-01-01, spot 0.10% + 2 bps: path A +103.3% / Sharpe 0.75 / DD 35.1%; R8a +55.9% / 0.50 / 33.0%
+(280 trades); R8b +84.1% / 0.66 / 34.3% (134 trades); B&H +207.5% / 0.90 / 32.0%. Both fail (Sharpe below path A).
+Window overlaps data path A was built on; C2 not used.
+
+## R9 (2026-10-16, docs/research/r9-volatility-filter-plan.md)
+
+2022-07-01 → 2026-01-01, spot 0.10% + 2 bps: path A +176.5% / Sharpe 0.84 / DD 35.1% (82 trades); R9a +172.3% / 0.84 / 35.1%
+(92 trades, 9 days cut); R9b +142.1% / 0.83 / 26.8% (362 trades); B&H +339.2% / 0.88 / 35.4%. Both fail (Sharpe below
+path A). R9b cut max DD by 8.3 points at nearly the same Sharpe. Window overlaps data path A was built on; C2 not used.
+
+## R10 (2026-10-16, docs/research/r10-trend-hysteresis-plan.md)
+
+2022-05-01 → 2026-01-01, spot 0.10% + 2 bps: path A +176.5% / Sharpe 0.82 / DD 35.1% (82 trades); R10a band +244.8% / 1.00 /
+26.0% (48 trades); R10b confirm +135.1% / 0.67 / 39.0% (52 trades); B&H +132.6% / 0.46 / 60.3%. **R10a passes, R10b fails.**
+Window fully seen before and the idea came from the 2025 analysis: R10a is a candidate for C1/C2 confirmation, not evidence.
+
+## R11 (2026-10-16, docs/research/r11-futures-band-plan.md)
+
+2022-04-12 → 2026-01-01, perp 1x, taker 0.05% + 2 bps, funding: R7 +103.4% / Sharpe 0.43 / DD 55.0% (57 flips, reproduced);
+R11 +221.0% / 0.71 / 39.4% (21 flips); B&H +121.5% / 0.42 / 62.0%. **R11 passes.** Short days turned positive (+0.148 log vs
+−0.078). Window seen before and band idea came from the 2025 analysis: candidate only; C1/C2 unspent.
+
+## R12 (2026-10-16, docs/research/r12-band-voltarget-plan.md)
+
+2022-07-01 → 2026-01-01, spot 0.10% + 2 bps: R10a +244.8% / Sharpe 1.02 / DD 26.0% (48 trades); R12 +182.8% / 0.97 / 21.7%
+(331 trades); B&H +339.2% / 0.88 / 35.4%. **R12 fails** (Sharpe below R10a; DD cut 4.3 points, short of the declared 5).
+Vol sizing helped only the high-vol 2024 drawdown; the low-vol sideways drawdowns of 2023 and 2025 are unchanged.
+
+## C1 confirmation of R10a and R11 (2026-10-16, docs/research/c1-confirm-band-plan.md) — C1 SPENT
+
+2020-04-15 → 2022-01-01 (never simulated before): path A +347.8% / Sharpe 1.76 / DD 27.4%; **R10a +443.0% / 1.93 / 23.2%
+(confirmed)**; R7 +123.1% / 0.66 / 46.4%; **R11 +246.9% / 0.99 / 34.8% (confirmed vs R7, but below B&H)**; B&H +572.4% / 1.53 /
+53.2%. R10a also meets Note's objective vs B&H on C1. C2 (2026-01 → 2026-10) is the only unseen historical set left.
+
+## Intraday risk of R7 / R11 (2026-10-17, docs/research/intraday-risk-plan.md) — measurement, dev data only
+
+2022-04-12 → 2026-01-01, 1h bars: max DD at daily closes vs worst intrabar R7 55.0% → 56.0%, R11 39.4% → 42.1%; worst
+drop within a day 16.6% / 18.3%; liquidation never close at 1x. The 25% `spot.v1` HALT would trip in mid-2023 on both
+(R7 +103% → +50–54%, R11 +221% → +41–53%); hourly checking holds it near 25%, daily let R11 reach 32.6%. Stop grid
+5–25% from entry: only 25% (never fires) is harmless. No candidate; C2 unspent.
