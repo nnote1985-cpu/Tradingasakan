@@ -230,6 +230,30 @@ def test_entries_blocked_unless_running_but_exits_allowed() -> None:
     assert sell == []                                                 # size cap never blocks getting out
 
 
+def test_reduce_only_never_exempts_a_spot_buy() -> None:
+    """Review 2026-10-17: a reduce_only BUY used to skip the entry block, the size cap and the band."""
+    with pytest.raises(ValueError, match="reduce_only"):
+        OrderIntent(mode=TradingMode.TESTNET, book="b", decision_id="d", leg="1", symbol="BTCUSDT", side=Side.BUY,
+                    order_type=OrderType.MARKET, qty=D("1"), limit_price=None, created_at=T0, safety_epoch=1, reduce_only=True)
+    assert intent(Side.BUY).increases_exposure and not intent(Side.SELL).increases_exposure
+
+
+def test_exits_and_buy_cancels_are_not_held_by_the_normal_caps() -> None:
+    """Review 2026-10-17: a sell or a cancel of a buy must not wait on the daily or active-order caps."""
+    s = running()
+    full = Activity(active_orders=2, orders_today=20, cancels_today=50, last_submit_at=None)
+    sell = intent(Side.SELL, qty="0.03")
+    assert check(sell, now=T0, rules=RULES, market=MKT, activity=full, safety=s) == []
+    assert set(check(intent(qty="0.03"), now=T0, rules=RULES, market=MKT, activity=full, safety=s)) == {
+        "TOO_MANY_ACTIVE_ORDERS", "DAILY_ORDER_LIMIT"}
+    assert check_cancel(full, reduces_risk=True) == [] and check_cancel(full) == ["DAILY_CANCEL_LIMIT"]
+    runaway = Activity(active_orders=2, orders_today=200, cancels_today=200, last_submit_at=None)
+    assert check(sell, now=T0, rules=RULES, market=MKT, activity=runaway, safety=s) == ["EMERGENCY_ORDER_CEILING"]
+    assert check_cancel(runaway, reduces_risk=True) == ["EMERGENCY_CANCEL_CEILING"]
+    hasty = Activity(active_orders=0, orders_today=0, cancels_today=0, last_submit_at=T0)
+    assert check(sell, now=T0, rules=RULES, market=MKT, activity=hasty, safety=s) == ["RATE_LIMIT"]
+
+
 def test_intent_from_old_epoch_is_refused() -> None:
     s = running()
     s.halt(T0, "kill")

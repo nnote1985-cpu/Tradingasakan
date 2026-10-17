@@ -12,7 +12,7 @@ const STATE_TH: Record<string, string> = {
 };
 const SIDE_TH: Record<string, string> = { BUY: "ซื้อ", SELL: "ขาย" };
 const TABLE = "w-full text-xs [&_td]:py-1 [&_td]:pr-3 [&_th]:pr-3 [&_th]:text-left [&_th]:font-normal [&_th]:text-[var(--text-muted)]";
-const VERDICT_TH: Record<string, string> = { MATCH: "ตรงกัน", DISCREPANCY: "ไม่ตรง", INCONCLUSIVE: "ยังสรุปไม่ได้" };
+const VERDICT_TH: Record<string, string> = { MATCH: "ตรงกัน", DISCREPANCY: "ไม่ตรง", INCONCLUSIVE: "ยังสรุปไม่ได้", UNAVAILABLE: "อ่านบัญชีไม่สำเร็จ" };
 
 function ago(iso: string | null): string {
   if (!iso) return "–";

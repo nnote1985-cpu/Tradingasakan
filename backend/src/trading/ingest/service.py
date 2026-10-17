@@ -192,6 +192,7 @@ class IngestService:
         s2, orders = self.rest.open_orders(SYMBOL)
         if s1 != 200 or s2 != 200 or not isinstance(acct, dict) or not isinstance(orders, list):
             self.events.put((Severity.WARNING, "reconcile", f"account check failed (HTTP {s1}/{s2}); entries stay paused"))
+            self.reconcile_failed(requested)
             return None
         with self.lock:
             first = self._first_reconcile
@@ -204,6 +205,10 @@ class IngestService:
         if r.verdict is Verdict.DISCREPANCY:
             self.events.put((Severity.CRITICAL, "reconcile", "account reconcile discrepancy: " + "; ".join(r.differences)[:600]))
         return r.verdict
+
+    def reconcile_failed(self, at_ms: int) -> None:
+        """A failed read replaces the last verdict, so an old MATCH never outlives the check that should have renewed it."""
+        self.last_reconcile = {"verdict": "UNAVAILABLE", "at_ms": at_ms, "differences": []}
 
     # --- lifecycle ------------------------------------------------------------------
 
@@ -223,6 +228,7 @@ class IngestService:
                     verdict = await asyncio.to_thread(self.reconcile)
                 except Exception as e:  # noqa: BLE001
                     verdict = None
+                    self.reconcile_failed(self.now_ms())
                     self.events.put((Severity.WARNING, "reconcile", f"account check failed: {type(e).__name__}; entries stay paused"))
                 self._reconcile_due = verdict in (None, Verdict.INCONCLUSIVE) and self.rest.creds is not None
                 next_reconcile = time.monotonic() + RECONCILE_EVERY_S

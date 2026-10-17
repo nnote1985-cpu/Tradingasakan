@@ -14,8 +14,8 @@ from trading.execution.binance_spot import BinanceSpotTestnet
 from trading.execution.intent import OrderIntent
 from trading.execution.orders import OrderState
 from trading.execution.safety import AccountSafety, SafetyState
-from trading.execution.store import ExecStore
-from trading.execution.types import Side
+from trading.execution.store import ExecStore, IntentRefused
+from trading.execution.types import OrderType, Side
 from trading.ingest.account import Balance
 from trading.ingest.quotes import Quote
 from trading.runtime.alerts import Severity
@@ -53,12 +53,16 @@ class Rig:
         self.adapter = BinanceSpotTestnet(self.ex)
         self.alerts = Alerts()
         self.verdict = verdict
+        self.checked_at: datetime | None = None                       # when the account check ran; None means just now
         self.token = self.store.acquire_lease("test", self.t, timedelta(days=30)).token
         self.executor = self.make(conformance)
 
     def make(self, conformance: bool = True) -> Executor:
         return Executor(self.store, self.adapter, self.alerts, persist=self.persist, conformance=Conformance() if conformance else None,  # type: ignore[arg-type]
-                        quote=self.quote, verdict=lambda: self.verdict, now=lambda: self.t, mono=lambda: self.mono_s, log=lambda _m: None)
+                        quote=self.quote, verdict=self.check, now=lambda: self.t, mono=lambda: self.mono_s, log=lambda _m: None)
+
+    def check(self) -> tuple[str, datetime] | None:
+        return None if self.verdict is None else (self.verdict, self.checked_at or self.t)
 
     def quote(self) -> Quote:
         return Quote("BTCUSDT", self.ex.bid, D("1"), self.ex.ask, D("1"), 1, int(self.t.timestamp() * 1000))
@@ -81,8 +85,8 @@ class Rig:
             out.setdefault(leg, []).append(state)
         return out
 
-    def posts(self) -> int:
-        return sum(1 for m, p, _ in self.ex.calls if m == "POST" and p == "/api/v3/order")
+    def posts(self, side: str | None = None) -> int:
+        return sum(1 for m, p, a in self.ex.calls if m == "POST" and p == "/api/v3/order" and side in (None, a.get("side")))
 
 
 @pytest.fixture
@@ -264,3 +268,61 @@ def test_web_activity_lists_orders_with_their_last_state_and_trades(db):  # noqa
     # bought 0.0001 at 65000.01, sold 0.0001 at 65000, fees in BNB: -0.000001 USDT
     assert b["btc_net"] == "0" and b["usdt_net"] == "-0.000001" and b["pnl_usdt"] == "0" and b["bnb_fees"] == "0.00002"
     assert [x["asset"] for x in p["balances"]] == ["BTC", "USDT"] and p["balances"][1]["opening"] == "10000"
+
+
+# --- review 2026-10-17: every entry needs a fresh MATCH; the budget counts what the book holds ---------------------
+
+
+def test_discrepancy_while_running_pauses_entries_until_a_fresh_match(rig):
+    rig.tick()
+    assert rig.executor.safety.state is SafetyState.RUNNING
+    sent = rig.posts()                                                # the first tick already sent mkt-buy
+    rig.verdict = "DISCREPANCY"
+    rig.tick(5)
+    assert rig.executor.safety.state is SafetyState.SOFT_PAUSED and rig.posts() == sent
+    rig.verdict = "MATCH"
+    rig.tick()
+    assert rig.executor.safety.state is SafetyState.RUNNING
+    rig.tick(3)
+    assert rig.posts() > sent
+
+
+def test_a_stale_or_failed_account_check_holds_buys(rig):
+    rig.tick()
+    assert rig.executor.safety.state is SafetyState.RUNNING
+    buys = rig.posts("BUY")                                           # mkt-buy went out on the first tick
+    rig.checked_at = rig.t - timedelta(seconds=91)                     # last MATCH is too old
+    rig.tick(5)
+    assert rig.posts("SELL") == 1 and rig.posts("BUY") == buys          # the sell back still goes; limit-far waits
+    rig.checked_at, rig.verdict = None, "UNAVAILABLE"                  # the read failed
+    rig.tick(5)
+    assert rig.posts("BUY") == buys and rig.executor.safety.state is SafetyState.RUNNING
+    rig.verdict = "MATCH"
+    rig.tick(2)
+    assert rig.posts("BUY") > buys
+
+
+def test_no_account_check_at_all_never_starts_entries(db):  # noqa: F811
+    r = Rig(db, verdict=None)
+    r.executor.start(r.token)
+    r.tick(3)
+    assert r.executor.safety.state is SafetyState.RECOVERING and r.posts() == 0
+
+
+def test_budget_counts_what_the_book_already_holds(db):  # noqa: F811
+    r = Rig(db, conformance=False)
+    r.executor.start(r.token)
+    r.tick()
+    assert r.executor.safety.state is SafetyState.RUNNING
+
+    def buy(leg: str) -> OrderIntent:
+        return OrderIntent(mode=TradingMode.TESTNET, book="budget-test", decision_id="d", leg=leg, symbol="BTCUSDT", side=Side.BUY,
+                           order_type=OrderType.MARKET, qty=D("0.001"), limit_price=None, created_at=r.t, safety_epoch=1)
+
+    assert r.store.accept_intent(buy("1"), unit_price=r.ex.ask, budget=D("100"))       # 65 USDT
+    r.tick(2)
+    assert r.states()["1"][-1] == "FILLED" and r.store.reserved("budget-test") == 0
+    assert r.store.held("budget-test", "BTCUSDT", "BTC") == D("0.001")
+    with pytest.raises(IntentRefused, match="INSUFFICIENT_BUDGET"):                     # 65 held + 65 new > 100
+        r.store.accept_intent(buy("2"), unit_price=r.ex.ask, budget=D("100"))
+    assert r.store.accept_intent(buy("3"), unit_price=r.ex.ask, budget=D("140"))

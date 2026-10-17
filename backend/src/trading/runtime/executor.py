@@ -5,13 +5,18 @@ lease. One tick:
 
 1. while RECOVERING, checks whether entries may start: every stored order is
    resolved, every open order on the exchange is one of ours, and the
-   account check against REST last said MATCH (§8.3 startup order);
+   account check against REST said MATCH within the last 90 s (§8.3 startup order);
 2. queries orders that are UNKNOWN (every 2 s for 30 s, then an alert and
    every 30 s; never given up on by time alone) and polls open ones;
 3. asks the conformance profile, when it is on, for its next intent or cancel;
 4. claims outbox rows under the lease token and submits them once, after
    writing SUBMITTING to the store, so a crash mid-submit is reconciled on the
    next start and never sent again.
+
+Every order that adds exposure needs a fresh MATCH, not only the first one:
+a buy waits while the last account check is older than 90 s or failed, and a
+DISCREPANCY while RUNNING pauses entries until a fresh MATCH comes back. Sells
+and cancels of buys are not held by the account check or the normal order caps.
 
 Start-up handles what a stopped writer left: SUBMITTING becomes UNKNOWN and
 is reconciled; an intent its outbox row shows as claimed but never sent
@@ -57,7 +62,10 @@ REFUSED_RETRY = timedelta(minutes=5)
 # The writer lease lasts 15 s and is renewed once per worker tick, so one tick stops starting new network work after this long.
 TICK_BUDGET_S = 5.0
 # Pre-trade reasons that clear on their own; the intent waits for its TTL instead of being rejected.
-TRANSIENT = frozenset({"PRICE_STALE", "RATE_LIMIT", "TOO_MANY_ACTIVE_ORDERS"})
+TRANSIENT = frozenset({"PRICE_STALE", "RATE_LIMIT", "TOO_MANY_ACTIVE_ORDERS", "RECONCILE_NONE", "RECONCILE_STALE",
+                       "RECONCILE_UNAVAILABLE", "RECONCILE_INCONCLUSIVE"})
+# The feeds check the account every 30 s; a MATCH older than three rounds no longer vouches for the account.
+RECONCILE_MAX_AGE = timedelta(seconds=90)
 UNRESOLVED = (OrderState.UNKNOWN, OrderState.RECONCILING)
 DAY = timedelta(days=1)
 
@@ -81,7 +89,7 @@ class Executor:
     persist: PersistStore | None = None
     conformance: Conformance | None = None
     quote: Callable[[], Quote | None] = lambda: None
-    verdict: Callable[[], str | None] = lambda: None
+    verdict: Callable[[], tuple[str, datetime] | None] = lambda: None     # last account check and when it was read
     limits: PreTradeLimits = field(default_factory=PreTradeLimits)
     now: Callable[[], datetime] = lambda: datetime.now(UTC)
     mono: Callable[[], float] = time.monotonic
@@ -235,20 +243,38 @@ class Executor:
     def _unresolved(self) -> list[Order]:
         return [o for o in self.orders.values() if o.state in UNRESOLVED]
 
+    def _entry_block(self) -> str | None:
+        """Why the account check does not allow new exposure now, or None after a MATCH read in the last 90 s."""
+        v = self.verdict()
+        if v is None:
+            return "RECONCILE_NONE"
+        verdict, at = v
+        if verdict != "MATCH":
+            return f"RECONCILE_{verdict}"
+        if self.now() - at > RECONCILE_MAX_AGE:
+            return "RECONCILE_STALE"
+        return None
+
     def _update_pause(self) -> None:
-        """Pause entries while an order has been unknown for 30 s; lift the pause once it is resolved (§8.3)."""
+        """Pause entries while an order has been unknown for 30 s or the account check says DISCREPANCY (§8.3).
+
+        The pause lifts once no order is unresolved and a fresh MATCH is in.
+        """
         t = self.mono()
         stuck = any(w.unknown_since is not None and t - w.unknown_since >= UNKNOWN_ALERT_AFTER_S for w in self._watch.values())
+        block = self._entry_block()
+        why = "order outcome unknown" if stuck else "account reconcile discrepancy" if block == "RECONCILE_DISCREPANCY" else None
         now = self.now()
-        if stuck and self.safety.state is SafetyState.RUNNING:
-            self.safety.soft_pause(now, "order outcome unknown")
+        if why is not None and self.safety.state is SafetyState.RUNNING:
+            self.safety.soft_pause(now, why)
             self.store.save_safety(self.safety)
             self.paused_by_us = True
-        elif not stuck and not self._unresolved() and self.paused_by_us and self.safety.state is SafetyState.SOFT_PAUSED:
+            self.alerts.push(Severity.WARNING, "entries", f"entries paused: {why}")
+        elif why is None and block is None and not self._unresolved() and self.paused_by_us and self.safety.state is SafetyState.SOFT_PAUSED:
             self.safety.unpause(now)
             self.store.save_safety(self.safety)
             self.paused_by_us = False
-            self.alerts.push(Severity.INFO, "entries", "unknown orders resolved; entries allowed again")
+            self.alerts.push(Severity.INFO, "entries", "orders resolved and the account check is MATCH again; entries allowed")
 
     def _try_recover(self) -> None:
         """RECOVERING -> RUNNING once the stored orders and the exchange agree (§8.3, RT40)."""
@@ -262,8 +288,7 @@ class Executor:
             self.alerts.push(Severity.CRITICAL, "foreign-orders", f"open Testnet orders the bot does not know ({ids}); entries stay "
                              "paused until they are canceled or adopted")
             return
-        v = self.verdict()
-        if v not in (None, "MATCH"):
+        if self._entry_block() is not None:
             return
         self.safety.recovered(self.now(), reconciled=True)
         self.store.save_safety(self.safety)
@@ -289,6 +314,8 @@ class Executor:
             self._cancel(cid, token, CONFORMANCE_LIMITS)
         for intent, unit_price in step.intents:
             cid = intent.client_order_id
+            if intent.increases_exposure and self._entry_block() is not None:
+                continue                                              # asked again next tick
             if (at := self._refused.get(cid)) is not None and now - at < REFUSED_RETRY:
                 continue
             try:
@@ -301,8 +328,8 @@ class Executor:
         o = self.orders.get(cid)
         if o is None or o.is_terminal:
             return
-        if check_cancel(self._activity(), limits):
-            self.alerts.push(Severity.WARNING, "cancel-limit", f"daily cancel limit reached; {cid} stays open")
+        if held := check_cancel(self._activity(), limits, reduces_risk=o.intent.side is Side.BUY):
+            self.alerts.push(Severity.WARNING, "cancel-limit", f"{held[0]}: {cid} stays open")
             return
         self._cancels_today += 1
         gateway.cancel(o, self.adapter)
@@ -346,8 +373,11 @@ class Executor:
             return ["PRICE_STALE"]
         mark = q.ask if intent.side is Side.BUY else q.bid
         seen = datetime.fromtimestamp(q.received_ms / 1000, UTC)
-        return check(intent, now=now, rules=self.rules, market=MarketView(mark, min(seen, now)), activity=self._activity(),
-                     safety=self.safety, limits=self._limits_for(intent))
+        out = check(intent, now=now, rules=self.rules, market=MarketView(mark, min(seen, now)), activity=self._activity(),
+                    safety=self.safety, limits=self._limits_for(intent))
+        if intent.increases_exposure and (block := self._entry_block()) is not None:
+            out.append(block)
+        return out
 
     def _send(self, order: Order, oid: int, token: int) -> None:
         cid = order.client_order_id

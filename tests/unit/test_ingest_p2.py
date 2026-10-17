@@ -330,6 +330,15 @@ def test_reconcile_failure_is_a_warning_not_a_guess(tmp_path):
     assert svc.events.get_nowait()[0] is Severity.WARNING and svc.account.balances == {}
 
 
+def test_a_failed_read_replaces_an_old_match(tmp_path):
+    """Review 2026-10-17: an old MATCH must not stay current after the read that should renew it fails."""
+    rest = FakeRest(TestnetCredentials("k", secret="s"), (200, rest_account()), (200, []))
+    svc = _service(tmp_path, rest=rest)
+    assert svc.reconcile() is Verdict.MATCH and svc.last_reconcile["verdict"] == "MATCH"
+    rest._acct = (503, {"msg": "down"})
+    assert svc.reconcile() is None and svc.last_reconcile["verdict"] == "UNAVAILABLE"
+
+
 def test_user_stream_logs_on_with_a_signed_request(tmp_path):
     creds = _pem_creds(tmp_path)
     svc = _service(tmp_path, rest=TestnetRest(creds, get=lambda u, h: (200, {}), wall_ms=lambda: 0.0))
