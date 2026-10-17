@@ -15,6 +15,11 @@ const envFile = new URL("../.env", import.meta.url);
 // an older DATABASE_URL is still exported in the parent terminal.
 const fileEnv = existsSync(envFile) ? parseEnv(readFileSync(envFile, "utf8")) : {};
 const backendEnv = { ...process.env, ...fileEnv };
+// The API only reads; worker settings set with setx (Testnet keys, the execution flag, alerts) stay
+// out of it. Otherwise TESTNET_EXECUTION_ENABLED=true meets TRADING_MODE=SHADOW from .env and the
+// API refuses to start, and the Testnet keys would sit in a process that never signs.
+const WORKER_ONLY = /^(TESTNET_EXECUTION_ENABLED|BINANCE_TESTNET_.*|TELEGRAM_BOT_TOKEN|TELEGRAM_CHAT_ID|DEADMAN_PING_URL|WORKER_.*)$/i;
+for (const k of Object.keys(backendEnv)) if (WORKER_ONLY.test(k)) delete backendEnv[k];
 if (fileEnv.DATABASE_URL && process.env.DATABASE_URL && fileEnv.DATABASE_URL !== process.env.DATABASE_URL) {
   console.warn("Using DATABASE_URL from root .env instead of the older terminal environment value.");
 }
