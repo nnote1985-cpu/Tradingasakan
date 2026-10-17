@@ -211,7 +211,7 @@ def test_limits_refuse_what_they_should() -> None:
     s = running()
     big = check(intent(qty="0.069"), now=T0, rules=RULES, market=MKT, activity=IDLE, safety=s)
     assert big == ["ORDER_NOTIONAL_ABOVE_MAX"]                       # 0.069 * 65000 = 4485 > 2000
-    stale = check(intent(qty="0.03"), now=T0 + timedelta(seconds=61), rules=RULES, market=MKT, activity=IDLE, safety=s)
+    stale = check(intent(qty="0.03"), now=T0 + timedelta(seconds=6), rules=RULES, market=MKT, activity=IDLE, safety=s)
     assert stale == ["PRICE_STALE"]
     band = check(intent(qty="0.03", price="66000"), now=T0, rules=RULES, market=MKT, activity=IDLE, safety=s)
     assert band == ["PRICE_OUTSIDE_BAND"]

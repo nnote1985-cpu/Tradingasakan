@@ -1,6 +1,7 @@
 """Pre-trade limits, checked before every submit (vnpy RiskManager style).
 
-DEFAULT values are the testnet ones declared in docs/phase-4-execution-plan.md.
+DEFAULT values are the testnet ones from docs/testnet-development-plan.md §10.2
+(quote freshness 5 s per §4.2; the rest as declared in docs/phase-4-execution-plan.md).
 Orders that only reduce exposure skip the size and price-band checks, so a
 limit can never block getting out; they still respect the rate limit and the
 exchange rules.
@@ -25,7 +26,7 @@ class PreTradeLimits:
     max_active_orders: int = 2
     max_orders_per_day: int = 20
     max_cancels_per_day: int = 50
-    max_price_age: timedelta = timedelta(seconds=60)
+    max_price_age: timedelta = timedelta(seconds=5)          # testnet-development-plan.md §4.2
     max_price_deviation: Decimal = Decimal("0.01")
 
 
