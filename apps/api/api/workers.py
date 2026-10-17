@@ -37,16 +37,46 @@ order by h.account
 """
 
 
+ORDERS_SQL = """
+select i.client_order_id, i.book, i.leg, i.side, i.order_type, trim_scale(i.qty)::text, trim_scale(i.limit_price)::text, i.created_at,
+       e.state, trim_scale(e.cum_qty)::text, e.at, e.reason,
+       (select trim_scale(round(sum(f.qty * f.price) / nullif(sum(f.qty), 0), 2))::text from trading.exec_fills f
+         where f.client_order_id = i.client_order_id)
+from trading.exec_intents i
+join lateral (select state, cum_qty, at, reason from trading.exec_order_events x where x.client_order_id = i.client_order_id
+              order by seq desc limit 1) e on true
+where i.account = %s
+order by i.created_at desc, i.client_order_id
+limit %s
+"""
+
+TRADES_SQL = """
+select t.traded_at, t.epoch, t.trade_id, t.side, trim_scale(t.qty)::text, trim_scale(t.price)::text,
+       trim_scale(round(t.qty * t.price, 8))::text, trim_scale(t.commission)::text, t.commission_asset, t.client_order_id,
+       i.book, i.leg
+from trading.exec_trades t
+left join trading.exec_intents i on i.client_order_id = t.client_order_id
+where t.account = %s
+order by t.traded_at desc, t.trade_id desc
+limit %s
+"""
+ACTIVITY_LIMIT = 50
+
+
 class Unavailable(Exception):
     """The P3 tables have not been created yet."""
 
 
 class WorkerStore(Protocol):
     async def worker_rows(self) -> list[tuple[Any, ...]]: ...
+    async def activity_rows(self, account: str, limit: int) -> tuple[list[tuple[Any, ...]], list[tuple[Any, ...]]]: ...
 
 
 class NoWorkers:
     async def worker_rows(self) -> list[tuple[Any, ...]]:
+        raise Unavailable
+
+    async def activity_rows(self, account: str, limit: int) -> tuple[list[tuple[Any, ...]], list[tuple[Any, ...]]]:
         raise Unavailable
 
 
@@ -59,6 +89,16 @@ class PgWorkerStore:
             async with self.pool.connection() as conn:
                 cur = await conn.execute(WORKERS_SQL, (list(SHOWN_ASSETS),))
                 return list(await cur.fetchall())
+        except pg_errors.UndefinedTable as e:
+            raise Unavailable from e
+
+
+    async def activity_rows(self, account: str, limit: int) -> tuple[list[tuple[Any, ...]], list[tuple[Any, ...]]]:
+        try:
+            async with self.pool.connection() as conn:
+                orders = list(await (await conn.execute(ORDERS_SQL, (account, limit))).fetchall())
+                trades = list(await (await conn.execute(TRADES_SQL, (account, limit))).fetchall())
+                return orders, trades
         except pg_errors.UndefinedTable as e:
             raise Unavailable from e
 
@@ -92,3 +132,16 @@ def worker_items(rows: list[tuple[Any, ...]], now: datetime | None = None) -> li
             "balances": balances or [], "asset_count": n_assets or 0, "trades": n_trades or 0,
         })
     return out
+
+
+def activity_items(orders: list[tuple[Any, ...]], trades: list[tuple[Any, ...]]) -> dict[str, Any]:
+    """Latest Testnet orders (with their last state) and trades for one account; numbers stay as exact decimal text."""
+    return {
+        "orders": [{"client_order_id": cid, "book": book, "leg": leg, "side": side, "type": otype, "qty": qty, "limit_price": price,
+                    "created_at": _iso(created), "state": state, "filled_qty": cum, "updated_at": _iso(at), "reason": reason,
+                    "avg_price": avg}
+                   for cid, book, leg, side, otype, qty, price, created, state, cum, at, reason, avg in orders],
+        "trades": [{"traded_at": _iso(at), "epoch": epoch, "trade_id": tid, "side": side, "qty": qty, "price": price, "quote_qty": quote,
+                    "commission": fee, "commission_asset": asset, "client_order_id": cid or None, "book": book, "leg": leg}
+                   for at, epoch, tid, side, qty, price, quote, fee, asset, cid, book, leg in trades],
+    }

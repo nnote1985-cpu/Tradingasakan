@@ -294,6 +294,9 @@ def test_workers_endpoint_needs_a_viewer_and_says_unavailable_before_the_migrati
     assert c.get("/api/v1/workers").status_code == 401
     r = _get(c, "/api/v1/workers", _token(VIEWER))
     assert r.status_code == 200 and r.json() == {"available": False, "workers": []}
+    assert c.get("/api/v1/workers/DEFAULT/activity").status_code == 401
+    r = _get(c, "/api/v1/workers/DEFAULT/activity", _token(VIEWER))
+    assert r.json() == {"available": False, "orders": [], "trades": []}
     from datetime import UTC, datetime, timedelta
     now = datetime(2026, 10, 17, tzinfo=UTC)
     row = ("DEFAULT", "pc:1", "pc", now, now, {"mode": "TESTNET"}, now - timedelta(minutes=5), None, None, None, None, None, None,

@@ -1,11 +1,15 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
-import type { WorkersResponse, WorkerStatus } from "../src/api";
+import type { WorkerActivity, WorkersResponse, WorkerStatus } from "../src/api";
 import { WorkerTab } from "../src/WorkerTab";
 
 const response: { current: WorkersResponse } = { current: { available: false, workers: [] } };
-vi.mock("../src/api", () => ({ supabase: null, apiGet: async () => response.current }));
+const activity: { current: WorkerActivity } = { current: { available: true, orders: [], trades: [] } };
+vi.mock("../src/api", () => ({
+  supabase: null,
+  apiGet: async (path: string) => (path.endsWith("/activity") ? activity.current : response.current),
+}));
 
 const now = new Date().toISOString();
 const worker = (over: Partial<WorkerStatus> = {}): WorkerStatus => ({
@@ -61,4 +65,19 @@ test("execution shows today's orders, unknown orders and the conformance cycle",
   expect(await screen.findByText(/วันนี้ส่ง 4/)).toBeTruthy();
   expect(screen.getByText(/tak-abc RECONCILING มา 42 วินาที/)).toBeTruthy();
   expect(screen.getByText(/20261017T0800Z · limit-near: acknowledged · ครบ 1 รอบ/)).toBeTruthy();
+});
+
+test("the card lists recent Testnet trades and orders", async () => {
+  activity.current = {
+    available: true,
+    trades: [{ traded_at: now, epoch: 1, trade_id: 77, side: "SELL", qty: "0.00007", price: "106512.3", quote_qty: "7.45586",
+               commission: "0.00745586", commission_asset: "USDT", client_order_id: "tak-s", book: "tn-conformance-v1", leg: "mkt-sell" }],
+    orders: [{ client_order_id: "tak-f", book: "tn-conformance-v1", leg: "limit-far", side: "BUY", type: "LIMIT", qty: "0.00008",
+               limit_price: "101000", created_at: now, state: "CANCELED", filled_qty: "0", updated_at: now, reason: "cancel", avg_price: null }],
+  };
+  response.current = { available: true, workers: [worker()] };
+  show();
+  const trades = await screen.findByTestId("worker-trades");
+  expect(trades.textContent).toMatch(/ขาย.*0\.00007.*106512\.3.*7\.45586.*0\.00745586 USDT.*tn-conformance-v1 · mkt-sell/);
+  expect(screen.getByTestId("worker-orders").textContent).toMatch(/limit-far.*ซื้อ.*LIMIT.*0\.00008.*101000.*ยกเลิก/);
 });
