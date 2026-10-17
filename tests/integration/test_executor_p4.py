@@ -232,3 +232,25 @@ def test_trades_made_while_the_worker_was_down_are_backfilled_once(db):  # noqa:
     n = r.store.conn.execute("select count(*) from trading.exec_trades where account = %s", (r.account,)).fetchone()[0]
     assert n == 3
     assert BOOK == "tn-conformance-v1"
+
+
+def test_web_activity_lists_orders_with_their_last_state_and_trades(db):  # noqa: F811
+    from api.workers import ORDERS_SQL, TRADES_SQL, activity_items
+
+    r = Rig(db)
+    r.persist.start_epoch({"BTC": Balance(D("1"), D("0")), "USDT": Balance(D("10000"), D("0"))}, r.t - timedelta(hours=1))
+    r.ex.now_ms = int(r.t.timestamp() * 1000)
+    r.executor.start(r.token)
+    r.tick(12)
+    rec = Recorder(r.persist)
+    r.executor.backfill_trades()
+    rec.flush(r.executor.drain_records())
+    orders = r.store.conn.execute(ORDERS_SQL, (r.account, 50)).fetchall()
+    trades = r.store.conn.execute(TRADES_SQL, (r.account, 50)).fetchall()
+    out = activity_items(orders, trades)
+    by_leg = {o["leg"]: o for o in out["orders"]}
+    assert by_leg["mkt-buy"]["state"] == "FILLED" and by_leg["mkt-buy"]["avg_price"] == "65000.01"
+    assert by_leg["mkt-buy"]["qty"] == "0.0001" and by_leg["limit-far"]["state"] == "CANCELED"
+    assert by_leg["limit-far"]["avg_price"] is None and by_leg["limit-near"]["limit_price"] == "65000"
+    assert [t["side"] for t in out["trades"]] and {t["leg"] for t in out["trades"]} == {"mkt-buy", "mkt-sell"}
+    assert out["trades"][0]["quote_qty"] in ("6.5", "6.500001") and out["trades"][0]["book"] == BOOK

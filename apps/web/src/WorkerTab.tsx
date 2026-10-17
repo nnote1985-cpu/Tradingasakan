@@ -1,11 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { type ApiError, apiGet, type WorkerExecution, type WorkerStatus, type WorkersResponse } from "./api";
+import { type ApiError, apiGet, type WorkerActivity, type WorkerExecution, type WorkerStatus, type WorkersResponse } from "./api";
 
 // Read-only status of the Testnet worker (testnet-development-plan.md §9). The worker writes this to
 // Supabase about every 10 s; nothing on this page sends a command to it. Pause/resume come with P5.
 
 const STREAM_TH: Record<string, string> = { klines: "แท่งราคา (Mainnet)", quotes: "ราคา Testnet", account: "บัญชี Testnet" };
+const STATE_TH: Record<string, string> = {
+  INTENT: "รอส่ง", SUBMITTING: "กำลังส่ง", ACKNOWLEDGED: "เปิดอยู่", PARTIALLY_FILLED: "ได้บางส่วน", FILLED: "ได้ครบ",
+  CANCELED: "ยกเลิก", REJECTED: "ถูกปฏิเสธ", EXPIRED: "หมดอายุ", UNKNOWN: "ยังไม่รู้ผล", RECONCILING: "กำลังตรวจผล",
+};
+const SIDE_TH: Record<string, string> = { BUY: "ซื้อ", SELL: "ขาย" };
+const TABLE = "w-full text-xs [&_td]:py-1 [&_td]:pr-3 [&_th]:pr-3 [&_th]:text-left [&_th]:font-normal [&_th]:text-[var(--text-muted)]";
 const VERDICT_TH: Record<string, string> = { MATCH: "ตรงกัน", DISCREPANCY: "ไม่ตรง", INCONCLUSIVE: "ยังสรุปไม่ได้" };
 
 function ago(iso: string | null): string {
@@ -52,6 +58,81 @@ function ExecutionRows({ x }: { x: WorkerExecution }) {
     </>
   );
 }
+
+function when(iso: string): string {
+  return new Date(iso).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "medium" });
+}
+
+function Activity({ account }: { account: string }) {
+  const q = useQuery<WorkerActivity, ApiError>({
+    queryKey: ["worker-activity", account],
+    queryFn: () => apiGet<WorkerActivity>(`/api/v1/workers/${encodeURIComponent(account)}/activity`),
+    refetchInterval: 15_000,
+  });
+  if (q.isPending) return <p className="mt-3 text-sm">กำลังโหลดคำสั่งและเทรด…</p>;
+  if (q.isError) return <p role="alert" className="mt-3 text-sm text-[var(--loss)]">{q.error.message ?? "โหลดคำสั่งและเทรดไม่สำเร็จ"}</p>;
+  const { orders, trades } = q.data;
+  return (
+    <div className="mt-4 space-y-4">
+      <section>
+        <h3 className="mb-1 text-sm font-semibold">เทรดล่าสุดบน Testnet</h3>
+        {trades.length === 0 ? <p className="text-sm text-[var(--text-muted)]">ยังไม่มีเทรด</p> : (
+          <div className="overflow-x-auto">
+            <table data-testid="worker-trades" className={TABLE}>
+              <thead>
+                <tr><th>เวลา</th><th>ฝั่ง</th><th className="!text-right">จำนวน</th><th className="!text-right">ราคา</th>
+                  <th className="!text-right">มูลค่า (USDT)</th><th className="!text-right">ค่าธรรมเนียม</th><th>ที่มา</th></tr>
+              </thead>
+              <tbody>
+                {trades.map((t) => (
+                  <tr key={`${t.epoch}-${t.trade_id}`} className="border-t border-[var(--grid)]">
+                    <td className="whitespace-nowrap">{when(t.traded_at)}</td>
+                    <td className={t.side === "BUY" ? "text-[var(--gain)]" : "text-[var(--loss)]"}>{SIDE_TH[t.side]}</td>
+                    <td className="text-right tabular-nums">{t.qty}</td>
+                    <td className="text-right tabular-nums">{t.price}</td>
+                    <td className="text-right tabular-nums">{t.quote_qty}</td>
+                    <td className="text-right whitespace-nowrap tabular-nums">{t.commission} {t.commission_asset ?? ""}</td>
+                    <td className="whitespace-nowrap">{t.book ? `${t.book} · ${t.leg}` : "ไม่ใช่ของบอท"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+      <section>
+        <h3 className="mb-1 text-sm font-semibold">คำสั่งล่าสุด</h3>
+        {orders.length === 0 ? <p className="text-sm text-[var(--text-muted)]">ยังไม่มีคำสั่ง</p> : (
+          <div className="overflow-x-auto">
+            <table data-testid="worker-orders" className={TABLE}>
+              <thead>
+                <tr><th>สร้างเมื่อ</th><th>ที่มา</th><th>ฝั่ง</th><th>ชนิด</th><th className="!text-right">จำนวน</th>
+                  <th className="!text-right">ราคาที่ตั้ง</th><th>สถานะ</th><th className="!text-right">ได้แล้ว</th><th className="!text-right">ราคาเฉลี่ย</th></tr>
+              </thead>
+              <tbody>
+                {orders.map((o) => (
+                  <tr key={o.client_order_id} className="border-t border-[var(--grid)]" title={`${o.client_order_id} · ${o.reason}`}>
+                    <td className="whitespace-nowrap">{when(o.created_at)}</td>
+                    <td className="whitespace-nowrap">{o.book} · {o.leg}</td>
+                    <td>{SIDE_TH[o.side]}</td>
+                    <td>{o.type}</td>
+                    <td className="text-right tabular-nums">{o.qty}</td>
+                    <td className="text-right tabular-nums">{o.limit_price ?? "ตลาด"}</td>
+                    <td className="whitespace-nowrap">{STATE_TH[o.state] ?? o.state}</td>
+                    <td className="text-right tabular-nums">{o.filled_qty}</td>
+                    <td className="text-right tabular-nums">{o.avg_price ?? "–"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+const hasActivity = (w: WorkerStatus) => w.epoch !== null || w.execution !== null;
 
 function WorkerCard({ w }: { w: WorkerStatus }) {
   const r = w.reconcile;
@@ -104,6 +185,7 @@ function WorkerCard({ w }: { w: WorkerStatus }) {
           </Row>
         )}
       </div>
+      {hasActivity(w) && <Activity account={w.account} />}
     </article>
   );
 }

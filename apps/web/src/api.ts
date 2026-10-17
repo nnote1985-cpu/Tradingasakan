@@ -264,4 +264,17 @@ export type WorkerStatus = {
   asset_count: number;
   trades: number;
 };
+export type WorkerOrder = {
+  client_order_id: string; book: string; leg: string; side: "BUY" | "SELL"; type: "MARKET" | "LIMIT"; qty: string;
+  limit_price: string | null; created_at: string; state: string; filled_qty: string; updated_at: string; reason: string;
+  avg_price: string | null;
+};
+
+export type WorkerTrade = {
+  traded_at: string; epoch: number; trade_id: number; side: "BUY" | "SELL"; qty: string; price: string; quote_qty: string;
+  commission: string; commission_asset: string | null; client_order_id: string | null; book: string | null; leg: string | null;
+};
+
+export type WorkerActivity = { available: boolean; orders: WorkerOrder[]; trades: WorkerTrade[] };
+
 export type WorkersResponse = { available: boolean; workers: WorkerStatus[] };
