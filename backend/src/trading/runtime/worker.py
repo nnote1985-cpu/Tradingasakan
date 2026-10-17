@@ -12,6 +12,10 @@ the store). With TESTNET execution enabled the worker refuses to run
 without the database lease, because the lease is what keeps one writer per
 account (§2, RT07). Losing the lease stops the worker; the process manager
 restarts it, and the new run waits for the lease like any other owner.
+
+Since P3 the worker also writes durable records (bars, trades, account
+checks, heartbeat) through :class:`trading.runtime.persist.Recorder` every
+10 s on the lease connection.
 """
 
 from __future__ import annotations
@@ -36,6 +40,7 @@ from trading.runtime.alerts import AlertQueue, Severity
 from trading.runtime.clock import ClockReading, ClockStatus, reading
 from trading.runtime.credentials import TestnetCredentials, mask
 from trading.runtime.deadman import PING_EVERY_S, DeadMan
+from trading.runtime.persist import Recorder
 
 WORKER_MODES = frozenset({TradingMode.SHADOW, TradingMode.TESTNET})
 HttpGet = Callable[[str, dict[str, str]], tuple[int, Any]]
@@ -53,7 +58,9 @@ class LeaseLost(RuntimeError):
 class Feeds(Protocol):
     """The P2 ingestion service, as the worker sees it."""
     events: Any
+    records: Any
 
+    def closed_bars(self, interval: str) -> list[Any]: ...
     def start(self) -> None: ...
     def stop(self, timeout: float = 5) -> None: ...
     def health(self) -> dict[str, Any]: ...
@@ -112,6 +119,8 @@ class WorkerConfig:
     clock_every_s: float = 60.0
     deadman_every_s: float = PING_EVERY_S
     flush_every_s: float = 30.0
+    persist_every_s: float = 10.0
+    host: str = ""
 
 
 @dataclass
@@ -131,6 +140,7 @@ class WorkerState:
 class Worker:
     def __init__(self, settings: Settings, cfg: WorkerConfig, rest: TestnetRest, alerts: AlertQueue, *,
                  deadman: DeadMan | None = None, store: LeaseStore | None = None, feeds: Feeds | None = None,
+                 recorder: Recorder | None = None,
                  now: Callable[[], datetime] = lambda: datetime.now(UTC), monotonic: Callable[[], float] = time.monotonic,
                  log: Callable[[str], None] = print) -> None:
         if settings.trading_mode not in WORKER_MODES:
@@ -142,7 +152,8 @@ class Worker:
                 raise WorkerRefused("TESTNET execution needs Testnet credentials")
         self.settings, self.cfg, self.rest, self.alerts = settings, cfg, rest, alerts
         self.deadman, self.store, self.now, self.mono, self.log = deadman, store, now, monotonic, log
-        self.feeds = feeds
+        self.feeds, self.recorder = feeds, recorder
+        self.persist_ok: bool | None = None
         self.state = WorkerState()
 
     # --- lifecycle ----------------------------------------------------------
@@ -160,12 +171,16 @@ class Worker:
         if self.rest.creds is not None:
             self._check_account()
         self._ping()
+        if self.recorder is not None and self.feeds is not None:
+            self._sync_bars()
         if self.feeds is not None:
             self.feeds.start()
         self.alerts.flush()
         t = self.mono()
-        s._due |= {"clock": t + self.cfg.clock_every_s, "deadman": t + self.cfg.deadman_every_s, "flush": t + self.cfg.flush_every_s}
+        s._due |= {"clock": t + self.cfg.clock_every_s, "deadman": t + self.cfg.deadman_every_s, "flush": t + self.cfg.flush_every_s,
+                   "persist": t + self.cfg.persist_every_s}
         self._heartbeat()
+        self._persist()
 
     def tick(self) -> None:
         self._renew_lease()
@@ -177,6 +192,8 @@ class Worker:
             self.alerts.flush()
         self._drain_feeds()
         self._heartbeat()
+        if self._due("persist", self.cfg.persist_every_s):
+            self._persist()
 
     def stop(self, reason: str) -> None:
         if self.feeds is not None:
@@ -267,14 +284,56 @@ class Worker:
         for severity, key, text in self.feeds.problems():
             self.alerts.push(severity, key, text)
 
-    def _heartbeat(self) -> None:
+    def _sync_bars(self) -> None:
+        assert self.recorder is not None and self.feeds is not None
+        try:
+            for interval in ("1m", "1d"):
+                n = self.recorder.sync_bars("BTCUSDT", interval, self.feeds.closed_bars(interval))
+                if n:
+                    self.log(f"stored {n} {interval} bars from the local files")
+        except Exception as e:  # noqa: BLE001 - history can be sent again next start; the lease decides if the database is gone
+            self.alerts.push(Severity.WARNING, "persist", f"could not store bar history: {type(e).__name__}")
+
+    def _persist(self) -> None:
+        """Write queued feed records and the heartbeat. A failure keeps the records for the next try."""
+        if self.recorder is None:
+            return
+        records: list[Any] = []
+        if self.feeds is not None:
+            while True:
+                try:
+                    records.append(self.feeds.records.get_nowait())
+                except Exception:  # noqa: BLE001 - queue.Empty
+                    break
         s = self.state
-        s.last_tick_at = self.now().isoformat(timespec="seconds")
+        try:
+            self.recorder.flush(records)
+            self.recorder.store.heartbeat(self.cfg.owner, self.cfg.host, s.started_at, s.last_tick_at, self._body())
+        except Exception as e:  # noqa: BLE001
+            if self.persist_ok is not False:
+                self.alerts.push(Severity.WARNING, "persist", f"could not write to Supabase ({type(e).__name__}); will retry")
+            self.persist_ok = False
+            return
+        if self.persist_ok is False:
+            self.alerts.push(Severity.INFO, "persist-ok", "writing to Supabase again")
+        self.persist_ok = True
+
+    def _body(self) -> dict[str, Any]:
+        s = self.state
         body = {k: v for k, v in s.__dict__.items() if not k.startswith("_")}
         body |= {"pid": os.getpid(), "owner": self.cfg.owner, "mode": self.settings.trading_mode.value,
                  "execution_enabled": self.settings.testnet_execution_enabled}
         if self.feeds is not None:
             body["feeds"] = self.feeds.health()
+        if self.recorder is not None:
+            body["persist"] = {"ok": self.persist_ok, "pending": len(self.recorder.pending), "epoch": self.recorder.epoch,
+                               **self.recorder.counts}
+        return body
+
+    def _heartbeat(self) -> None:
+        s = self.state
+        s.last_tick_at = self.now().isoformat(timespec="seconds")
+        body = self._body()
         path = self.cfg.heartbeat_path
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")

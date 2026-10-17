@@ -110,3 +110,19 @@ powershell -ExecutionPolicy Bypass -File scripts\windows\restart-worker.ps1
 Drill ตัดเน็ต ~1 นาที (2026-10-17 ~04:00 UTC): การต่อ Supabase เพื่อต่อ lease ล้มก่อน worker จึงหยุดเอง (exit 3, alert "database unreachable")
 และ loop เริ่มใหม่เมื่อเน็ตกลับ (lease token 4, เริ่ม 04:00:18) ตัวใหม่ backfill จาก REST จน 1m ล่าสุด 03:59 UTC, bar_gaps 0, reconcile MATCH
 นี่ทดสอบทาง restart + backfill (RT05) ส่วนทาง reconnect ใน process เดียว (RT03) ทดสอบด้วย fixture ใน tests/unit/test_ingest_p2.py
+
+## 10. P3: เก็บลง Supabase และหน้า Worker บนเว็บ
+
+ตั้งแต่ P3 worker เขียนข้อมูลเหล่านี้ลง Supabase ทุกประมาณ 10 วินาที โดยใช้การเชื่อมต่อเดียวกับ lease:
+
+- แท่งราคาที่ปิดแล้ว (`trading.market_bars`) ถ้ามีค่าใหม่มาแก้ภายหลัง ค่าแรกจะคงอยู่ และค่าที่มาแก้จะเก็บแยกใน `market_bar_revisions`
+- เทรดบน Testnet (`exec_trades`) พร้อมบัญชีคู่แยกตามสินทรัพย์ (`exec_journal_lines`) ค่าธรรมเนียมคิดในสินทรัพย์จริงที่ถูกหัก
+- รอบบัญชี (`exec_account_epochs`) เปิดเองตอนตรวจบัญชีครั้งแรก โดยใช้ยอดจาก Exchange เป็นยอดเปิด ถ้า Testnet ถูก reset ให้ปิดรอบด้วย INTERRUPTED_TESTNET_RESET ซึ่งเป็นการตัดสินใจของคน ระบบไม่ปิดเอง
+- ผลตรวจบัญชีกับ REST (`exec_reconciliations`) เก็บเมื่อผลเปลี่ยน เมื่อไม่ตรงทุกครั้ง และทุก 15 นาที ยอดเงินล่าสุดอยู่ใน `exec_balances`
+- สถานะ worker (`worker_heartbeats`) ซึ่งเว็บแท็บ **Worker** อ่าน
+
+ถ้าเขียนลง Supabase ไม่ได้ worker จะเก็บข้อมูลไว้ในหน่วยความจำ ส่ง alert หนึ่งครั้ง แล้วลองใหม่รอบถัดไป ถ้าฐานข้อมูลหายไปจริง worker จะเสีย lease แล้วหยุดตามเดิม พอเริ่มใหม่ก็จะส่งแท่งราคาที่ยังขาดจากไฟล์ในเครื่องให้ครบ ส่วนเทรดที่เกิดระหว่างที่ worker หยุด จะดึงย้อนจาก REST ได้ใน P4 ถ้าไม่อยากให้เขียนลง Supabase ให้ตั้ง `WORKER_PERSIST=off`
+
+**อัปเดต worker:** ดับเบิลคลิก `scripts\windows\update-worker.cmd` ไฟล์นี้จะรัน `git pull` จาก main แล้ว restart worker ให้ ถ้า pull ไม่ผ่าน จะไม่ restart
+
+**ดูสถานะ:** เปิดเว็บแล้วไปที่แท็บ Worker (`#worker`) จะเห็นการเชื่อมต่อ นาฬิกา ผลตรวจบัญชี และยอดเงินทดสอบ หน้านี้อ่านอย่างเดียว ปุ่มหยุดหรือเริ่มบอทจะมาใน P5

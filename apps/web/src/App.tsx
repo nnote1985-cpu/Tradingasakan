@@ -11,6 +11,7 @@ import { PortfolioTable } from "./PortfolioTable";
 import { ShadowBanner } from "./ShadowBanner";
 import { StrategiesTab } from "./StrategiesTab";
 import { NotOpen, TabBar, useHashTab } from "./tabs";
+import { WorkerTab } from "./WorkerTab";
 
 type Health = { status: string; mode: string; live_enabled: boolean };
 
@@ -78,6 +79,8 @@ export function Dashboard() {
           <FuturesTab rows={q.data?.portfolios ?? []} />
         ) : tab === "strategies" ? (
           <StrategiesTab />
+        ) : tab === "worker" ? (
+          <WorkerTab />
         ) : tab === "options" ? (
           <NotOpen title="Options ยังไม่เปิด">จะเปิดเมื่อตัวจำลอง options ผ่านเทสต์ และจะเริ่มด้วยเงินสมมติเหมือนพอร์ตอื่น</NotOpen>
         ) : q.isPending ? (

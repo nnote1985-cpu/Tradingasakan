@@ -8,6 +8,8 @@ The worker sends no orders yet. It holds the writer lease, writes
 the Testnet key, pings the external dead-man and sends alerts to Telegram.
 Since P2 it also runs the feeds: Mainnet 1m/1d klines into var/ingest/bars,
 Testnet BTCUSDT quotes, and the Testnet user stream checked against REST.
+Since P3 it stores bars, Testnet trades, account checks and its heartbeat in
+Supabase (needs the P3 migration), which the web app's Worker tab reads.
 Run it under the process manager (scripts/windows/testnet-worker.ps1 on the
 PC, deploy/systemd/tradingasakan-worker.service on the VPS) so a crash restarts it.
 
@@ -19,6 +21,7 @@ Environment (all on the Host only; none of them belong in the repo or in chat):
     DEADMAN_PING_URL                        external monitor ping, e.g. https://hc-ping.com/<uuid> (optional)
     WORKER_ACCOUNT                          default DEFAULT
     WORKER_FEEDS=off                        run without the P2 feeds (klines, quotes, user stream)
+    WORKER_PERSIST=off                      do not write bars, trades, account checks or heartbeats to Supabase (P3)
 """
 
 from __future__ import annotations
@@ -62,17 +65,23 @@ def build(env: dict[str, str] | None = None) -> tuple[Worker, Any]:
     ping = env.get("DEADMAN_PING_URL", "").strip()
     conn = None
     store = None
+    recorder = None
     if settings.database_url:
         import psycopg
 
         from trading.execution.store import ExecStore
+        from trading.runtime.persist import PersistStore, Recorder
 
         conn = psycopg.connect(settings.database_url, autocommit=True, connect_timeout=10)
-        store = ExecStore(conn, env.get("WORKER_ACCOUNT", "DEFAULT"))
-    cfg = WorkerConfig(owner=f"{host}:{os.getpid()}", heartbeat_path=VAR / "heartbeat.json")
+        account = env.get("WORKER_ACCOUNT", "DEFAULT")
+        store = ExecStore(conn, account)
+        if env.get("WORKER_PERSIST", "on").strip().lower() != "off":
+            recorder = Recorder(PersistStore(conn, account))
+    cfg = WorkerConfig(owner=f"{host}:{os.getpid()}", heartbeat_path=VAR / "heartbeat.json", host=host)
     rest = TestnetRest(creds)
     feeds = None if env.get("WORKER_FEEDS", "on").strip().lower() == "off" else IngestService(BarStore(ROOT / "var" / "ingest" / "bars"), rest)
-    worker = Worker(settings, cfg, rest, alerts, deadman=DeadMan(ping) if ping else None, store=store, feeds=feeds, log=_log)
+    worker = Worker(settings, cfg, rest, alerts, deadman=DeadMan(ping) if ping else None, store=store, feeds=feeds,
+                    recorder=recorder, log=_log)
     if sink is None:
         _log("TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set: alerts stay queued in var/worker/alerts.jsonl")
     if not ping:

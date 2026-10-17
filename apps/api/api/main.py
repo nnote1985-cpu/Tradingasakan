@@ -18,13 +18,17 @@ from api.auth import AuthError, Principal, RoleStore, TokenVerifier, authenticat
 from api.backtests import load_backtests
 from api.portfolios import NoPortfolios, PortfolioStore, Unavailable, decision_items, equity_series, overview_items, risk_items
 from api.strategies import catalog_view, profiles_view
+from api.workers import NoWorkers, PgWorkerStore, WorkerStore, worker_items
+from api.workers import Unavailable as WorkersUnavailable
 from trading.config import Settings
 from trading.contracts.enums import OperatorRole
 
 
 def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
-               portfolios: PortfolioStore | None = None, assets: AssetCache | None = None) -> FastAPI:
+               portfolios: PortfolioStore | None = None, assets: AssetCache | None = None,
+               workers: WorkerStore | None = None) -> FastAPI:
     store: PortfolioStore = portfolios or NoPortfolios()
+    worker_store: WorkerStore = workers or NoWorkers()
     market = assets or AssetCache()
     app = FastAPI(title="asakantrading API", version="0.1.0")
     if settings.allowed_origins:
@@ -133,6 +137,13 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
         except Unavailable:
             return {"available": False, "items": [], "counts": {}, "cost_usd": "0", "limit": 0}
 
+    @app.get("/api/v1/workers")
+    async def worker_status(p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        try:
+            return {"available": True, "workers": worker_items(await worker_store.worker_rows())}
+        except WorkersUnavailable:
+            return {"available": False, "workers": []}
+
     return app
 
 
@@ -147,7 +158,8 @@ def app_from_env() -> FastAPI:   # uvicorn --factory api.main:app_from_env
     if not s.supabase_url or not s.database_url:
         raise RuntimeError("SUPABASE_URL and DATABASE_URL are required")
     pool = AsyncConnectionPool(s.database_url, open=False, timeout=5)
-    app = create_app(s, SupabaseJwtVerifier(s.supabase_url), PgRoleStore(pool), PgPortfolioStore(pool))
+    app = create_app(s, SupabaseJwtVerifier(s.supabase_url), PgRoleStore(pool), PgPortfolioStore(pool),
+                     workers=PgWorkerStore(pool))
     app.router.on_startup.append(pool.open)
     app.router.on_shutdown.append(pool.close)
     return app
