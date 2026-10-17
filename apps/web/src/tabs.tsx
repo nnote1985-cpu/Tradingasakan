@@ -7,6 +7,7 @@ export const TABS = [
   { key: "options", label: "Options" },
   { key: "ai", label: "AI" },
   { key: "strategies", label: "กลยุทธ์" },
+  { key: "worker", label: "Worker" },
 ] as const;
 export type TabKey = (typeof TABS)[number]["key"];
 

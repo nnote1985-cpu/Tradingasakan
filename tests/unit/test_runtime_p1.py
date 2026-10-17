@@ -379,3 +379,50 @@ def test_worker_does_not_depend_on_the_web_app():
 
     src = Path(mod.__file__).read_text()
     assert "fastapi" not in src and "from api" not in src and "import api" not in src
+
+
+# --- P3: durable records from the worker --------------------------------------------------------------------
+
+class _PersistFake:
+    def __init__(self) -> None:
+        self.down, self.beats = False, []
+
+    def heartbeat(self, owner, host, started_at, last_tick_at, body):
+        if self.down:
+            raise ConnectionError("db down")
+        self.beats.append(body)
+
+
+class _RecorderFake:
+    def __init__(self) -> None:
+        self.store, self.pending, self.epoch, self.counts, self.got = _PersistFake(), [], None, {}, []
+
+    def flush(self, records):
+        self.pending.extend(records)
+        if self.store.down:
+            raise ConnectionError("db down")
+        self.got.extend(self.pending)
+        self.pending = []
+
+
+def test_worker_persists_heartbeat_and_keeps_records_through_an_outage(tmp_path):
+    import queue
+
+    w, sink, _, t = _worker(tmp_path)
+    rec = _RecorderFake()
+    w.recorder = rec  # type: ignore[assignment]
+    w.start()
+    assert len(rec.store.beats) == 1 and "persist" in rec.store.beats[0]
+    w.feeds = type("F", (), {"records": queue.SimpleQueue(), "events": queue.SimpleQueue(), "health": lambda self: {},
+                             "problems": lambda self: []})()
+    w.feeds.records.put(("bar", 1))
+    rec.store.down = True
+    t[0] += 11
+    w.tick()
+    assert rec.pending == [("bar", 1)] and w.persist_ok is False
+    rec.store.down = False
+    t[0] += 11
+    w.tick()
+    assert rec.got == [("bar", 1)] and w.persist_ok is True
+    w.alerts.flush()
+    assert any("could not write to Supabase" in m for m in sink.sent) and any("writing to Supabase again" in m for m in sink.sent)

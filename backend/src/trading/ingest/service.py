@@ -13,6 +13,9 @@ Three streams, each reconnecting on its own:
 The service runs its own asyncio loop in a thread. The worker reads
 ``health()`` into the heartbeat and drains ``events`` into alerts every tick,
 so feed problems reach Telegram through the same queue as everything else.
+What should be stored (closed bars, revisions, Testnet trades, account
+checks) goes on ``records``; the worker writes it to Supabase (P3, see
+:mod:`trading.runtime.persist`), so this thread never touches the database.
 Backfill builds history only; nothing here makes or replays a decision (RT05).
 """
 
@@ -33,6 +36,7 @@ from trading.ingest.quotes import SILENT_AFTER_MS, QuoteBook, quote_from_stream
 from trading.ingest.streams import Connect, StreamLoop
 from trading.runtime import endpoints
 from trading.runtime.alerts import Severity
+from trading.runtime.persist import ReconcileRecord, Record, TradeRecord
 from trading.runtime.worker import HttpGet, TestnetRest
 
 SYMBOL = "BTCUSDT"
@@ -60,6 +64,7 @@ class IngestService:
         self.quotes = QuoteBook()
         self.account = AccountState()
         self.events: queue.SimpleQueue[Event] = queue.SimpleQueue()
+        self.records: queue.SimpleQueue[Record] = queue.SimpleQueue()
         self.last_reconcile: dict[str, Any] = {}
         self._reconcile_due = True
         self._first_reconcile = True
@@ -103,7 +108,11 @@ class IngestService:
         if not isinstance(event, dict):
             return
         with self.lock:
+            n = len(self.account.fills)
             kind = self.account.apply(event, received_ms)
+            new = list(self.account.fills.values())[n:]
+        for f in new:
+            self.records.put(("trade", TradeRecord(f, received_ms)))
         if kind == "eventStreamTerminated":
             self.events.put((Severity.WARNING, "user-stream", "Testnet user stream terminated; reconnecting"))
             self._reconcile_due = True
@@ -143,7 +152,9 @@ class IngestService:
             out = series.accept(bar, now_ms)
             if out in (Outcome.NEW, Outcome.GAP_FILL):
                 self.store.append(bar)
+                self.records.put(("bar", bar))
         if out is Outcome.REVISION:
+            self.records.put(("revision", bar))
             self.events.put((Severity.WARNING, f"revision-{bar.interval}",
                              f"{bar.symbol} {bar.interval} bar at {bar.open_time} came again with different values; first value kept"))
         return out
@@ -183,7 +194,10 @@ class IngestService:
             self.events.put((Severity.WARNING, "reconcile", f"account check failed (HTTP {s1}/{s2}); entries stay paused"))
             return None
         with self.lock:
-            r = self.account.reconcile(acct, orders, requested, first=self._first_reconcile)
+            first = self._first_reconcile
+            r = self.account.reconcile(acct, orders, requested, first=first)
+            balances, n_orders = dict(self.account.balances), len(self.account.open_orders)
+        self.records.put(("reconcile", ReconcileRecord(r.verdict.value, requested, first, r.differences, balances, n_orders)))
         if r.verdict is not Verdict.INCONCLUSIVE:
             self._first_reconcile = False
         self.last_reconcile = {"verdict": r.verdict.value, "at_ms": requested, "differences": list(r.differences)}
@@ -226,6 +240,10 @@ class IngestService:
         self.started_ms = self.now_ms()
         self._thread = threading.Thread(target=asyncio.run, args=(self._main(),), name="ingest", daemon=True)
         self._thread.start()
+
+    def closed_bars(self, interval: str) -> list[Bar]:
+        with self.lock:
+            return self.series[interval].closed()
 
     def stop(self, timeout: float = 5) -> None:
         if self._loop is not None and self._stop is not None and not self._loop.is_closed():
