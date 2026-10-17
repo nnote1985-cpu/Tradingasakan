@@ -23,7 +23,7 @@ select h.account, h.owner, h.host, h.started_at, h.last_tick_at, h.body, h.updat
        e.epoch, e.opened_at,
        r.verdict, r.checked_at, r.differences, r.open_orders,
        (select count(*) from trading.exec_balances b where b.account = h.account and b.epoch = e.epoch),
-       (select coalesce(json_agg(json_build_object('asset', b.asset, 'free', b.free::text, 'locked', b.locked::text)
+       (select coalesce(json_agg(json_build_object('asset', b.asset, 'free', trim_scale(b.free)::text, 'locked', trim_scale(b.locked)::text)
                                  order by b.asset), '[]'::json)
           from trading.exec_balances b where b.account = h.account and b.epoch = e.epoch and b.asset = any(%s)),
        (select count(*) from trading.exec_trades t where t.account = h.account and t.epoch = e.epoch)
@@ -85,7 +85,7 @@ def worker_items(rows: list[tuple[Any, ...]], now: datetime | None = None) -> li
             "streams": feeds.get("streams") or {}, "quote_age_ms": feeds.get("quote_age_ms"),
             "bars": {"last_1m": feeds.get("bars_1m_last_open"), "last_1d": feeds.get("bars_1d_last_open"),
                      "gaps": feeds.get("bar_gaps"), "revisions": feeds.get("bar_revisions")},
-            "persist": body.get("persist"),
+            "persist": body.get("persist"), "execution": body.get("execution"),
             "epoch": None if epoch is None else {"epoch": epoch, "opened_at": _iso(opened)},
             "reconcile": None if verdict is None else {"verdict": verdict, "checked_at": _iso(checked),
                                                        "differences": diffs or [], "open_orders": n_orders},

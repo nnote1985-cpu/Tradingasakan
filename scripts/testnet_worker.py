@@ -10,6 +10,9 @@ Since P2 it also runs the feeds: Mainnet 1m/1d klines into var/ingest/bars,
 Testnet BTCUSDT quotes, and the Testnet user stream checked against REST.
 Since P3 it stores bars, Testnet trades, account checks and its heartbeat in
 Supabase (needs the P3 migration), which the web app's Worker tab reads.
+Since P4 it reconciles and sends Testnet orders: safety goes RUNNING only
+after stored orders and the exchange agree, and with WORKER_CONFORMANCE=on
+it runs the tn-conformance-v1 order profile every 4 hours (§5.4).
 Run it under the process manager (scripts/windows/testnet-worker.ps1 on the
 PC, deploy/systemd/tradingasakan-worker.service on the VPS) so a crash restarts it.
 
@@ -22,6 +25,7 @@ Environment (all on the Host only; none of them belong in the repo or in chat):
     WORKER_ACCOUNT                          default DEFAULT
     WORKER_FEEDS=off                        run without the P2 feeds (klines, quotes, user stream)
     WORKER_PERSIST=off                      do not write bars, trades, account checks or heartbeats to Supabase (P3)
+    WORKER_CONFORMANCE=on                   send the tn-conformance-v1 orders (P4; default off). Needs execution enabled
 """
 
 from __future__ import annotations
@@ -31,6 +35,7 @@ import os
 import platform
 import signal
 import sys
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -80,8 +85,26 @@ def build(env: dict[str, str] | None = None) -> tuple[Worker, Any]:
     cfg = WorkerConfig(owner=f"{host}:{os.getpid()}", heartbeat_path=VAR / "heartbeat.json", host=host)
     rest = TestnetRest(creds)
     feeds = None if env.get("WORKER_FEEDS", "on").strip().lower() == "off" else IngestService(BarStore(ROOT / "var" / "ingest" / "bars"), rest)
+    executor = None
+    if settings.testnet_execution_enabled and store is not None:
+        from trading.execution.binance_spot import BinanceSpotTestnet
+        from trading.ingest.service import SYMBOL
+        from trading.runtime.conformance import Conformance
+        from trading.runtime.executor import Executor
+
+        conformance = Conformance() if env.get("WORKER_CONFORMANCE", "off").strip().lower() == "on" else None
+
+        def quote() -> Any:
+            return None if feeds is None else feeds.quotes.fresh_for_entry(SYMBOL, int(time.time() * 1000))
+
+        def verdict() -> str | None:
+            return None if feeds is None else feeds.last_reconcile.get("verdict", "NONE")
+
+        executor = Executor(store, BinanceSpotTestnet(rest), alerts, persist=recorder.store if recorder else None,
+                            conformance=conformance, quote=quote, verdict=verdict, log=_log)
+        _log(f"order execution on; conformance profile {'on' if conformance else 'off'}")
     worker = Worker(settings, cfg, rest, alerts, deadman=DeadMan(ping) if ping else None, store=store, feeds=feeds,
-                    recorder=recorder, log=_log)
+                    recorder=recorder, executor=executor, log=_log)
     if sink is None:
         _log("TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set: alerts stay queued in var/worker/alerts.jsonl")
     if not ping:

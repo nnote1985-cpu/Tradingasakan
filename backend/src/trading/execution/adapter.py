@@ -27,6 +27,18 @@ class DuplicateClientId(Exception):
     """The exchange already has an order with this client id."""
 
 
+class OrderRejected(Exception):
+    """The exchange answered the submit with a refusal; the order was not placed."""
+
+    def __init__(self, code: int | None, msg: str) -> None:
+        super().__init__(f"{code}: {msg}")
+        self.code, self.msg = code, msg
+
+
+class UnknownOrder(Exception):
+    """A cancel found no open order with this client id (already filled, canceled, or never placed)."""
+
+
 @dataclass(frozen=True)
 class OrderReport:
     client_order_id: str

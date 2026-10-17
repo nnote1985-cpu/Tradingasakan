@@ -189,6 +189,15 @@ class PersistStore:
             self._journal(epoch, trade_lines(f), _ts(f.trade_time))
             return True
 
+    def trade_cursor(self, epoch: int, symbol: str) -> tuple[int | None, datetime]:
+        """The newest stored trade id for the symbol in this epoch (None if none yet) and when the epoch opened."""
+        row = self.conn.execute("select (select max(trade_id) from trading.exec_trades t where t.account = e.account and t.epoch = e.epoch "
+                                "and t.symbol = %s), e.opened_at from trading.exec_account_epochs e where e.account = %s and e.epoch = %s",
+                                (symbol, self.account, epoch)).fetchone()
+        if row is None:
+            raise KeyError(f"no epoch {epoch} for {self.account}")
+        return (None if row[0] is None else int(row[0])), row[1]
+
     def wallet(self, epoch: int) -> dict[str, Decimal]:
         """Per-asset wallet balance the journal implies (opening + trades - fees)."""
         return {a: Decimal(v) for a, v in self.conn.execute(

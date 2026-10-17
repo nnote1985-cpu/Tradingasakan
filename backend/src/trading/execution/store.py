@@ -231,6 +231,27 @@ class ExecStore:
             order.history.append((order.state, reason))
         return order
 
+    def outbox_status(self, client_order_id: str) -> str | None:
+        row = self.conn.execute("select status from trading.exec_outbox where client_order_id = %s and kind = 'EXECUTE_INTENT'",
+                                (client_order_id,)).fetchone()
+        return None if row is None else str(row[0])
+
+    def submits_since(self, since: datetime) -> int:
+        """Orders this account sent since ``since`` (SUBMITTING events), for the daily pre-trade limits."""
+        row = self.conn.execute("select count(*) from trading.exec_order_events e join trading.exec_intents i using (client_order_id) "
+                                "where i.account = %s and e.state = 'SUBMITTING' and e.at >= %s", (self.account, since)).fetchone()
+        return int(row[0]) if row else 0
+
+    def client_id_for(self, exchange_order_id: str) -> str | None:
+        row = self.conn.execute("select e.client_order_id from trading.exec_order_events e join trading.exec_intents i "
+                                "using (client_order_id) where i.account = %s and e.exchange_order_id = %s limit 1",
+                                (self.account, exchange_order_id)).fetchone()
+        return None if row is None else str(row[0])
+
+    def has_intent(self, client_order_id: str) -> bool:
+        return self.conn.execute("select 1 from trading.exec_intents where client_order_id = %s and account = %s",
+                                 (client_order_id, self.account)).fetchone() is not None
+
     def unresolved_orders(self) -> list[Order]:
         """Every order not known to be terminal: what RECOVERING must reconcile before RUNNING."""
         ids = [r[0] for r in self.conn.execute(

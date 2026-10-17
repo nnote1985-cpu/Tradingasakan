@@ -207,4 +207,5 @@ def test_worker_status_sql_reads_what_the_worker_wrote(store):
     assert w["silent"] is False and w["mode"] == "TESTNET" and w["clock"]["offset_ms"] == 25.0
     assert w["epoch"]["epoch"] == 1 and w["reconcile"]["verdict"] == "MATCH" and w["trades"] == 1
     assert [b["asset"] for b in w["balances"]] == ["BTC", "USDT"] and w["asset_count"] == 2
+    assert w["balances"][1] == {"asset": "USDT", "free": "9000", "locked": "1000"}       # no 18-place trailing zeros
     assert w["streams"] == {"klines": {"connected": True}}
