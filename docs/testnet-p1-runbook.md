@@ -85,4 +85,4 @@ Task เริ่มเองตอน logon, รันแบบซ่อนห�
 | Scheduled task | ผ่าน: เริ่ม 03:40:02 UTC, lease token 2, clock OK, account ok, dead-man ok |
 | Worker ตัวที่สอง (RT07) | ผ่าน: ตัวที่สองหยุดเองด้วย "another worker holds the writer lease" (exit 3) |
 | ปิดเว็บแล้ว worker เดินต่อ (RT01) | worker เป็น process แยกจาก API และไม่ import โค้ดเว็บ (test); heartbeat เดินขณะที่ไม่ได้เปิดเว็บ |
-| Alert ของ worker เข้า Telegram | รอ Note ยืนยันในแชทกับบอทของตัวเอง |
+| Alert ของ worker เข้า Telegram | ผ่าน: started, clock WARN, stopped และ CRITICAL lease เข้าแชทบอทของ Note ครบ |
