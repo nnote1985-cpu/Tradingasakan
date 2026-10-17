@@ -296,10 +296,27 @@ def test_workers_endpoint_needs_a_viewer_and_says_unavailable_before_the_migrati
     assert r.status_code == 200 and r.json() == {"available": False, "workers": []}
     assert c.get("/api/v1/workers/DEFAULT/activity").status_code == 401
     r = _get(c, "/api/v1/workers/DEFAULT/activity", _token(VIEWER))
-    assert r.json() == {"available": False, "orders": [], "trades": []}
+    assert r.json() == {"available": False, "orders": [], "trades": [], "pnl": None}
     from datetime import UTC, datetime, timedelta
     now = datetime(2026, 10, 17, tzinfo=UTC)
     row = ("DEFAULT", "pc:1", "pc", now, now, {"mode": "TESTNET"}, now - timedelta(minutes=5), None, None, None, None, None, None,
            0, [], 0)
     [w] = worker_items([row], now=now)
     assert w["silent"] is True and w["epoch"] is None and w["reconcile"] is None
+
+
+def test_pnl_marks_net_btc_and_keeps_bnb_fees_apart():
+    from datetime import UTC, datetime
+    from decimal import Decimal as D
+
+    from api.workers import pnl_items
+
+    at = datetime(2026, 10, 17, tzinfo=UTC)
+    bal = [(1, at, "BTC", D("1"), D("1.00001984")), (1, at, "USDT", D("10000"), D("9998.35318072"))]
+    books = [("tn-conformance-v1", 2, 2, D("0.00001984"), D("-1.64681928"), D("0"), D("24.52"), D("81713.67"))]
+    p = pnl_items(bal, books, "81713.67")
+    assert p["mark_source"] == "quote" and p["balances"][1]["change"] == "-1.64681928"
+    assert p["equity_change_usdt"] == "-0.0256" and p["books"][0]["pnl_usdt"] == "-0.0256"
+    assert pnl_items(bal, books, None)["mark_source"] == "last_trade"
+    assert pnl_items([], [], None) | {} == {"epoch": None, "opened_at": None, "mark": None, "mark_source": None, "balances": [],
+                                             "equity_change_usdt": None, "books": []}

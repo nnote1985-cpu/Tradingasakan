@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { type ApiError, apiGet, type WorkerActivity, type WorkerExecution, type WorkerStatus, type WorkersResponse } from "./api";
+import { type ApiError, apiGet, type WorkerActivity, type WorkerPnl, type WorkerExecution, type WorkerStatus, type WorkersResponse } from "./api";
 
 // Read-only status of the Testnet worker (testnet-development-plan.md §9). The worker writes this to
 // Supabase about every 10 s; nothing on this page sends a command to it. Pause/resume come with P5.
@@ -63,6 +63,78 @@ function when(iso: string): string {
   return new Date(iso).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "medium" });
 }
 
+function signed(v: string | null): string {
+  if (v === null) return "–";
+  return Number(v) > 0 ? `+${v}` : v;
+}
+
+function tone(v: string | null): string {
+  if (v === null || Number(v) === 0) return "";
+  return Number(v) > 0 ? "text-[var(--gain)]" : "text-[var(--loss)]";
+}
+
+function Pnl({ p }: { p: WorkerPnl }) {
+  if (p.epoch === null) return <p className="text-sm text-[var(--text-muted)]">ยังไม่เปิดรอบบัญชี</p>;
+  const markNote = p.mark === null ? "ยังไม่มีราคา BTC" : `BTC คิดที่ ${p.mark} USDT (${p.mark_source === "quote" ? "ราคา bid ล่าสุดบน Testnet" : "ราคาเทรดล่าสุด"})`;
+  return (
+    <section data-testid="worker-pnl">
+      <h3 className="mb-1 text-sm font-semibold">ยอดเงินและกำไร/ขาดทุน · รอบบัญชี #{p.epoch}</h3>
+      <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+        <p className="text-sm">
+          รวม BTC + USDT เทียบเป็น USDT ตั้งแต่เริ่มรอบ{" "}
+          <span className={`text-base font-semibold tabular-nums ${tone(p.equity_change_usdt)}`}>{signed(p.equity_change_usdt)} USDT</span>
+        </p>
+        <p className="text-xs text-[var(--text-muted)]">{markNote}</p>
+      </div>
+      <div className="mt-1 overflow-x-auto">
+        <table className={TABLE}>
+          <thead>
+            <tr><th>สินทรัพย์</th><th className="!text-right">ยอดตั้งต้น</th><th className="!text-right">ตอนนี้</th><th className="!text-right">เปลี่ยนไป</th></tr>
+          </thead>
+          <tbody>
+            {p.balances.map((b) => (
+              <tr key={b.asset} className="border-t border-[var(--grid)]">
+                <td>{b.asset}</td>
+                <td className="text-right tabular-nums">{b.opening}</td>
+                <td className="text-right tabular-nums">{b.now ?? "–"}</td>
+                <td className={`text-right tabular-nums ${tone(b.change)}`}>{signed(b.change)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {p.books.length > 0 && (
+        <div className="mt-2 overflow-x-auto">
+          <table className={TABLE}>
+            <thead>
+              <tr><th>ที่มา</th><th className="!text-right">ซื้อ/ขาย (ครั้ง)</th><th className="!text-right">ซื้อขายรวม (USDT)</th>
+                <th className="!text-right">BTC สุทธิ</th><th className="!text-right">USDT สุทธิ</th><th className="!text-right">ค่าธรรมเนียม BNB</th>
+                <th className="!text-right">กำไร/ขาดทุน (USDT)</th></tr>
+            </thead>
+            <tbody>
+              {p.books.map((b) => (
+                <tr key={b.book ?? "-"} className="border-t border-[var(--grid)]">
+                  <td className="whitespace-nowrap">{b.book ?? "ไม่ใช่ของบอท"}</td>
+                  <td className="text-right tabular-nums">{b.buys}/{b.sells}</td>
+                  <td className="text-right tabular-nums">{b.volume}</td>
+                  <td className="text-right tabular-nums">{signed(b.btc_net)}</td>
+                  <td className="text-right tabular-nums">{signed(b.usdt_net)}</td>
+                  <td className="text-right tabular-nums">{b.bnb_fees}</td>
+                  <td className={`text-right font-semibold tabular-nums ${tone(b.pnl_usdt)}`}>{signed(b.pnl_usdt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="mt-1 text-xs text-[var(--text-muted)]">
+        กำไร/ขาดทุนของแต่ละที่มา = USDT ที่ได้จากการขาย − ที่จ่ายซื้อ − ค่าธรรมเนียม + BTC ที่ยังถืออยู่คิดที่ราคาข้างบน
+        ค่าธรรมเนียมที่จ่ายเป็น BNB แสดงแยก ไม่ได้แปลงเป็น USDT · conformance เป็นการทดสอบระบบ ไม่ใช่ผลกลยุทธ์
+      </p>
+    </section>
+  );
+}
+
 function Activity({ account }: { account: string }) {
   const q = useQuery<WorkerActivity, ApiError>({
     queryKey: ["worker-activity", account],
@@ -71,9 +143,10 @@ function Activity({ account }: { account: string }) {
   });
   if (q.isPending) return <p className="mt-3 text-sm">กำลังโหลดคำสั่งและเทรด…</p>;
   if (q.isError) return <p role="alert" className="mt-3 text-sm text-[var(--loss)]">{q.error.message ?? "โหลดคำสั่งและเทรดไม่สำเร็จ"}</p>;
-  const { orders, trades } = q.data;
+  const { orders, trades, pnl } = q.data;
   return (
     <div className="mt-4 space-y-4">
+      {pnl && <Pnl p={pnl} />}
       <section>
         <h3 className="mb-1 text-sm font-semibold">เทรดล่าสุดบน Testnet</h3>
         {trades.length === 0 ? <p className="text-sm text-[var(--text-muted)]">ยังไม่มีเทรด</p> : (

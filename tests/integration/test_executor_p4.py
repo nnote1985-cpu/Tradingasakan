@@ -254,3 +254,13 @@ def test_web_activity_lists_orders_with_their_last_state_and_trades(db):  # noqa
     assert by_leg["limit-far"]["avg_price"] is None and by_leg["limit-near"]["limit_price"] == "65000"
     assert [t["side"] for t in out["trades"]] and {t["leg"] for t in out["trades"]} == {"mkt-buy", "mkt-sell"}
     assert out["trades"][0]["quote_qty"] in ("6.5", "6.500001") and out["trades"][0]["book"] == BOOK
+    from api.workers import BALANCES_SQL, PNL_ASSETS, PNL_SQL, pnl_items
+
+    bal = r.store.conn.execute(BALANCES_SQL, (list(PNL_ASSETS), r.account)).fetchall()
+    books = r.store.conn.execute(PNL_SQL, (r.account,)).fetchall()
+    p = pnl_items(bal, books, "65000")
+    [b] = p["books"]
+    assert b["book"] == BOOK and (b["buys"], b["sells"]) == (1, 1) and p["epoch"] == 1
+    # bought 0.0001 at 65000.01, sold 0.0001 at 65000, fees in BNB: -0.000001 USDT
+    assert b["btc_net"] == "0" and b["usdt_net"] == "-0.000001" and b["pnl_usdt"] == "0" and b["bnb_fees"] == "0.00002"
+    assert [x["asset"] for x in p["balances"]] == ["BTC", "USDT"] and p["balances"][1]["opening"] == "10000"

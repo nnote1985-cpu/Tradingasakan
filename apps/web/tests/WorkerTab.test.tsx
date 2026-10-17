@@ -5,7 +5,7 @@ import type { WorkerActivity, WorkersResponse, WorkerStatus } from "../src/api";
 import { WorkerTab } from "../src/WorkerTab";
 
 const response: { current: WorkersResponse } = { current: { available: false, workers: [] } };
-const activity: { current: WorkerActivity } = { current: { available: true, orders: [], trades: [] } };
+const activity: { current: WorkerActivity } = { current: { available: true, orders: [], trades: [], pnl: null } };
 vi.mock("../src/api", () => ({
   supabase: null,
   apiGet: async (path: string) => (path.endsWith("/activity") ? activity.current : response.current),
@@ -70,6 +70,13 @@ test("execution shows today's orders, unknown orders and the conformance cycle",
 test("the card lists recent Testnet trades and orders", async () => {
   activity.current = {
     available: true,
+    pnl: {
+      epoch: 1, opened_at: now, mark: "81713.67", mark_source: "quote", equity_change_usdt: "-0.0257",
+      balances: [{ asset: "BTC", opening: "1", now: "1.00001984", change: "0.00001984" },
+                 { asset: "USDT", opening: "10000", now: "9998.35318072", change: "-1.64681928" }],
+      books: [{ book: "tn-conformance-v1", buys: 2, sells: 2, btc_net: "0.00001984", usdt_net: "-1.64681928", bnb_fees: "0",
+                volume: "24.52", pnl_usdt: "-0.0257" }],
+    },
     trades: [{ traded_at: now, epoch: 1, trade_id: 77, side: "SELL", qty: "0.00007", price: "106512.3", quote_qty: "7.45586",
                commission: "0.00745586", commission_asset: "USDT", client_order_id: "tak-s", book: "tn-conformance-v1", leg: "mkt-sell" }],
     orders: [{ client_order_id: "tak-f", book: "tn-conformance-v1", leg: "limit-far", side: "BUY", type: "LIMIT", qty: "0.00008",
@@ -78,6 +85,11 @@ test("the card lists recent Testnet trades and orders", async () => {
   response.current = { available: true, workers: [worker()] };
   show();
   const trades = await screen.findByTestId("worker-trades");
+  const pnl = screen.getByTestId("worker-pnl").textContent ?? "";
+  expect(pnl).toMatch(/รอบบัญชี #1/);
+  expect(pnl).toMatch(/-0\.0257 USDT/);
+  expect(pnl).toMatch(/USDT.*10000.*9998\.35318072.*-1\.64681928/);
+  expect(pnl).toMatch(/tn-conformance-v1.*2\/2.*24\.52.*\+0\.00001984/);
   expect(trades.textContent).toMatch(/ขาย.*0\.00007.*106512\.3.*7\.45586.*0\.00745586 USDT.*tn-conformance-v1 · mkt-sell/);
   expect(screen.getByTestId("worker-orders").textContent).toMatch(/limit-far.*ซื้อ.*LIMIT.*0\.00008.*101000.*ยกเลิก/);
 });

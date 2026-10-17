@@ -18,7 +18,7 @@ from api.auth import AuthError, Principal, RoleStore, TokenVerifier, authenticat
 from api.backtests import load_backtests
 from api.portfolios import NoPortfolios, PortfolioStore, Unavailable, decision_items, equity_series, overview_items, risk_items
 from api.strategies import catalog_view, profiles_view
-from api.workers import ACTIVITY_LIMIT, NoWorkers, PgWorkerStore, WorkerStore, activity_items, worker_items
+from api.workers import ACTIVITY_LIMIT, NoWorkers, PgWorkerStore, WorkerStore, activity_items, pnl_items, worker_items
 from api.workers import Unavailable as WorkersUnavailable
 from trading.config import Settings
 from trading.contracts.enums import OperatorRole
@@ -149,9 +149,10 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
         """Latest Testnet orders and trades for the account (testnet-development-plan.md §9; read-only)."""
         try:
             orders, trades = await worker_store.activity_rows(account, ACTIVITY_LIMIT)
+            balances, books, mark = await worker_store.pnl_rows(account)
         except WorkersUnavailable:
-            return {"available": False, "orders": [], "trades": []}
-        return {"available": True, **activity_items(orders, trades)}
+            return {"available": False, "orders": [], "trades": [], "pnl": None}
+        return {"available": True, **activity_items(orders, trades), "pnl": pnl_items(balances, books, mark)}
 
     return app
 
