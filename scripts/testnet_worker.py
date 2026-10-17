@@ -97,8 +97,11 @@ def build(env: dict[str, str] | None = None) -> tuple[Worker, Any]:
         def quote() -> Any:
             return None if feeds is None else feeds.quotes.fresh_for_entry(SYMBOL, int(time.time() * 1000))
 
-        def verdict() -> str | None:
-            return None if feeds is None else feeds.last_reconcile.get("verdict", "NONE")
+        def verdict() -> tuple[str, datetime] | None:
+            last = {} if feeds is None else feeds.last_reconcile
+            if "verdict" not in last:
+                return None
+            return last["verdict"], datetime.fromtimestamp(last["at_ms"] / 1000, UTC)
 
         executor = Executor(store, BinanceSpotTestnet(rest), alerts, persist=recorder.store if recorder else None,
                             conformance=conformance, quote=quote, verdict=verdict, log=_log)

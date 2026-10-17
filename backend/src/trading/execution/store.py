@@ -5,7 +5,7 @@ account name:
 
 - ``exec_intents``: immutable order intents, unique by client order id and by
   (book, decision, leg); TESTNET only at the database level too;
-- ``exec_reservations``: risk reserved for open buys, account-wide;
+- ``exec_reservations``: risk reserved for open buys;
 - ``exec_outbox``: EXECUTE_INTENT events the gateway claims under its lease;
 - ``exec_order_events`` / ``exec_fills``: append-only order history and fills
   (one row per execution id, so a repeated fill is ignored);
@@ -14,7 +14,9 @@ account name:
   grows on every new owner (§14.3).
 
 Accepting an intent, reserving its risk and queueing the outbox event commit
-in one transaction (§12.2). Gateway writes carry the fencing token and are
+in one transaction (§12.2). A book's budget covers what it already holds (its
+own net fills, valued at the new order's price) plus its open reservations plus
+the new order with a fee allowance, so filled buys keep counting against it. Gateway writes carry the fencing token and are
 refused when it is no longer the current, unexpired lease. When the database
 cannot be reached, Guardian writes to :mod:`trading.execution.journal` instead.
 """
@@ -35,6 +37,7 @@ from trading.execution.safety import AccountSafety, SafetyState
 from trading.execution.types import OrderType, Side
 
 ZERO = Decimal(0)
+FEE_ALLOWANCE = Decimal("0.001")          # taker fee on the new order, reserved with it
 
 
 class StaleFencingToken(RuntimeError):
@@ -126,12 +129,22 @@ class ExecStore:
 
     # --- intents, reservations, outbox (§12.2) ----------------------------
 
-    def reserved(self) -> Decimal:
+    def reserved(self, book: str | None = None) -> Decimal:
         row = self.conn.execute("select coalesce(sum(r.qty * r.unit_price), 0) from trading.exec_reservations r "
-                                "join trading.exec_intents i using (client_order_id) where i.account = %s", (self.account,)).fetchone()
+                                "join trading.exec_intents i using (client_order_id) where i.account = %s "
+                                "and (%s::text is null or i.book = %s)", (self.account, book, book)).fetchone()
         return Decimal(row[0]) if row else ZERO
 
-    def accept_intent(self, intent: OrderIntent, *, unit_price: Decimal, budget: Decimal) -> bool:
+    def held(self, book: str, symbol: str, base: str) -> Decimal:
+        """Base asset ``book`` holds from its own fills on ``symbol``: bought minus sold minus fees paid in the base asset."""
+        row = self.conn.execute(
+            "select coalesce(sum(case when i.side = 'BUY' then f.qty else -f.qty end), 0) "
+            "- coalesce(sum(case when f.fee_asset = %s then f.fee else 0 end), 0) "
+            "from trading.exec_fills f join trading.exec_intents i using (client_order_id) "
+            "where i.account = %s and i.book = %s and i.symbol = %s", (base, self.account, book, symbol)).fetchone()
+        return max(Decimal(row[0]), ZERO) if row else ZERO
+
+    def accept_intent(self, intent: OrderIntent, *, unit_price: Decimal, budget: Decimal, base: str = "BTC") -> bool:
         """Insert the intent, reserve a buy's notional and queue EXECUTE_INTENT in one transaction.
 
         Returns False if this client order id was already accepted (nothing changes). Raises
@@ -150,7 +163,8 @@ class ExecStore:
             if intent.increases_exposure:
                 if state != SafetyState.RUNNING:
                     raise IntentRefused(f"ENTRIES_BLOCKED_{state}")
-                if self.reserved() + intent.qty * unit_price > budget:
+                inventory = self.held(intent.book, intent.symbol, base) * unit_price
+                if inventory + self.reserved(intent.book) + intent.qty * unit_price * (1 + FEE_ALLOWANCE) > budget:
                     raise IntentRefused("INSUFFICIENT_BUDGET")
             self.conn.execute(
                 f"insert into trading.exec_intents (client_order_id, account, {_INTENT_COLS}) "

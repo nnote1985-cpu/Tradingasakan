@@ -49,6 +49,8 @@ class OrderIntent:
             raise ValueError("limit_price is required for LIMIT orders only")
         if not all((self.book, self.decision_id, self.leg, self.symbol)):
             raise ValueError("book, decision_id, leg and symbol are required")
+        if self.reduce_only and self.side is Side.BUY:
+            raise ValueError("a spot buy always adds exposure; reduce_only is for sells only")
 
     @property
     def client_order_id(self) -> str:
@@ -56,8 +58,8 @@ class OrderIntent:
 
     @property
     def increases_exposure(self) -> bool:
-        """Spot long/flat: a buy adds exposure, a sell only reduces it."""
-        return self.side is Side.BUY and not self.reduce_only
+        """Spot long/flat: every buy adds exposure, a sell only reduces it. ``reduce_only`` never exempts a buy."""
+        return self.side is Side.BUY
 
     @classmethod
     def build(cls, rules: TradingRules, *, side: Side, qty: Decimal, limit_price: Decimal | None = None,

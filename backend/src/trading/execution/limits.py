@@ -2,9 +2,11 @@
 
 DEFAULT values are the testnet ones from docs/testnet-development-plan.md §10.2
 (quote freshness 5 s per §4.2; the rest as declared in docs/phase-4-execution-plan.md).
-Orders that only reduce exposure skip the size and price-band checks, so a
-limit can never block getting out; they still respect the rate limit and the
-exchange rules.
+Orders that only reduce exposure (spot sells) skip the size and price-band
+checks and the normal active-order and daily-order caps, so a limit can never
+block getting out; they still respect the rate limit, the exchange rules and a
+separate emergency ceiling that only stops a runaway loop. Cancels of buy
+orders likewise skip the normal daily cancel cap up to that ceiling.
 """
 
 from __future__ import annotations
@@ -28,6 +30,8 @@ class PreTradeLimits:
     max_cancels_per_day: int = 50
     max_price_age: timedelta = timedelta(seconds=5)          # testnet-development-plan.md §4.2
     max_price_deviation: Decimal = Decimal("0.01")
+    # Exits and cancels of buys are never held by the caps above; this only stops a runaway loop of them.
+    emergency_per_day: int = 200
 
 
 @dataclass(frozen=True)
@@ -63,10 +67,13 @@ def check(intent: OrderIntent, *, now: datetime, rules: TradingRules, market: Ma
         out.append("PRICE_STALE")
     if activity.last_submit_at is not None and (now - activity.last_submit_at).total_seconds() < lim.min_seconds_between_orders:
         out.append("RATE_LIMIT")
-    if activity.active_orders >= lim.max_active_orders:
-        out.append("TOO_MANY_ACTIVE_ORDERS")
-    if activity.orders_today >= lim.max_orders_per_day:
-        out.append("DAILY_ORDER_LIMIT")
+    if intent.increases_exposure:
+        if activity.active_orders >= lim.max_active_orders:
+            out.append("TOO_MANY_ACTIVE_ORDERS")
+        if activity.orders_today >= lim.max_orders_per_day:
+            out.append("DAILY_ORDER_LIMIT")
+    elif activity.orders_today >= lim.emergency_per_day:
+        out.append("EMERGENCY_ORDER_CEILING")
     price = intent.limit_price if intent.order_type is OrderType.LIMIT and intent.limit_price is not None else market.mark
     out.extend(rules.violations(intent.qty, price))
     if intent.increases_exposure:
@@ -77,6 +84,9 @@ def check(intent: OrderIntent, *, now: datetime, rules: TradingRules, market: Ma
     return out
 
 
-def check_cancel(activity: Activity, limits: PreTradeLimits | None = None) -> list[str]:
+def check_cancel(activity: Activity, limits: PreTradeLimits | None = None, *, reduces_risk: bool = False) -> list[str]:
+    """Reasons to hold a cancel. Canceling a buy (``reduces_risk``) only stops at the emergency ceiling."""
     lim = limits or PreTradeLimits()
+    if reduces_risk:
+        return ["EMERGENCY_CANCEL_CEILING"] if activity.cancels_today >= lim.emergency_per_day else []
     return ["DAILY_CANCEL_LIMIT"] if activity.cancels_today >= lim.max_cancels_per_day else []
