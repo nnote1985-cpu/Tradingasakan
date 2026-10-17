@@ -103,3 +103,6 @@ Task เริ่มเองตอน logon, รันแบบซ่อนห�
 powershell -ExecutionPolicy Bypass -File scripts\windows\restart-worker.ps1
 ```
 หยุดถาวร: `powershell -ExecutionPolicy Bypass -File scripts\windows\stop-worker.ps1`
+
+ผลบน PC ของ Note (2026-10-17 03:57 UTC, lease token 3): klines/quotes/account เชื่อมต่อทั้งสาม, 1m ล่าสุด 03:56 UTC,
+1d ล่าสุด 2026-10-16 (แท่งที่ปิดแล้ว), gaps 0, revisions 0, quote age ~2 s, reconcile MATCH (10,000 USDT, 1 BTC, ไม่มี order ค้าง)
