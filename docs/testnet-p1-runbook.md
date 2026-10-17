@@ -106,3 +106,7 @@ powershell -ExecutionPolicy Bypass -File scripts\windows\restart-worker.ps1
 
 ผลบน PC ของ Note (2026-10-17 03:57 UTC, lease token 3): klines/quotes/account เชื่อมต่อทั้งสาม, 1m ล่าสุด 03:56 UTC,
 1d ล่าสุด 2026-10-16 (แท่งที่ปิดแล้ว), gaps 0, revisions 0, quote age ~2 s, reconcile MATCH (10,000 USDT, 1 BTC, ไม่มี order ค้าง)
+
+Drill ตัดเน็ต ~1 นาที (2026-10-17 ~04:00 UTC): การต่อ Supabase เพื่อต่อ lease ล้มก่อน worker จึงหยุดเอง (exit 3, alert "database unreachable")
+และ loop เริ่มใหม่เมื่อเน็ตกลับ (lease token 4, เริ่ม 04:00:18) ตัวใหม่ backfill จาก REST จน 1m ล่าสุด 03:59 UTC, bar_gaps 0, reconcile MATCH
+นี่ทดสอบทาง restart + backfill (RT05) ส่วนทาง reconnect ใน process เดียว (RT03) ทดสอบด้วย fixture ใน tests/unit/test_ingest_p2.py
