@@ -1,0 +1,28 @@
+# Testnet worker on the VPS (testnet-development-plan.md §2.2), installed before the P5 soak.
+# Keys go in /etc/tradingasakan/worker.env (mode 600, owner trading), never in the repo:
+#   TRADING_MODE=TESTNET
+#   TESTNET_EXECUTION_ENABLED=true
+#   DATABASE_URL=...
+#   BINANCE_TESTNET_API_KEY=...
+#   BINANCE_TESTNET_PRIVATE_KEY_PATH=/etc/tradingasakan/testnet-ed25519.pem
+#   TELEGRAM_BOT_TOKEN=...  TELEGRAM_CHAT_ID=...  DEADMAN_PING_URL=...
+# Keep the clock synced (timedatectl set-ntp true).
+[Unit]
+Description=Tradingasakan Testnet worker
+After=network-online.target time-sync.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+User=trading
+WorkingDirectory=/opt/tradingasakan
+EnvironmentFile=/etc/tradingasakan/worker.env
+ExecStart=/usr/local/bin/uv run python scripts/testnet_worker.py
+Restart=always
+RestartSec=30
+# Restarts after any exit, including 2 (configuration refused); fix the env file and it recovers.
+TimeoutStopSec=20
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target

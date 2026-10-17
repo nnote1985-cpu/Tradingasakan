@@ -58,4 +58,4 @@ python_version = "3.13"
 strict = true
 plugins = ["pydantic.mypy"]
 mypy_path = ["backend/src", "apps/api"]
-files = ["backend/src/trading/config.py", "backend/src/trading/contracts", "backend/src/trading/analysis", "backend/src/trading/execution", "apps/api/api"]
+files = ["backend/src/trading/config.py", "backend/src/trading/contracts", "backend/src/trading/analysis", "backend/src/trading/execution", "backend/src/trading/runtime", "apps/api/api"]
