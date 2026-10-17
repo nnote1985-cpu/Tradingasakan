@@ -2,7 +2,7 @@
 # The task sees user environment variables, so set the keys with `setx`, not `set`.
 #   powershell -ExecutionPolicy Bypass -File scripts\windows\install-worker-task.ps1
 #   Start-ScheduledTask "Tradingasakan Testnet worker"        # start now
-#   Stop-ScheduledTask "Tradingasakan Testnet worker"         # stop (the dead-man will alert after 5 min)
+#   powershell -ExecutionPolicy Bypass -File scripts\windows\stop-worker.ps1   # stop, incl. the Python process
 #   Unregister-ScheduledTask "Tradingasakan Testnet worker"   # remove
 $name = "Tradingasakan Testnet worker"
 $script = Join-Path $PSScriptRoot "testnet-worker.ps1"

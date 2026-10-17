@@ -5,6 +5,8 @@ param([string]$Repo = (Resolve-Path "$PSScriptRoot\..\..").Path)
 Set-Location $Repo
 $log = Join-Path $Repo "var\worker\worker.log"
 New-Item -ItemType Directory -Force (Split-Path $log) | Out-Null
+# A worker left over from an earlier loop would hold the lease and the log file; stop it first.
+& "$PSScriptRoot\stop-worker.ps1" -ProcessesOnly | Add-Content $log
 $delay = 5
 while ($true) {
     $started = Get-Date

@@ -66,7 +66,7 @@ Task เริ่มเองตอน logon, รันแบบซ่อนห�
 | Drill | ทำอย่างไร | ผลที่ต้องได้ |
 | --- | --- | --- |
 | ปิดเว็บแล้ว worker เดินต่อ (RT01) | ปิด browser และ API | `last_tick_at` ใน heartbeat.json ยังขยับทุก 2 วินาที |
-| ปิด worker แล้วได้ alert จากภายนอก (RT41) | `Stop-ScheduledTask 'Tradingasakan Testnet worker'` | healthchecks แจ้ง Telegram ภายใน ~6 นาที |
+| ปิด worker แล้วได้ alert จากภายนอก (RT41) | `powershell -ExecutionPolicy Bypass -File scripts\windows\stop-worker.ps1` | healthchecks แจ้ง Telegram ภายใน ~6 นาที |
 | Worker ตัวที่สอง (RT07) | รัน `--once` อีกหน้าต่างขณะ task เดินอยู่ | ตัวที่สองหยุดพร้อม alert "another worker holds the writer lease" |
 | Telegram ล่ม (RT42) | ตั้ง `TELEGRAM_BOT_TOKEN` ผิดชั่วคราวแล้วรัน `--once` | worker ไม่ล่ม; alert ค้างใน `var\worker\alerts.jsonl` และส่งเมื่อ token ถูก |
 
@@ -97,7 +97,9 @@ Task เริ่มเองตอน logon, รันแบบซ่อนห�
 ถ้าไม่ตรงกัน = CRITICAL; ราคาเงียบเกิน 10 วินาที, kline เงียบเกิน 3 นาที หรือ user stream หลุด = WARNING (หลังเริ่มได้ 30 วินาที)
 สถานะอยู่ใน `feeds` ของ `var\worker\heartbeat.json` ปิด feed ได้ด้วย `setx WORKER_FEEDS off`
 
-หลัง `git pull` ให้รีสตาร์ท task เพื่อโหลดโค้ดใหม่:
+หลัง `git pull` ให้รีสตาร์ท worker เพื่อโหลดโค้ดใหม่ (อย่าใช้ `Stop-ScheduledTask` อย่างเดียว เพราะมันปิดแค่ลูป PowerShell
+ส่วน Python ยังค้างอยู่ ถือ lease และไฟล์ log ไว้):
 ```
-powershell -Command "Stop-ScheduledTask 'Tradingasakan Testnet worker'; Start-ScheduledTask 'Tradingasakan Testnet worker'"
+powershell -ExecutionPolicy Bypass -File scripts\windows\restart-worker.ps1
 ```
+หยุดถาวร: `powershell -ExecutionPolicy Bypass -File scripts\windows\stop-worker.ps1`
