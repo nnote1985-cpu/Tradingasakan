@@ -37,6 +37,7 @@ export function DraftProfiles() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [conflict, setConflict] = useState<ProfileDraft | null>(null);   // the newer revision a save ran into
   const strategies = catalog.data?.items ?? [];
   const p = editor?.profile;
   const canEdit = drafts.data?.can_edit === true;
@@ -48,8 +49,11 @@ export function DraftProfiles() {
     return () => window.removeEventListener("beforeunload", warn);
   }, [editor]);
   const update = (patch: Partial<DraftRecipe>) => { if (editor) setEditor({ ...editor, request_id: crypto.randomUUID(), profile: { ...editor.profile, ...patch } }); setNotice(""); };
-  const close = () => { if (window.confirm("ยกเลิกการแก้ไขที่ยังไม่บันทึก?")) { setEditor(null); setError(""); } };
-  const open = (next: Editor) => { if (!editor || window.confirm("ทิ้งการแก้ไขที่ยังไม่บันทึก แล้วเปิดร่างอื่น?")) { setEditor({ ...next, request_id: crypto.randomUUID() }); setError(""); setNotice(""); } };
+  const close = () => { if (window.confirm("ยกเลิกการแก้ไขที่ยังไม่บันทึก?")) { setEditor(null); setError(""); setConflict(null); } };
+  const open = (next: Editor) => { if (!editor || window.confirm("ทิ้งการแก้ไขที่ยังไม่บันทึก แล้วเปิดร่างอื่น?")) { setEditor({ ...next, request_id: crypto.randomUUID() }); setError(""); setNotice(""); setConflict(null); } };
+  // After a 409: keep this form and save it on top of the newer revision, or open the newer revision instead.
+  const keepMine = (latest: ProfileDraft) => { if (editor) setEditor({ ...editor, revision: latest.revision, request_id: crypto.randomUUID() }); setConflict(null); setError(""); setNotice(`ฟอร์มนี้จะบันทึกเป็นเวอร์ชัน ${latest.revision + 1} ต่อจากของล่าสุด · กดบันทึกอีกครั้ง`); };
+  const takeTheirs = (latest: ProfileDraft) => { setEditor({ profile: structuredClone(latest.profile), profile_id: latest.profile_id, revision: latest.revision, request_id: crypto.randomUUID() }); setConflict(null); setError(""); setNotice(""); };
   function usePreset(preset: BotProfile) {
     if (!strategies.length) return;
     update({ setup_mode: "preset", timeframe: "1d", entry: null, trend_filter: null, exit_kind: "entry_signal", exit_rule: null,
@@ -66,7 +70,13 @@ export function DraftProfiles() {
       const saved = await apiPost<ProfileDraft>("/api/v1/bot-profile-drafts", { profile_id: editor.profile_id, expected_revision: editor.revision, request_id: editor.request_id, profile: editor.profile });
       cache.setQueryData<ProfileDrafts>(["profile-drafts"], (old) => ({ can_edit: old?.can_edit ?? true, items: [saved, ...(old?.items ?? []).filter((d) => d.profile_id !== saved.profile_id)] }));
       setEditor(null); setNotice(`บันทึก “${saved.profile.name}” เวอร์ชัน ${saved.revision} แล้ว · ยังไม่ผูกกับบอต`);
-    } catch (e) { setError((e as ApiError).message || "บันทึกร่างไม่สำเร็จ กรุณาลองใหม่"); }
+    } catch (e) {
+      setError((e as ApiError).message || "บันทึกร่างไม่สำเร็จ กรุณาลองใหม่");
+      if ((e as ApiError).code === "draft_conflict" && editor.profile_id) {
+        const fresh = await drafts.refetch();
+        setConflict(fresh.data?.items.find((d) => d.profile_id === editor.profile_id) ?? null);
+      }
+    }
     finally { setBusy(false); }
   }
   const nameOf = (r: DraftRule | null | undefined) => r ? `${strategies.find((s) => s.number === r.number)?.name ?? `#${r.number}`} (${r.timeframe})` : "ไม่ใช้";
@@ -79,7 +89,7 @@ export function DraftProfiles() {
     {catalog.isError && <p role="alert" className="notice">โหลดคลังไม่ได้: {catalog.error.message} <button onClick={() => void catalog.refetch()}>ลองใหม่</button></p>}
     {drafts.data && !canEdit && <p className="notice">ดูร่างได้ · การสร้างและบันทึกต้องใช้สิทธิ์ Operator หรือ Admin</p>}
     {notice && <p role="status" className="notice">{notice}</p>}
-    {error && <div role="alert" className="notice">{error}{error.includes("เปลี่ยนแปลง") && <button type="button" className="ml-3 underline" onClick={() => void drafts.refetch()}>โหลดรายการล่าสุด (ไม่ทิ้งฟอร์ม)</button>}</div>}
+    {error && <div role="alert" className="notice">{error}{conflict && <div className="mt-2 space-y-2"><p>ล่าสุดคือเวอร์ชัน {conflict.revision} บันทึกเมื่อ {new Date(conflict.saved_at).toLocaleString("th-TH")} · ฟอร์มของคุณยังอยู่</p><div className="flex flex-wrap gap-2"><button type="button" className="action" onClick={() => keepMine(conflict)}>ใช้ฟอร์มนี้ บันทึกเป็นเวอร์ชัน {conflict.revision + 1}</button><button type="button" className="action" onClick={() => { if (window.confirm("ทิ้งที่แก้ในฟอร์มนี้ แล้วเปิดเวอร์ชันล่าสุด?")) takeTheirs(conflict); }}>เปิดเวอร์ชัน {conflict.revision} แทน</button></div></div>}</div>}
     {editor && p && <form onSubmit={(e) => void save(e)} className="panel space-y-5" aria-label="ตั้งค่า Draft Bot Profile">
       <fieldset disabled={busy || !canEdit} className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-lg font-semibold">{editor.profile_id ? `แก้ไขร่าง · จะบันทึกเป็นเวอร์ชัน ${editor.revision + 1}` : "สร้างร่างใหม่"}</h3><span className="status-chip status-warn">DRAFT · ยังไม่เชื่อมการเทรด</span></div>
@@ -111,6 +121,6 @@ export function DraftProfiles() {
     </form>}
     {drafts.data?.items.length === 0 && !editor && <div className="panel text-sm text-[var(--text-secondary)]">ยังไม่มีร่างที่บันทึกไว้ เริ่มจาก preset หรือเลือกกฎเองด้วยปุ่ม “สร้าง profile”</div>}
     {drafts.data?.items.map((d) => <article className="panel" key={d.profile_id} data-testid="saved-draft"><div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-semibold">{d.profile.name}</h3><p className="text-sm text-[var(--text-secondary)]">เวอร์ชัน {d.revision} · Draft · {d.profile.setup_mode === "preset" ? `Preset: ${d.profile.preset_profile?.name}` : `Entry: ${nameOf(d.profile.entry)}`} · {d.profile.timeframe}</p></div>{canEdit && <div className="flex flex-wrap gap-2"><button className="action" disabled={busy || !strategies.length} onClick={() => open({ profile: structuredClone(d.profile), profile_id: d.profile_id, revision: d.revision })}>แก้ไข {d.profile.name}</button><button className="action" disabled={busy || !strategies.length} onClick={() => open({ profile: { ...structuredClone(d.profile), name: `${d.profile.name} (สำเนา)`.slice(0, 100) }, profile_id: null, revision: 0 })}>ทำสำเนา</button></div>}</div><p className="mt-3 text-sm">เสี่ยง {d.profile.risk_per_trade_percent}% / เทรด · Max Exposure {d.profile.max_exposure_percent}%</p><p className="mt-2 text-xs text-[var(--text-muted)]">บันทึก {new Date(d.saved_at).toLocaleString("th-TH")} · ยังไม่ผูกกับบอต</p></article>)}
-    <p className="text-xs text-[var(--text-muted)]">ร่างบันทึกบนเครื่อง Backend แยกจาก preset เดิม ทุกครั้งที่แก้ไขจะเก็บเวอร์ชันใหม่ ยังใช้ส่งคำสั่งหรือ Backtest ไม่ได้</p>
+    <p className="text-xs text-[var(--text-muted)]">ร่างเก็บในฐานข้อมูล Supabase แยกจาก preset เดิม ทุกครั้งที่แก้ไขจะเก็บเวอร์ชันใหม่ ยังใช้ส่งคำสั่งหรือ Backtest ไม่ได้</p>
   </section>;
 }

@@ -3,7 +3,6 @@ loop runs here (§21.2) and no endpoint places orders."""
 
 from __future__ import annotations
 
-import sqlite3
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -18,7 +17,7 @@ from api.assets import ASSETS, AssetCache
 from api.auth import AuthError, Principal, RoleStore, TokenVerifier, authenticate
 from api.backtests import load_backtests
 from api.portfolios import NoPortfolios, PortfolioStore, Unavailable, decision_items, equity_series, overview_items, risk_items
-from api.profile_drafts import DraftConflict, DraftStore, SaveDraft
+from api.profile_drafts import DraftConflict, DraftStore, DraftsUnavailable, NoDrafts, PgDraftStore, SaveDraft
 from api.strategies import catalog_view, profiles_view
 from api.workers import ACTIVITY_LIMIT, NoWorkers, PgWorkerStore, WorkerStore, activity_items, pnl_items, worker_items
 from api.workers import Unavailable as WorkersUnavailable
@@ -32,7 +31,7 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
     store: PortfolioStore = portfolios or NoPortfolios()
     worker_store: WorkerStore = workers or NoWorkers()
     market = assets or AssetCache()
-    draft_store = drafts if drafts is not None else DraftStore()
+    draft_store: DraftStore = drafts or NoDrafts()
     app = FastAPI(title="asakantrading API", version="0.1.0")
     if settings.allowed_origins:
         app.add_middleware(CORSMiddleware, allow_origins=list(settings.allowed_origins),
@@ -57,11 +56,11 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
             "code": "database_unavailable", "request_id": getattr(request.state, "request_id", None),
             "retryable": True, "message": "เชื่อมต่อฐานข้อมูลไม่ได้ กรุณาตรวจ DATABASE_URL ในไฟล์ .env ของ Backend"})
 
-    @app.exception_handler(sqlite3.Error)
-    async def draft_storage_unavailable(request: Request, exc: sqlite3.Error) -> JSONResponse:
+    @app.exception_handler(DraftsUnavailable)
+    async def drafts_unavailable(request: Request, exc: DraftsUnavailable) -> JSONResponse:
         return JSONResponse(status_code=503, content={
-            "code": "draft_storage_unavailable", "request_id": getattr(request.state, "request_id", None),
-            "retryable": True, "message": "อ่านหรือบันทึกร่างไม่ได้ กรุณาตรวจพื้นที่ดิสก์และสิทธิ์โฟลเดอร์ var/profiles ของ Backend"})
+            "code": "drafts_unavailable", "request_id": getattr(request.state, "request_id", None),
+            "retryable": True, "message": "ยังไม่มีตารางเก็บร่างในฐานข้อมูล หรือยังไม่ได้ตั้ง DATABASE_URL ของ Backend"})
 
     async def principal(request: Request) -> Principal:
         return await authenticate(request.headers.get("authorization"), verifier, roles)
@@ -124,13 +123,13 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
         return profiles_view()
 
     @app.get("/api/v1/bot-profile-drafts")
-    def bot_profile_drafts(p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
-        return {"items": draft_store.list_latest(), "can_edit": p.at_least(OperatorRole.OPERATOR)}
+    async def bot_profile_drafts(p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        return {"items": await draft_store.list_latest(), "can_edit": p.at_least(OperatorRole.OPERATOR)}
 
     @app.post("/api/v1/bot-profile-drafts")
-    def save_bot_profile_draft(body: SaveDraft, p: Principal = Depends(require(OperatorRole.OPERATOR))) -> dict[str, Any]:
+    async def save_bot_profile_draft(body: SaveDraft, p: Principal = Depends(require(OperatorRole.OPERATOR))) -> dict[str, Any]:
         try:
-            return draft_store.save(body, p.user_id)
+            return await draft_store.save(body, p.user_id)
         except DraftConflict as e:
             raise AuthError("draft_conflict", "มีการเปลี่ยนแปลงร่างนี้แล้ว กรุณาโหลดรายการล่าสุดก่อนแก้ไขอีกครั้ง", status=409) from e
 
@@ -189,7 +188,7 @@ def app_from_env() -> FastAPI:   # uvicorn --factory api.main:app_from_env
         raise RuntimeError("SUPABASE_URL and DATABASE_URL are required")
     pool = AsyncConnectionPool(s.database_url, open=False, timeout=5)
     app = create_app(s, SupabaseJwtVerifier(s.supabase_url), PgRoleStore(pool), PgPortfolioStore(pool),
-                     workers=PgWorkerStore(pool))
+                     workers=PgWorkerStore(pool), drafts=PgDraftStore(pool))
     app.router.on_startup.append(pool.open)
     app.router.on_shutdown.append(pool.close)
     return app

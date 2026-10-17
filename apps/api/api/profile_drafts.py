@@ -1,26 +1,27 @@
 """Versioned, non-executable bot recipes. Never loaded by trading workers.
 
-Drafts live in a local SQLite file, separate from executable YAML profiles.
-Each save appends a revision under BEGIN IMMEDIATE and an expected-revision
-check, so concurrent editors cannot silently overwrite one another.
+Drafts live in Supabase (``trading.bot_profile_drafts``), separate from the
+executable YAML profiles. Each save appends a revision after an
+expected-revision check; the (profile_id, revision) key refuses a second
+writer of the same revision, so concurrent editors cannot silently overwrite
+one another.
 """
 from __future__ import annotations
 
 import hashlib
 import json
-import sqlite3
-from contextlib import closing
-from datetime import UTC, datetime
-from pathlib import Path
-from typing import Any, Literal
+from datetime import datetime
+from typing import Any, Literal, Protocol
 from uuid import UUID, uuid4
 
+from psycopg import errors as pg_errors
+from psycopg.types.json import Jsonb
+from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, model_validator
 
 from trading.strategies.library import catalog
 from trading.strategies.library.profile import BotProfile
 
-DEFAULT_PATH = Path(__file__).resolve().parents[3] / "var" / "profiles" / "drafts.sqlite3"
 Timeframe = Literal["1h", "4h", "1d"]
 
 
@@ -113,56 +114,85 @@ class DraftConflict(Exception):
     pass
 
 
-class DraftStore:
-    def __init__(self, path: Path = DEFAULT_PATH):
-        self.path = path
+class DraftsUnavailable(Exception):
+    """No database, or the drafts migration has not been applied yet."""
 
-    def list_latest(self) -> list[dict[str, Any]]:
-        if not self.path.exists():
-            return []
-        with closing(sqlite3.connect(self.path, timeout=5)) as conn:
-            rows = conn.execute(
-                "select d.profile_id, d.revision, d.body, d.saved_at, d.saved_by, d.digest from draft_revisions d "
-                "where d.revision = (select max(x.revision) from draft_revisions x where x.profile_id = d.profile_id) "
-                "order by d.saved_at desc, d.profile_id").fetchall()
-        return [self._item(r) for r in rows]
 
-    @staticmethod
-    def _item(row: tuple[Any, ...]) -> dict[str, Any]:
-        pid, revision, body, at, author, digest = row
-        return {"profile_id": pid, "revision": revision, "profile": json.loads(body), "saved_at": at,
-                "saved_by": author, "hash": digest, "execution_supported": False}
+def normalized(profile: DraftProfile) -> tuple[dict[str, Any], str]:
+    """The body to store, with catalog defaults resolved so a saved recipe pins its values, and its sha256."""
+    body = profile.model_dump(mode="json")
+    for field in ("entry", "trend_filter", "exit_rule"):
+        if body[field] is not None:
+            body[field]["params"] = catalog.get(body[field]["number"]).resolve(body[field]["params"])
+    if body["preset_profile"] is not None:
+        for choice in body["preset_profile"]["strategies"]:
+            spec = catalog.get(choice["number"])
+            choice["params"] = spec.resolve(choice["params"])
+            choice["timeframe"] = choice["timeframe"] or spec.default_timeframe
+    encoded = json.dumps(body, sort_keys=True, ensure_ascii=False, allow_nan=False)
+    return body, hashlib.sha256(encoded.encode()).hexdigest()
 
-    def save(self, request: SaveDraft, author: UUID) -> dict[str, Any]:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        pid = str(request.profile_id or uuid4())
-        # Resolve defaults before persisting; saved recipes pin catalog versions.
-        body = request.profile.model_dump(mode="json")
-        for field in ("entry", "trend_filter", "exit_rule"):
-            if body[field] is not None:
-                body[field]["params"] = catalog.get(body[field]["number"]).resolve(body[field]["params"])
-        if body["preset_profile"] is not None:
-            for choice in body["preset_profile"]["strategies"]:
-                spec = catalog.get(choice["number"])
-                choice["params"] = spec.resolve(choice["params"])
-                choice["timeframe"] = choice["timeframe"] or spec.default_timeframe
-        encoded = json.dumps(body, sort_keys=True, ensure_ascii=False, allow_nan=False)
-        digest = hashlib.sha256(encoded.encode()).hexdigest()
-        at = datetime.now(UTC).isoformat()
-        with closing(sqlite3.connect(self.path, timeout=5)) as conn, conn:
-            conn.execute("create table if not exists draft_revisions (profile_id text not null, revision integer not null, "
-                         "body text not null, saved_at text not null, saved_by text not null, digest text not null, "
-                         "request_id text not null unique, primary key(profile_id, revision))")
-            conn.execute("BEGIN IMMEDIATE")
-            previous = conn.execute("select profile_id, revision, body, saved_at, saved_by, digest from draft_revisions "
-                                    "where request_id = ?", (str(request.request_id),)).fetchone()
-            if previous is not None:
-                if previous[2] != encoded or previous[4] != str(author) or (request.profile_id and previous[0] != str(request.profile_id)):
-                    raise DraftConflict("request id already used with a different payload")
-                return self._item(previous)
-            current = conn.execute("select coalesce(max(revision), 0) from draft_revisions where profile_id = ?", (pid,)).fetchone()[0]
-            if current != request.expected_revision or (request.profile_id is not None and current == 0):
-                raise DraftConflict("draft changed or no longer exists; reload before saving")
-            row = (pid, current + 1, encoded, at, str(author), digest)
-            conn.execute("insert into draft_revisions values (?, ?, ?, ?, ?, ?, ?)", (*row, str(request.request_id)))
-        return self._item(row)
+
+def draft_item(pid: Any, revision: int, body: dict[str, Any], at: datetime, author: Any, digest: str) -> dict[str, Any]:
+    return {"profile_id": str(pid), "revision": revision, "profile": body, "saved_at": at.isoformat(),
+            "saved_by": str(author), "hash": digest, "execution_supported": False}
+
+
+class DraftStore(Protocol):
+    async def list_latest(self) -> list[dict[str, Any]]: ...
+    async def save(self, request: SaveDraft, author: UUID) -> dict[str, Any]: ...
+
+
+class NoDrafts:
+    async def list_latest(self) -> list[dict[str, Any]]:
+        raise DraftsUnavailable
+
+    async def save(self, request: SaveDraft, author: UUID) -> dict[str, Any]:
+        raise DraftsUnavailable
+
+
+COLS = "profile_id, revision, body, saved_at, saved_by, digest"
+LATEST_SQL = f"""
+select {COLS} from (
+  select distinct on (profile_id) {COLS} from trading.bot_profile_drafts order by profile_id, revision desc
+) d order by saved_at desc, profile_id
+"""
+
+
+class PgDraftStore:
+    def __init__(self, pool: AsyncConnectionPool) -> None:
+        self.pool = pool
+
+    async def list_latest(self) -> list[dict[str, Any]]:
+        try:
+            async with self.pool.connection() as conn:
+                rows = await (await conn.execute(LATEST_SQL)).fetchall()
+        except pg_errors.UndefinedTable as e:
+            raise DraftsUnavailable from e
+        return [draft_item(*r) for r in rows]
+
+    async def save(self, request: SaveDraft, author: UUID) -> dict[str, Any]:
+        body, digest = normalized(request.profile)
+        pid = request.profile_id or uuid4()
+        try:
+            async with self.pool.connection() as conn, conn.transaction():
+                previous = await (await conn.execute(f"select {COLS} from trading.bot_profile_drafts where request_id = %s",
+                                                     (request.request_id,))).fetchone()
+                if previous is not None:
+                    if previous[5] != digest or previous[4] != author or (request.profile_id and previous[0] != request.profile_id):
+                        raise DraftConflict("request id already used with a different payload")
+                    return draft_item(*previous)
+                current = (await (await conn.execute("select coalesce(max(revision), 0) from trading.bot_profile_drafts "
+                                                     "where profile_id = %s", (pid,))).fetchone())[0]   # type: ignore[index]
+                if current != request.expected_revision or (request.profile_id is not None and current == 0):
+                    raise DraftConflict("draft changed or no longer exists; reload before saving")
+                row = await (await conn.execute(
+                    f"insert into trading.bot_profile_drafts (profile_id, revision, body, digest, saved_by, request_id) "
+                    f"values (%s, %s, %s, %s, %s, %s) returning {COLS}",
+                    (pid, current + 1, Jsonb(body), digest, author, request.request_id))).fetchone()
+        except pg_errors.UniqueViolation as e:          # another editor wrote this revision first
+            raise DraftConflict("draft changed; reload before saving") from e
+        except pg_errors.UndefinedTable as e:
+            raise DraftsUnavailable from e
+        assert row is not None
+        return draft_item(*row)
