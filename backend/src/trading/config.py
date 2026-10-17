@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     app_env: Literal["development", "test", "staging", "production"] = "development"
     trading_mode: TradingMode = TradingMode.SHADOW
     live_enabled: bool = False
+    # TESTNET orders also need this flag (testnet-development-plan.md §2.1); without it TESTNET loads no signing key.
+    testnet_execution_enabled: bool = False
     database_url: str | None = Field(default=None, repr=False)        # server-only
     supabase_url: str | None = None
     supabase_publishable_key: str | None = None
@@ -44,6 +46,8 @@ class Settings(BaseSettings):
             raise ValueError("TRADING_MODE=LIVE requires LIVE_ENABLED=true")
         if self.live_enabled and self.app_env != "production":
             raise ValueError("LIVE_ENABLED is only allowed with APP_ENV=production")
+        if self.testnet_execution_enabled and self.trading_mode is not TradingMode.TESTNET:
+            raise ValueError("TESTNET_EXECUTION_ENABLED=true requires TRADING_MODE=TESTNET")
         return self
 
 
