@@ -182,3 +182,10 @@ Vol sizing helped only the high-vol 2024 drawdown; the low-vol sideways drawdown
 2020-04-15 → 2022-01-01 (never simulated before): path A +347.8% / Sharpe 1.76 / DD 27.4%; **R10a +443.0% / 1.93 / 23.2%
 (confirmed)**; R7 +123.1% / 0.66 / 46.4%; **R11 +246.9% / 0.99 / 34.8% (confirmed vs R7, but below B&H)**; B&H +572.4% / 1.53 /
 53.2%. R10a also meets Note's objective vs B&H on C1. C2 (2026-01 → 2026-10) is the only unseen historical set left.
+
+## Intraday risk of R7 / R11 (2026-10-17, docs/research/intraday-risk-plan.md) — measurement, dev data only
+
+2022-04-12 → 2026-01-01, 1h bars: max DD at daily closes vs worst intrabar R7 55.0% → 56.0%, R11 39.4% → 42.1%; worst
+drop within a day 16.6% / 18.3%; liquidation never close at 1x. The 25% `spot.v1` HALT would trip in mid-2023 on both
+(R7 +103% → +50–54%, R11 +221% → +41–53%); hourly checking holds it near 25%, daily let R11 reach 32.6%. Stop grid
+5–25% from entry: only 25% (never fires) is harmless. No candidate; C2 unspent.

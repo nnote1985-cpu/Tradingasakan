@@ -43,3 +43,36 @@ at most 2 percentage points vs no stop. The answer is the tightest harmless k (o
 This is a search over 5 values on data already used to pick R7/R11, so a harmless k is a hint for
 the live design, not evidence. Using a stop in a forward book would be a new version with its own
 pre-declared plan.
+
+## Results (added after the run; nothing above was changed)
+
+`research/spike/run_intraday_risk.py`, report in `reports/intraday-risk/report.json` (not committed). The
+stop-free hourly simulator reproduces `run_r7.simulate`: R7 +103.4% vs +103.4%, R11 +221.1% vs +221.0%.
+
+**Q1.** Checking once a day misses little drawdown, because the books are 1x:
+
+| | max DD at daily closes | at hourly closes | at worst intrabar price | worst drop within a day | least equity at worst price |
+|---|---|---|---|---|---|
+| R7 | 55.0% | 55.7% | 56.0% | 16.6% | 0.91 × entry equity |
+| R11 | 39.4% | 40.7% | 42.1% | 18.3% | 0.91 × entry equity |
+
+Liquidation was never close (it needs equity at 0.10 × entry). The first 15% alert and 25% HALT trip
+on the same day whether checked hourly or daily, except R11's HALT: hourly 2023-06-20 18:00, daily not until
+2023-08-17 (the close stayed just under 25% on 2023-06-20).
+
+**The larger finding is the HALT itself.** Both books' development drawdowns (55% / 39%) are far past the
+`spot.v1` 25% HALT, which is absorbing until Note resumes. With it, at base costs:
+
+| | no HALT | HALT checked daily | HALT checked hourly |
+|---|---|---|---|
+| R7 net / Sharpe / DD | +103.4% / 0.43 / 55.7% | +50.1% / 0.44 / 27.6% | +53.6% / 0.47 / 25.9% |
+| R11 net / Sharpe / DD | +221.1% / 0.71 / 40.7% | +40.5% / 0.35 / 32.6% | +53.4% / 0.46 / 25.5% |
+
+Hourly checking holds the HALT near 25%; daily checking let R11 reach 32.6%. Both stop the book in mid-2023.
+
+**Q2.** Tightest harmless stop: **25%** from entry, which never fired. 20% fired once on R11 (Sharpe −0.07,
+net −28 pp); 10% and 15% hurt both books; 5% helped R7 (+34 pp, 14 stops) and badly hurt R11 (−148 pp),
+so the tight end is noise, not a rule. Costs ×2 gives the same ordering.
+
+Reading: a 1x book needs an exchange stop only as a catastrophe guard (≥25% from entry); continuous
+monitoring matters mostly for the HALT, which daily checking can overshoot by several points.
