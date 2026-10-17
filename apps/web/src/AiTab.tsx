@@ -129,9 +129,8 @@ export function AiTab({ rows }: { rows: PortfolioRow[] }) {
   const ai = rows.filter((r) => armOf(r.label).key === "ai").map((r) => r.label);
   return (
     <div className="space-y-4">
-      <Settings />
       {ai.length === 0 ? (
-        <p className="text-sm text-[var(--text-secondary)]">ยังไม่มีพอร์ต AI สกอร์และการตัดสินใจจะขึ้นที่นี่เมื่อรอบ Phase 5 เริ่มบันทึก</p>
+        <p className="panel text-sm text-[var(--text-secondary)]">ยังไม่มีพอร์ต AI ที่รายงานผล การตัดสินใจจะแสดงที่นี่เมื่อเริ่มบันทึกการทดลอง</p>
       ) : (
         ai.map((label) => (
           <section key={label} className="space-y-4 rounded-xl border border-[var(--border)] bg-[var(--surface-1)] p-4">
@@ -141,6 +140,7 @@ export function AiTab({ rows }: { rows: PortfolioRow[] }) {
           </section>
         ))
       )}
+      <details className="panel"><summary className="cursor-pointer font-medium">ค่าตั้งและขอบเขตการทดลอง AI</summary><div className="mt-4"><Settings /></div></details>
     </div>
   );
 }

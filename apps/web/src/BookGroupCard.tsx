@@ -65,7 +65,7 @@ export function BookGroupCard({ group, risk = [] }: { group: BookGroup; risk?: R
           {group.latest ? `ราคาปิดล่าสุด ${dayOf(group.latest)} (UTC)` : "ยังไม่มีข้อมูล"}{days > 0 && ` · ${days} วัน`}
         </span>
       </header>
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      <div className={`grid gap-3 sm:grid-cols-2 ${group.rows.length > 2 ? "xl:grid-cols-4" : ""}`}>
         {group.rows.map((r) => <ArmTile key={r.label} row={r} risk={risk.find((x) => x.label === r.label)} />)}
       </div>
       {failed && <p role="alert" className="text-sm text-[var(--loss)]">{failed.message ?? "โหลดกราฟไม่สำเร็จ"}</p>}

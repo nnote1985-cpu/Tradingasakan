@@ -16,7 +16,8 @@ def catalog_view() -> dict[str, Any]:
     for s in sorted(catalog.CATALOG.values(), key=lambda s: s.no):
         items.append({"number": s.no, "template_id": s.template_id, "version": s.version, "name": s.name, "family": s.family,
                       "timeframes": list(s.timeframes), "default_timeframe": s.default_timeframe, "summary": s.summary,
-                      "params": {k: {"default": p.default, "min": p.min, "max": p.max} for k, p in s.params.items()},
+                      "params": {k: {"default": p.default, "min": p.min, "max": p.max, "integer": isinstance(p.default, int)}
+                                 for k, p in s.params.items()},
                       "evidence": "untested"})
     return {"items": items}
 

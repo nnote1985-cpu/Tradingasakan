@@ -40,6 +40,14 @@ export type Overview = { mode: string; live_enabled: boolean; portfolios: Portfo
 export type ApiError = { code: string; request_id: string | null; retryable: boolean; message: string };
 
 export async function apiGet<T>(path: string): Promise<T> {
+  return apiRequest<T>(path);
+}
+
+export async function apiPost<T>(path: string, body: unknown): Promise<T> {
+  return apiRequest<T>(path, body);
+}
+
+async function apiRequest<T>(path: string, payload?: unknown): Promise<T> {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout>;
   const timeout = new Promise<never>((_resolve, reject) => {
@@ -52,11 +60,16 @@ export async function apiGet<T>(path: string): Promise<T> {
     return await Promise.race([timeout, (async () => {
       const session = supabase ? (await supabase.auth.getSession()).data.session : null;
       const res = await fetch(`${config.apiBase}${path}`, {
-        headers: session ? { Authorization: `Bearer ${session.access_token}` } : {},
+        method: payload === undefined ? "GET" : "POST",
+        headers: { ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}), ...(payload === undefined ? {} : { "Content-Type": "application/json" }) },
+        body: payload === undefined ? undefined : JSON.stringify(payload),
         signal: controller.signal,
       });
       if (!res.ok) {
         const body = await res.json().catch(() => null);
+        if (res.status === 422 && Array.isArray(body?.detail)) {
+          throw new Error("ค่าตั้งไม่ถูกต้อง: " + body.detail.map((d: { loc?: string[]; msg?: string }) => `${d.loc?.slice(1).join(".") ?? ""}: ${d.msg ?? "invalid"}`).join(" · "));
+        }
         throw body?.message ? body as ApiError : new Error(`API ตอบกลับผิดพลาด (${res.status})`);
       }
       return await res.json() as T;
@@ -70,6 +83,23 @@ export async function apiGet<T>(path: string): Promise<T> {
     clearTimeout(timer!);
   }
 }
+
+export type DraftRule = { number: number; version: string; timeframe: string; params: Record<string, number> };
+export type DraftRecipe = {
+  schema_version: "bot-recipe-draft-v1"; status: "draft"; name: string; instrument: "BTCUSDT_SPOT"; timeframe: string;
+  setup_mode: "custom" | "preset"; preset_profile: PresetSnapshot | null; preset_strategy_versions: Record<string, string>;
+  trend_filter: DraftRule | null; entry: DraftRule | null;
+  stop_loss: { kind: "atr" | "trailing_atr" | "fixed_percent"; atr_period: number | null; atr_multiple: number | null; percent: number | null };
+  exit_kind: "entry_signal" | "strategy_signal"; exit_rule: DraftRule | null;
+  risk_per_trade_percent: number; max_exposure_percent: number; notes: string;
+};
+export type ProfileDraft = { profile_id: string; revision: number; profile: DraftRecipe; saved_at: string; saved_by: string; hash: string; execution_supported: false };
+export type ProfileDrafts = { items: ProfileDraft[]; can_edit: boolean };
+export type PresetSnapshot = {
+  profile_id: string; version: number; name: string; status: "draft"; instrument: "BTCUSDT_SPOT"; decision_clock: "1d";
+  combine: "average" | "main_with_filters"; risk_profile: string; ai_mode: "off"; notes: string;
+  strategies: { number: number; timeframe: string; params: Record<string, number> }[];
+};
 export type RiskStatus = { label: string; halted: boolean; halted_since: string | null; halt_reason: string | null };
 export type RiskStatusResponse = { available: boolean; portfolios: RiskStatus[] };
 export type AgentDecision = {
@@ -173,7 +203,7 @@ export type Backtest = {
   };
 };
 
-export type ParamBound = { default: number; min: number; max: number };
+export type ParamBound = { default: number; min: number; max: number; integer?: boolean };
 export type LibraryStrategy = {
   number: number;
   template_id: string;

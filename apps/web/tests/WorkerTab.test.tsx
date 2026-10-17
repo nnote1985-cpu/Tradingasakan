@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import type { WorkerActivity, WorkersResponse, WorkerStatus } from "../src/api";
 import { WorkerTab } from "../src/WorkerTab";
+import { workerIssues } from "../src/Operations";
 
 const response: { current: WorkersResponse } = { current: { available: false, workers: [] } };
 const activity: { current: WorkerActivity } = { current: { available: true, orders: [], trades: [], pnl: null } };
@@ -40,10 +41,19 @@ test("a running worker shows clock, streams, reconcile differences and balances"
   expect(await screen.findByTestId("worker-card")).toBeTruthy();
   expect(screen.getByText("ทำงานอยู่")).toBeTruthy();
   expect(screen.getByText(/\+25 ms/)).toBeTruthy();
-  expect(screen.getByText(/หลุด/)).toBeTruthy();
+  expect(screen.getAllByText(/หลุด/).length).toBeGreaterThan(0);
   expect(screen.getByText(/was not placed by the bot/)).toBeTruthy();
   expect(screen.getByText(/USDT 9000 \(ล็อก 1000\)/)).toBeTruthy();
   expect(screen.getByText(/รวม 412 สินทรัพย์/)).toBeTruthy();
+});
+
+test("a recent heartbeat cannot hide stale reconciliation or unknown persistence", () => {
+  const w = worker({ safety: "RUNNING", streams: {}, execution_enabled: true,
+    reconcile: { verdict: "MATCH", checked_at: new Date(Date.now() - 120000).toISOString(), differences: [], open_orders: 0 },
+    persist: { ok: null, pending: 0, epoch: 1 } });
+  expect(workerIssues(w)).toContain("ผลตรวจบัญชีเกิน 1 นาทีหรือยังยืนยันเวลาไม่ได้");
+  expect(workerIssues(w)).toContain("ยังไม่ยืนยันการบันทึกข้อมูล");
+  expect(workerIssues({ ...w, reconcile: { ...w.reconcile!, checked_at: new Date().toISOString() }, persist: { ...w.persist!, ok: true } })).toEqual([]);
 });
 
 test("a silent worker is flagged with what to do", async () => {

@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { type ApiError, apiGet, type WorkerActivity, type WorkerPnl, type WorkerExecution, type WorkerStatus, type WorkersResponse } from "./api";
+import { workerIssues } from "./Operations";
 
 // Read-only status of the Testnet worker (testnet-development-plan.md §9). The worker writes this to
 // Supabase about every 10 s; nothing on this page sends a command to it. Pause/resume come with P5.
@@ -11,7 +12,7 @@ const STATE_TH: Record<string, string> = {
   CANCELED: "ยกเลิก", REJECTED: "ถูกปฏิเสธ", EXPIRED: "หมดอายุ", UNKNOWN: "ยังไม่รู้ผล", RECONCILING: "กำลังตรวจผล",
 };
 const SIDE_TH: Record<string, string> = { BUY: "ซื้อ", SELL: "ขาย" };
-const TABLE = "w-full text-xs [&_td]:py-1 [&_td]:pr-3 [&_th]:pr-3 [&_th]:text-left [&_th]:font-normal [&_th]:text-[var(--text-muted)]";
+const TABLE = "w-full text-sm [&_td]:py-2 [&_td]:pr-4 [&_th]:pr-4 [&_th]:text-left [&_th]:font-normal [&_th]:text-[var(--text-muted)]";
 const VERDICT_TH: Record<string, string> = { MATCH: "ตรงกัน", DISCREPANCY: "ไม่ตรง", INCONCLUSIVE: "ยังสรุปไม่ได้", UNAVAILABLE: "อ่านบัญชีไม่สำเร็จ" };
 
 function ago(iso: string | null): string {
@@ -31,9 +32,9 @@ function Dot({ ok }: { ok: boolean | null | undefined }) {
 
 function Row({ label, ok, children }: { label: string; ok?: boolean | null; children: ReactNode }) {
   return (
-    <div className="flex items-baseline gap-2 border-t border-[var(--grid)] py-1.5 text-sm">
-      <span className="w-40 shrink-0 text-[var(--text-secondary)]">{label}</span>
-      <span>{ok !== undefined && <Dot ok={ok} />}{children}</span>
+    <div className="grid gap-1 border-t border-[var(--grid)] py-3 text-sm sm:grid-cols-[12rem_minmax(0,1fr)] sm:gap-4">
+      <span className="text-[var(--text-secondary)]">{label}</span>
+      <span className="min-w-0 break-words">{ok !== undefined && <Dot ok={ok} />}{children}</span>
     </div>
   );
 }
@@ -209,6 +210,7 @@ const hasActivity = (w: WorkerStatus) => w.epoch !== null || w.execution !== nul
 
 function WorkerCard({ w }: { w: WorkerStatus }) {
   const r = w.reconcile;
+  const issues = workerIssues(w);
   return (
     <article data-testid="worker-card" className="rounded-xl border border-[var(--border)] bg-[var(--surface-1)] p-4">
       <div className="flex flex-wrap items-baseline gap-2">
@@ -218,11 +220,15 @@ function WorkerCard({ w }: { w: WorkerStatus }) {
           {w.silent ? "ไม่ตอบ" : "ทำงานอยู่"}
         </span>
       </div>
+      <div className="mt-4 rounded-xl bg-[var(--surface-0)] p-4"><p className="font-medium">{issues.length ? "สถานะที่ต้องตรวจสอบ" : "สถานะล่าสุดผ่านการตรวจ"}</p>{issues.length > 0 && <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">{issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>}<p className="mt-2 text-xs text-[var(--text-muted)]">สถานะเครื่องทำงานแยกจากความพร้อมส่งคำสั่ง · ไม่ใช่คำยืนยันว่าเปิดเทรดได้อย่างปลอดภัย</p></div>
       {w.silent && (
         <p role="alert" className="mt-2 text-sm text-[var(--loss)]">
           Worker ไม่ได้ส่งสถานะมา {ago(w.updated_at)} ให้ดูที่เครื่อง {w.host} ว่ายังเปิดอยู่ หรือดับเบิลคลิก update-worker.cmd เพื่อเริ่มใหม่
         </p>
       )}
+      {hasActivity(w) && <Activity account={w.account} />}
+      <details className="mt-5 rounded-xl border border-[var(--border)] p-4">
+        <summary className="cursor-pointer font-medium">รายละเอียดการเชื่อมต่อและระบบ</summary>
       <div className="mt-3">
         <Row label="อัปเดตล่าสุด" ok={!w.silent}>{ago(w.updated_at)} · เริ่มรัน {ago(w.started_at)}</Row>
         <Row label="สถานะความปลอดภัย">{w.safety ?? "–"}{w.lease_token !== null && ` · lease ${w.lease_token}`}</Row>
@@ -254,11 +260,11 @@ function WorkerCard({ w }: { w: WorkerStatus }) {
         {w.execution && <ExecutionRows x={w.execution} />}
         {w.persist && (
           <Row label="บันทึกลง Supabase" ok={w.persist.ok}>
-            {w.persist.ok === false ? "เขียนไม่ได้ กำลังลองใหม่" : "ปกติ"} · รอเขียน {w.persist.pending}
+            {w.persist.ok === null ? "ยังไม่ยืนยันผล" : w.persist.ok === false ? "เขียนไม่ได้ กำลังลองใหม่" : "ปกติ"} · รอเขียน {w.persist.pending}
           </Row>
         )}
       </div>
-      {hasActivity(w) && <Activity account={w.account} />}
+      </details>
     </article>
   );
 }
@@ -270,7 +276,7 @@ export function WorkerTab() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-[var(--text-secondary)]">
-        สถานะของ worker ที่รันกับ Binance Spot Testnet (เงินทดสอบ) หน้านี้อ่านอย่างเดียว ปุ่มหยุด/เริ่มบอทจะมากับ P5
+        ตรวจสถานะเครื่องและบัญชีของแต่ละบอต หน้านี้อ่านอย่างเดียว ยังไม่มีปุ่มหยุดหรือเริ่มส่งคำสั่งจากเว็บ
       </p>
       {!q.data.available ? (
         <p data-testid="workers-unavailable">ยังไม่มีตารางสถานะ worker ในฐานข้อมูล (รอ apply migration ของ P3)</p>
