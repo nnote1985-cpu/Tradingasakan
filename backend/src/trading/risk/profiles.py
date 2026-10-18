@@ -25,4 +25,8 @@ SPOT_V1 = RiskProfile(
     max_margin_utilization_fraction=Decimal("1"),
 )
 
-PROFILES = {"futures.default": FUTURES_DEFAULT, "spot.v1": SPOT_V1}
+# Same levels on Testnet, but Guardian checks them on every fresh quote with the book marked at the bid,
+# not once a day on the close (testnet-development-plan.md §8.5, docs/research/intraday-risk-plan.md).
+SPOT_TN_V1 = SPOT_V1
+
+PROFILES = {"futures.default": FUTURES_DEFAULT, "spot.v1": SPOT_V1, "spot.tn.v1": SPOT_TN_V1}

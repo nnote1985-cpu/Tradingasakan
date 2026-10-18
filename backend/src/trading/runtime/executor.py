@@ -8,8 +8,10 @@ lease. One tick:
    account check against REST said MATCH within the last 90 s (§8.3 startup order);
 2. queries orders that are UNKNOWN (every 2 s for 30 s, then an alert and
    every 30 s; never given up on by time alone) and polls open ones;
-3. asks the conformance profile, when it is on, for its next intent or cancel;
-4. claims outbox rows under the lease token and submits them once, after
+3. lets Guardian (P5, ``runtime/guardian.py``) carry out operator HALT/RESUME
+   requests, mark the guarded books and, while HALTING, cancel and reduce;
+4. asks the conformance profile, when it is on, for its next intent or cancel;
+5. claims outbox rows under the lease token and submits them once, after
    writing SUBMITTING to the store, so a crash mid-submit is reconciled on the
    next start and never sent again.
 
@@ -32,7 +34,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from trading.execution import gateway
 from trading.execution.binance_spot import BinanceSpotTestnet, TestnetError, fill_event
@@ -50,6 +52,9 @@ from trading.runtime.conformance import BUDGET as CONFORMANCE_BUDGET
 from trading.runtime.conformance import LIMITS as CONFORMANCE_LIMITS
 from trading.runtime.conformance import Conformance
 from trading.runtime.persist import PersistStore, Record, TradeRecord
+
+if TYPE_CHECKING:
+    from trading.runtime.guardian import Guardian
 
 SYMBOL = "BTCUSDT"
 UNKNOWN_FAST_S, UNKNOWN_ALERT_AFTER_S, UNKNOWN_SLOW_S = 2.0, 30.0, 30.0
@@ -88,6 +93,7 @@ class Executor:
     alerts: AlertQueue
     persist: PersistStore | None = None
     conformance: Conformance | None = None
+    guardian: Guardian | None = None
     quote: Callable[[], Quote | None] = lambda: None
     verdict: Callable[[], tuple[str, datetime] | None] = lambda: None     # last account check and when it was read
     limits: PreTradeLimits = field(default_factory=PreTradeLimits)
@@ -162,6 +168,8 @@ class Executor:
                 self.rules = self.adapter.get_trading_rules(SYMBOL)
             self._poll_orders(token)
             self._update_pause()
+            if self.guardian is not None:
+                self.guardian.tick(self, token)                       # never skipped for the tick budget
             if in_budget() and self.safety.state is SafetyState.RECOVERING and self._due_every("recover", RECOVER_EVERY_S):
                 self._try_recover()
             if in_budget() and self.conformance is not None and self.safety.allows_entries:
@@ -240,6 +248,9 @@ class Executor:
             if (o.state, o.reported_cum_qty, len(o.fills)) != before or o.is_terminal:
                 self._settle(o, token, "reconcile")
 
+    def unresolved(self) -> list[Order]:
+        return self._unresolved()
+
     def _unresolved(self) -> list[Order]:
         return [o for o in self.orders.values() if o.state in UNRESOLVED]
 
@@ -296,6 +307,10 @@ class Executor:
 
     # --- conformance ----------------------------------------------------------------------
 
+    def lookup(self, cid: str) -> Order | None:
+        """The order for ``cid`` in memory, waiting to be sent, or in the store; None if it was never accepted."""
+        return self._lookup(cid)
+
     def _lookup(self, cid: str) -> Order | None:
         if cid in self.orders:
             return self.orders[cid]
@@ -324,11 +339,17 @@ class Executor:
                 self._refused[cid] = now
                 self.alerts.push(Severity.WARNING, f"refused-{intent.leg}", f"conformance {intent.leg} not accepted: {e}")
 
-    def _cancel(self, cid: str, token: int, limits: PreTradeLimits) -> None:
+    def cancel(self, cid: str, token: int, *, emergency: bool = False) -> None:
+        """Cancel an open order; ``emergency`` (Guardian while HALTING) only stops at the emergency ceiling, whatever the side."""
+        o = self.orders.get(cid)
+        if o is not None:
+            self._cancel(cid, token, self._limits_for(o.intent), emergency=emergency)
+
+    def _cancel(self, cid: str, token: int, limits: PreTradeLimits, *, emergency: bool = False) -> None:
         o = self.orders.get(cid)
         if o is None or o.is_terminal:
             return
-        if held := check_cancel(self._activity(), limits, reduces_risk=o.intent.side is Side.BUY):
+        if held := check_cancel(self._activity(), limits, reduces_risk=emergency or o.intent.side is Side.BUY):
             self.alerts.push(Severity.WARNING, "cancel-limit", f"{held[0]}: {cid} stays open")
             return
         self._cancels_today += 1
@@ -458,4 +479,5 @@ class Executor:
             "waiting": len(self.waiting), "orders_today": self._orders_today, "cancels_today": self._cancels_today,
             "counts": dict(self.counts), "last_error": self.last_error,
             "conformance": None if self.conformance is None else self.conformance.body(),
+            "guardian": None if self.guardian is None else self.guardian.body(),
         }

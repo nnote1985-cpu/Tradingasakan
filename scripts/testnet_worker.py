@@ -13,6 +13,9 @@ Supabase (needs the P3 migration), which the web app's Worker tab reads.
 Since P4 it reconciles and sends Testnet orders: safety goes RUNNING only
 after stored orders and the exchange agree, and with WORKER_CONFORMANCE=on
 it runs the tn-conformance-v1 order profile every 4 hours (§5.4).
+Since P5 Guardian marks the guarded books at the bid on every fresh quote
+(spot.tn.v1: alert at 5% day loss or 15% drawdown, HALT at 25%) and carries out
+HALT/RESUME requests queued with scripts/testnet_request.py.
 Run it under the process manager (scripts/windows/testnet-worker.ps1 on the
 PC, deploy/systemd/tradingasakan-worker.service on the VPS) so a crash restarts it.
 
@@ -89,10 +92,15 @@ def build(env: dict[str, str] | None = None) -> tuple[Worker, Any]:
     if settings.testnet_execution_enabled and store is not None:
         from trading.execution.binance_spot import BinanceSpotTestnet
         from trading.ingest.service import SYMBOL
+        from trading.runtime.conformance import BOOK as CONFORMANCE_BOOK
+        from trading.runtime.conformance import BUDGET as CONFORMANCE_BUDGET
         from trading.runtime.conformance import Conformance
         from trading.runtime.executor import Executor
+        from trading.runtime.guardian import GuardedBook, Guardian
 
         conformance = Conformance() if env.get("WORKER_CONFORMANCE", "off").strip().lower() == "on" else None
+        # Guardian always runs (operator HALT/RESUME); it marks the conformance book while that profile is on. R10a joins in P5 PR 2.
+        guardian = Guardian(store, [GuardedBook(CONFORMANCE_BOOK, CONFORMANCE_BUDGET)] if conformance else [])
 
         def quote() -> Any:
             return None if feeds is None else feeds.quotes.fresh_for_entry(SYMBOL, int(time.time() * 1000))
@@ -104,8 +112,9 @@ def build(env: dict[str, str] | None = None) -> tuple[Worker, Any]:
             return last["verdict"], datetime.fromtimestamp(last["at_ms"] / 1000, UTC)
 
         executor = Executor(store, BinanceSpotTestnet(rest), alerts, persist=recorder.store if recorder else None,
-                            conformance=conformance, quote=quote, verdict=verdict, log=_log)
-        _log(f"order execution on; conformance profile {'on' if conformance else 'off'}")
+                            conformance=conformance, guardian=guardian, quote=quote, verdict=verdict, log=_log)
+        _log(f"order execution on; conformance profile {'on' if conformance else 'off'}; "
+             f"guardian {', '.join(b.book for b in guardian.books) or 'requests only'}")
     worker = Worker(settings, cfg, rest, alerts, deadman=DeadMan(ping) if ping else None, store=store, feeds=feeds,
                     recorder=recorder, executor=executor, log=_log)
     if sink is None:

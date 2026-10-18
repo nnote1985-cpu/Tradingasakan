@@ -144,6 +144,60 @@ class ExecStore:
             "where i.account = %s and i.book = %s and i.symbol = %s", (base, self.account, book, symbol)).fetchone()
         return max(Decimal(row[0]), ZERO) if row else ZERO
 
+    def position(self, book: str, symbol: str, base: str, quote: str) -> tuple[Decimal, Decimal]:
+        """``book``'s own fills on ``symbol``: (base held, quote cash change), net of fees paid in base or quote.
+
+        Fees paid in a third asset (BNB) are not valued here; the Testnet charges BTC or USDT.
+        """
+        row = self.conn.execute(
+            "select coalesce(sum(case when i.side = 'BUY' then f.qty else -f.qty end), 0) "
+            "  - coalesce(sum(case when f.fee_asset = %s then f.fee else 0 end), 0), "
+            "coalesce(sum(case when i.side = 'SELL' then f.qty * f.price else -f.qty * f.price end), 0) "
+            "  - coalesce(sum(case when f.fee_asset = %s then f.fee else 0 end), 0) "
+            "from trading.exec_fills f join trading.exec_intents i using (client_order_id) "
+            "where i.account = %s and i.book = %s and i.symbol = %s", (base, quote, self.account, book, symbol)).fetchone()
+        return (Decimal(row[0]), Decimal(row[1])) if row else (ZERO, ZERO)
+
+    # --- Guardian (P5) ------------------------------------------------------
+
+    def load_book_risk(self, book: str) -> tuple[Any, ...] | None:
+        """(hwm, hwm_at, day, day_open) for ``book``, or None before its first mark."""
+        return self.conn.execute("select hwm, hwm_at, day, day_open from trading.exec_book_risk where account = %s and book = %s",
+                                 (self.account, book)).fetchone()
+
+    def save_book_risk(self, book: str, profile: str, allocation: Decimal, hwm: Decimal, hwm_at: datetime, day: Any,
+                       day_open: Decimal, equity: Decimal, at: datetime) -> None:
+        self.conn.execute(
+            "insert into trading.exec_book_risk values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+            "on conflict (account, book) do update set profile = excluded.profile, allocation = excluded.allocation, hwm = excluded.hwm, "
+            "hwm_at = excluded.hwm_at, day = excluded.day, day_open = excluded.day_open, last_equity = excluded.last_equity, "
+            "marked_at = excluded.marked_at",
+            (self.account, book, profile, allocation, hwm, hwm_at, day, day_open, equity, at))
+
+    def add_risk_event(self, book: str | None, kind: str, detail: str, epoch: int, at: datetime,
+                       equity: Decimal | None = None, hwm: Decimal | None = None) -> None:
+        self.conn.execute("insert into trading.exec_risk_events (account, book, kind, equity, hwm, detail, epoch, at) "
+                          "values (%s, %s, %s, %s, %s, %s, %s, %s)", (self.account, book, kind, equity, hwm, detail, epoch, at))
+
+    def open_requests(self) -> list[tuple[int, str, str, str]]:
+        """Operator requests not yet carried out, oldest first: (id, kind, actor, reason)."""
+        return [tuple(r) for r in self.conn.execute(
+            "select id, kind, actor, reason from trading.exec_operator_requests where account = %s and handled_at is null order by id",
+            (self.account,))]
+
+    def finish_request(self, request_id: int, token: int, now: datetime, outcome: str) -> None:
+        with self.conn.transaction():
+            self._check_token(token, now)
+            self.conn.execute("update trading.exec_operator_requests set handled_at = %s, outcome = %s where id = %s and handled_at is null",
+                              (now, outcome, request_id))
+
+    def request(self, kind: str, actor: str, reason: str) -> int:
+        """Queue a HALT or RESUME for the worker holding the lease (CLI now, web later)."""
+        row = self.conn.execute("insert into trading.exec_operator_requests (account, kind, actor, reason) values (%s, %s, %s, %s) "
+                                "returning id", (self.account, kind, actor, reason)).fetchone()
+        assert row is not None
+        return int(row[0])
+
     def accept_intent(self, intent: OrderIntent, *, unit_price: Decimal, budget: Decimal, base: str = "BTC") -> bool:
         """Insert the intent, reserve a buy's notional and queue EXECUTE_INTENT in one transaction.
 
