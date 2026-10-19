@@ -35,6 +35,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 from trading.execution import gateway
@@ -98,6 +99,7 @@ class Executor:
     guardian: Guardian | None = None
     r10a: R10aBot | None = None
     quote: Callable[[], Quote | None] = lambda: None
+    reference: Callable[[], tuple[Decimal, datetime] | None] = lambda: None   # latest Mainnet 1m close and its close time
     verdict: Callable[[], tuple[str, datetime] | None] = lambda: None     # last account check and when it was read
     limits: PreTradeLimits = field(default_factory=PreTradeLimits)
     now: Callable[[], datetime] = lambda: datetime.now(UTC)

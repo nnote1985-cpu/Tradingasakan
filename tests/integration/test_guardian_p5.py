@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from decimal import Decimal as D
 
 import pytest
@@ -133,3 +134,21 @@ def test_risk_events_are_append_only(g):
         g.store.conn.execute("delete from trading.exec_risk_events where account = %s", (g.account,))
     with pytest.raises(Exception, match="check"):
         g.store.request("HALT", "  ", "no actor")
+
+
+def test_a_testnet_bid_far_from_mainnet_marks_nothing_and_alerts(g):
+    ref = {"price": D("65000"), "age": 30}
+    g.executor.reference = lambda: (ref["price"], g.t - timedelta(seconds=ref["age"]))
+    hwm = g.book()["hwm"]
+    g.price("40000")                                                     # 38% below Mainnet: a thin-book glitch, not the market
+    g.tick(3)
+    assert g.executor.safety.state is SafetyState.RUNNING and g.events() == []
+    assert g.book()["hwm"] == hwm and "from Mainnet" in g.executor.body()["guardian"]["price_off"]
+    assert any(k == "guardian-price" for _, k, _ in g.alerts.items)
+    g.price("90000")                                                     # an upward glitch must not lift the high either
+    g.tick(3)
+    assert g.book()["hwm"] == hwm
+    ref["age"] = 600                                                     # no recent Mainnet close: the bid is all there is
+    g.price("40000")
+    g.tick()
+    assert "HALT" in g.events() and g.executor.body()["guardian"]["price_off"] is None
