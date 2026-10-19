@@ -50,7 +50,7 @@ export function useHashTab(): [ViewKey, (t: ViewKey) => void] {
 
 export function TabBar({ tab, onSelect }: { tab: TabKey; onSelect: (t: TabKey) => void }) {
   return (
-    <div role="tablist" aria-label="เมนูหลัก" className="main-nav grid grid-cols-2 gap-2 sm:grid-cols-5">
+    <div role="tablist" aria-label="เมนูหลัก" aria-orientation="vertical" className="main-nav">
       {TABS.map((t) => {
         const on = t.key === tab;
         return (
@@ -63,12 +63,12 @@ export function TabBar({ tab, onSelect }: { tab: TabKey; onSelect: (t: TabKey) =
             aria-controls={`panel-${t.key}`}
             onKeyDown={(e) => {
               const index = TABS.findIndex((x) => x.key === t.key);
-              const next = e.key === "ArrowRight" ? (index + 1) % TABS.length : e.key === "ArrowLeft" ? (index + TABS.length - 1) % TABS.length : e.key === "Home" ? 0 : e.key === "End" ? TABS.length - 1 : -1;
+              const next = ["ArrowDown", "ArrowRight"].includes(e.key) ? (index + 1) % TABS.length : ["ArrowUp", "ArrowLeft"].includes(e.key) ? (index + TABS.length - 1) % TABS.length : e.key === "Home" ? 0 : e.key === "End" ? TABS.length - 1 : -1;
               if (next >= 0) { e.preventDefault(); onSelect(TABS[next].key); document.getElementById(`tab-${TABS[next].key}`)?.focus(); }
             }}
             tabIndex={on ? 0 : -1}
             onClick={() => onSelect(t.key)}
-            className={`rounded-xl px-4 py-3 text-sm font-medium ${on ? "bg-[var(--text-primary)] text-[var(--surface-1)]" : "text-[var(--text-secondary)] hover:bg-[var(--surface-1)]"}`}
+            className={`min-h-11 rounded-xl px-4 py-3 text-left text-sm font-medium ${on ? "bg-[var(--text-primary)] text-[var(--surface-1)]" : "text-[var(--text-secondary)] hover:bg-[var(--surface-0)]"}`}
           >
             {t.label}
           </button>

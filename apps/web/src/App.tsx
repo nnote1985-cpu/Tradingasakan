@@ -69,6 +69,7 @@ export function Dashboard() {
   // DEFAULT transport is REST polling (§21.3); paused automatically when the tab is hidden.
   const q = useQuery<Overview, ApiError>({ queryKey: ["overview"], queryFn: () => apiGet<Overview>("/api/v1/overview"), refetchInterval: 10_000, retry: false, networkMode: "always" });
   const [tab, setTab] = useHashTab();
+  const [menuOpen, setMenuOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   useEffect(() => { if (contentRef.current) contentRef.current.scrollTop = 0; }, [tab]);
   const section = sectionOf(tab);
@@ -78,12 +79,22 @@ export function Dashboard() {
   const needsOverview = (section === "research" && tab !== "options") || tab === "asset";
   return (
     <section className="dashboard-shell">
-      <header className="dashboard-header space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div><p className="eyebrow">TRADINGASAKAN / CONTROL ROOM</p><h1 className="mt-2 text-2xl font-semibold sm:text-3xl">{titles[section][0]}</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">{titles[section][1]}</p></div>
-        <button className="action text-sm" onClick={() => supabase?.auth.signOut()}>ออกจากระบบ</button>
-      </div>
-      <TabBar tab={section} onSelect={setTab} />
+      <aside className="dashboard-sidebar" aria-label="แถบเมนูหลัก" data-open={menuOpen}>
+        <div className="sidebar-brand">
+          <div><p className="font-semibold tracking-wide">TRADINGASAKAN</p><p className="eyebrow mt-1">CONTROL ROOM</p></div>
+          <button type="button" className="action sidebar-toggle" aria-expanded={menuOpen} aria-controls="sidebar-menu" onClick={() => setMenuOpen((open) => !open)}>{menuOpen ? "ปิดเมนู" : "เมนู"}</button>
+        </div>
+        <div id="sidebar-menu" className="sidebar-menu">
+          <nav aria-label="เมนูหลัก"><TabBar tab={section} onSelect={(next) => { setTab(next); setMenuOpen(false); }} /></nav>
+          <div className="sidebar-account">
+            <p className="eyebrow mb-3">บัญชีผู้ใช้งาน</p>
+            <button className="action w-full text-left text-sm" onClick={() => supabase?.auth.signOut()}>ออกจากระบบ</button>
+          </div>
+        </div>
+      </aside>
+      <div className="dashboard-workspace">
+      <header className="dashboard-header">
+        <div><h1 className="text-2xl font-semibold sm:text-3xl">{titles[section][0]}</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">{titles[section][1]}</p></div>
       </header>
       <div ref={contentRef} role="tabpanel" tabIndex={0} id={`panel-${section}`} aria-labelledby={`tab-${section}`} className="dashboard-content space-y-5">
         {section === "research" && <><div className="notice">พื้นที่ทดลอง · เงินสมมติและผลย้อนหลัง ไม่รวมอยู่ในยอดบัญชีของบอต</div><div className="flex flex-wrap gap-2" role="group" aria-label="หมวดงานวิจัย">{researchViews.map((v) => <button key={v.key} className={`filter-button ${researchView === v.key ? "filter-active" : ""}`} aria-pressed={researchView === v.key} onClick={() => setTab(v.key)}>{v.label}</button>)}</div></>}
@@ -95,6 +106,7 @@ export function Dashboard() {
         ) : tab === "asset" ? <AssetTab rows={q.data?.portfolios ?? []} /> : researchView === "futures" ? <FuturesTab rows={q.data?.portfolios ?? []} /> : researchView === "ai" ? <AiTab rows={q.data?.portfolios ?? []} /> : tab === "options" ? <NotOpen title="Options ยังไม่เปิด">ยังไม่มีการทดลอง Options ที่เปิดใช้งาน</NotOpen> : q.data ? (
           <SpotTab data={q.data} />
         ) : null}
+      </div>
       </div>
     </section>
   );
@@ -113,7 +125,7 @@ export function App() {
   return (
     <div className="app-shell">
       {health.data && <ShadowBanner mode={health.data.mode} liveEnabled={health.data.live_enabled} />}
-      <main className={`app-main mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-9 ${signedIn ? "app-main-dashboard" : ""}`}>{signedIn === null ? null : signedIn ? <Dashboard /> : <SignIn />}</main>
+      <main className={`app-main ${signedIn ? "app-main-dashboard" : "mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-9"}`}>{signedIn === null ? null : signedIn ? <Dashboard /> : <SignIn />}</main>
     </div>
   );
 }
