@@ -266,6 +266,10 @@ export type WorkerExecution = {
   counts: Record<string, number>;
   last_error: string | null;
   conformance: { book: string; cycle: string | null; cycles_done: number; note: string } | null;
+  guardian?: {
+    profile: string;
+    books: { book: string; allocation: string; equity: string | null; hwm?: string; drawdown?: string; day_open?: string }[];
+  } | null;
 };
 
 export type WorkerStatus = {

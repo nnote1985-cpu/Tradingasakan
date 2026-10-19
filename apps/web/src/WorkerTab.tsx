@@ -56,7 +56,33 @@ function ExecutionRows({ x }: { x: WorkerExecution }) {
       <Row label="Conformance (ทดสอบระบบ)">
         {x.conformance ? `${x.conformance.cycle ?? "–"} · ${x.conformance.note || "–"} · ครบ ${x.conformance.cycles_done} รอบ` : "ปิดอยู่"}
       </Row>
+      {x.guardian && <GuardianRow g={x.guardian} />}
     </>
+  );
+}
+
+// spot.tn.v1 (backend/src/trading/risk/profiles.py): alert at 5% day loss or 15% drawdown, HALT at 25% drawdown.
+const DD_ALERT = 0.15;
+const DD_HALT = 0.25;
+
+function GuardianRow({ g }: { g: NonNullable<WorkerExecution["guardian"]> }) {
+  const dds = g.books.map((b) => (b.drawdown === undefined ? null : Number(b.drawdown)));
+  const ok = dds.every((d) => d === null || d < DD_ALERT);
+  return (
+    <Row label={`Guardian (${g.profile})`} ok={g.books.length ? ok : null}>
+      {g.books.length === 0 && "ยังไม่ได้ดูแล book ไหน (รับคำสั่ง HALT/RESUME อย่างเดียว)"}
+      {g.books.map((b, i) => {
+        const dd = dds[i];
+        if (b.equity === null || dd === null) return <div key={b.book}>{b.book} · รอราคาแรก</div>;
+        const day = b.day_open ? Number(b.equity) / Number(b.day_open) - 1 : 0;
+        return (
+          <div key={b.book}>
+            {b.book} · equity {b.equity} / สูงสุด {b.hwm} USDT · drawdown {(dd * 100).toFixed(2)}% (เตือน 15%, HALT 25%,
+            {" "}เหลืออีก {Math.max(0, (DD_HALT - dd) * 100).toFixed(1)}%) · วันนี้ {(day * 100).toFixed(2)}%
+          </div>
+        );
+      })}
+    </Row>
   );
 }
 
