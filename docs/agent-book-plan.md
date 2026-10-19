@@ -20,9 +20,9 @@ other book; it changes none of them. No backtest is possible: the models know pa
 | Paper money | 10,000 USDT per book |
 | API budget | at most $25 a month and $1 a day; over budget = no call, never a silent fallback |
 | Pass rule | after ≥ 60 closed trades and ≥ 8 weeks (2-week pilot not counted): net > 0 after fees + API; beats `always`; above the 80th percentile of 1,000 `random` seeds; Sharpe > B&H or max DD ≤ half of B&H |
-| News source | not chosen; proposed in step 2 |
+| News source | Claude API web search (basic, at most 3 searches per analyst run, $10 per 1,000); chosen 2026-10-19 as the default, no extra key |
 
-## 3. Signals (step 1, this PR)
+## 3. Signals (step 1)
 
 `backend/src/trading/agent/signals.py`. The Decider picks a condition from a fixed allowlist
 (price close above/below, price touch, RSI 14 below/above, signed % move over N hours, volume
@@ -34,7 +34,32 @@ fires. With nothing active, a `time_check` 24 h out is added.
 Tables: `supabase/migrations/20261019020014_agent_book.sql` (`trading.agent_signals`,
 `agent_runs`, `agent_tool_calls`), applied to Supabase on 2026-10-19 after Note's "apply".
 
-## 4. Order of work
+## 4. Decision runner (step 2)
+
+`backend/src/trading/agent/roles.py` fixes the five roles (`PROMPT_VERSION` agent-v1-p1):
+
+| Role | Model, effort | Tools |
+| --- | --- | --- |
+| analyst_news | Sonnet 5.5, low | web search, ≤ 3 |
+| analyst_price | Sonnet 5.5, low | 1h/4h/1d candles with RSI and SMAs, 24 h ticker |
+| analyst_market | Sonnet 5.5, low | order book summary; funding, mark/index, open interest |
+| decider | Opus 5.5, medium | none: reads the three reports, answers BUY/SELL/HOLD and 1–3 new signals |
+| veto | Sonnet 5.5, medium | none: PASS or VETO on a BUY or SELL only |
+
+`backend/src/trading/agent/runner.py` runs them: analysts in parallel, then the Decider, then the
+Veto. Each call reserves its role's maximum cost first and is not made when the $1/day or
+$25/month cap cannot cover it (BUDGET_BLOCKED). One attempt per call; a failed analyst is passed
+to the Decider as missing; a failed or vetoing Veto means HOLD; a BUY while long or a SELL while
+flat is HOLD. Signals the Decider asks for go through `signals.parse_params`/`check_new`, and
+invalid ones are kept with the reason. Every call and tool call (full response, sha256) is
+recorded in the shape of `agent_runs` / `agent_tool_calls`. Market data is Binance mainnet
+public REST (`market.py`, no key), so it runs where the worker runs; the cloud gets 451.
+
+Dry run: `uv run python scripts/agent_dry_run.py --decisions 3` (or double-click
+`scripts/windows/agent-dry-run.cmd`) with `AGENT_ANTHROPIC_KEY` set to a key nothing else uses.
+It writes every decision to `var/agent_dry_run/` and keeps the caps across runs in its ledger.
+
+## 5. Order of work
 
 1. Signal rules + tables (this PR). Wiring into the worker belongs to the thread that owns the
    worker, after the tables are live.
