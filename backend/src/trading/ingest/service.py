@@ -28,6 +28,7 @@ import threading
 import time
 import urllib.parse
 from collections.abc import Callable
+from decimal import Decimal
 from typing import Any
 
 from trading.ingest.account import AccountState, Verdict
@@ -252,6 +253,13 @@ class IngestService:
     def closed_bars(self, interval: str) -> list[Bar]:
         with self.lock:
             return self.series[interval].closed()
+
+    def reference_close(self) -> tuple[Decimal, int] | None:
+        """The latest closed Mainnet 1m bar: (close, close time in ms)."""
+        with self.lock:
+            s = self.series["1m"]
+            bar = None if s.last_open is None else s.bars.get(s.last_open)
+        return None if bar is None else (bar.close, bar.close_time)
 
     def stop(self, timeout: float = 5) -> None:
         if self._loop is not None and self._stop is not None and not self._loop.is_closed():

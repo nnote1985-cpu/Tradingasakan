@@ -10,7 +10,11 @@ LLM. One tick:
 2. on a fresh quote, marks each guarded book at the bid: its allocation plus
    the cash its own fills moved, plus the BTC it holds. ``spot.tn.v1`` (the
    ``spot.v1`` levels Note chose) alerts at a 5% loss in one UTC day or a 15%
-   drawdown and HALTs at a 25% drawdown from the high-water mark;
+   drawdown and HALTs at a 25% drawdown from the high-water mark. The Testnet
+   book is thin and its bid sometimes jumps far from the real market, so a bid
+   more than 3% away from the latest Mainnet 1m close (when that close is at
+   most 3 minutes old) marks nothing and alerts instead: a glitch must neither
+   HALT a book nor raise its high-water mark;
 3. while HALTING: cancels every open buy, sells what each guarded book holds
    (MARKET, through the normal gateway on the new safety epoch, so nothing the
    old epoch queued can add exposure), keeps doing so for late fills, and moves
@@ -46,6 +50,8 @@ PROFILE_NAME = "spot.tn.v1"
 SAVE_EVERY_S = 60.0
 MAX_REDUCE_LEGS = 50
 QUOTE_MAX_AGE = timedelta(seconds=5)         # the quote freshness limit orders use (plan §8.2)
+REFERENCE_MAX_AGE = timedelta(minutes=3)     # a Mainnet 1m close older than this is no check at all
+MAX_DEVIATION = Decimal("0.03")              # Testnet bid this far from Mainnet: don't mark
 HALT_DECISION = "halt-e"
 ZERO = Decimal(0)
 
@@ -79,6 +85,7 @@ class Guardian:
     marks: dict[str, _Mark] = field(default_factory=dict)
     reset_hwm: bool = False                  # set by a resume: the next mark restarts every high-water mark
     last_note: str = ""
+    price_off: str | None = None             # why the last fresh quote was not used, while it lasts
 
     # --- entry point ------------------------------------------------------------------
 
@@ -87,10 +94,26 @@ class Guardian:
         q = ex.quote()
         if q is None or ex.rules is None or ex.now() - datetime.fromtimestamp(q.received_ms / 1000, UTC) > QUOTE_MAX_AGE:
             return                                                    # marks wait for a fresh quote; HALT latches and requests do not
-        for b in self.books:
-            self._mark(ex, b, q.bid)
+        if self._price_ok(ex, q.bid):
+            for b in self.books:
+                self._mark(ex, b, q.bid)
         if ex.safety.state is SafetyState.HALTING:
             self._reduce(ex, token, q.bid)
+
+    def _price_ok(self, ex: Executor, bid: Decimal) -> bool:
+        ref = ex.reference()
+        if ref is None or ex.now() - ref[1] > REFERENCE_MAX_AGE or ref[0] <= 0:
+            self.price_off = None
+            return True
+        gap = bid / ref[0] - 1
+        if abs(gap) <= MAX_DEVIATION:
+            self.price_off = None
+            return True
+        self.price_off = f"Testnet bid {bid} is {gap:+.1%} from Mainnet {ref[0]}"
+        ex.alerts.push(Severity.WARNING, "guardian-price",
+                       f"ราคา Testnet เพี้ยนจากตลาดจริง {gap:+.1%} (Testnet {bid:,.2f} / Mainnet {ref[0]:,.2f}) "
+                       "Guardian พักการตีมูลค่าพอร์ตไว้ก่อน จะไม่ HALT เพราะราคานี้ ไม่ต้องทำอะไร")
+        return False
 
     # --- operator requests -------------------------------------------------------------
 
@@ -245,5 +268,5 @@ class Guardian:
             dd = 1 - m.equity / m.hwm if m.hwm > 0 else ZERO
             out.append({"book": b.book, "allocation": str(b.allocation), "equity": f"{m.equity:.2f}", "hwm": f"{m.hwm:.2f}",
                         "drawdown": f"{dd:.4f}", "day_open": f"{m.day_open:.2f}"})
-        return {"profile": PROFILE_NAME, "books": out}
+        return {"profile": PROFILE_NAME, "books": out, "price_off": self.price_off}
 

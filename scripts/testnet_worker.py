@@ -117,6 +117,10 @@ def build(env: dict[str, str] | None = None) -> tuple[Worker, Any]:
         def quote() -> Any:
             return None if feeds is None else feeds.quotes.fresh_for_entry(SYMBOL, int(time.time() * 1000))
 
+        def reference() -> Any:
+            ref = None if feeds is None else feeds.reference_close()
+            return None if ref is None else (ref[0], datetime.fromtimestamp(ref[1] / 1000, UTC))
+
         def verdict() -> tuple[str, datetime] | None:
             last = {} if feeds is None else feeds.last_reconcile
             if "verdict" not in last:
@@ -124,7 +128,8 @@ def build(env: dict[str, str] | None = None) -> tuple[Worker, Any]:
             return last["verdict"], datetime.fromtimestamp(last["at_ms"] / 1000, UTC)
 
         executor = Executor(store, BinanceSpotTestnet(rest), alerts, persist=recorder.store if recorder else None,
-                            conformance=conformance, guardian=guardian, r10a=r10a, quote=quote, verdict=verdict, log=_log)
+                            conformance=conformance, guardian=guardian, r10a=r10a, quote=quote, reference=reference,
+                            verdict=verdict, log=_log)
         _log(f"order execution on; conformance profile {'on' if conformance else 'off'}; r10a {'on' if r10a else 'off'}; "
              f"guardian {', '.join(b.book for b in guardian.books) or 'requests only'}")
     worker = Worker(settings, cfg, rest, alerts, deadman=DeadMan(ping) if ping else None, store=store, feeds=feeds,

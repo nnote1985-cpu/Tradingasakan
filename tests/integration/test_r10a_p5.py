@@ -182,3 +182,16 @@ def test_decide_matches_the_frozen_band_rule():
     assert decide(daily, funding, est, (days[-1] + timedelta(days=1)).date(), at) is None    # the archive lacks the day
     short = decide(daily.iloc[:50], funding, est, days[49].date(), at)
     assert short is not None and short.weight is None                                      # SMA100 not there yet
+
+
+def test_a_buy_waits_while_testnet_is_more_than_1pct_from_mainnet(b):
+    ref = {"price": b.ex.ask * D("1.02")}
+    b.executor.reference = lambda: (ref["price"], b.t - timedelta(seconds=30))
+    b.advance(600)
+    b.weights[b.day] = D("1")
+    b.tick(4)
+    assert b.decision()["executed_at"] is None and b.ex.orders == {}       # Testnet 2% off the market: no new exposure
+    ref["price"] = b.ex.ask
+    b.advance(10)
+    b.tick(4)
+    assert b.decision()["outcome"].startswith("BUY")

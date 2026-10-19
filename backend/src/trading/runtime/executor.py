@@ -35,6 +35,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 from trading.execution import gateway
@@ -70,11 +71,14 @@ REFUSED_RETRY = timedelta(minutes=5)
 TICK_BUDGET_S = 5.0
 # Pre-trade reasons that clear on their own; the intent waits for its TTL instead of being rejected.
 TRANSIENT = frozenset({"PRICE_STALE", "RATE_LIMIT", "TOO_MANY_ACTIVE_ORDERS", "RECONCILE_NONE", "RECONCILE_STALE",
-                       "RECONCILE_UNAVAILABLE", "RECONCILE_INCONCLUSIVE"})
+                       "RECONCILE_UNAVAILABLE", "RECONCILE_INCONCLUSIVE", "PRICE_DIVERGENT"})
 # The feeds check the account every 30 s; a MATCH older than three rounds no longer vouches for the account.
 RECONCILE_MAX_AGE = timedelta(seconds=90)
 UNRESOLVED = (OrderState.UNKNOWN, OrderState.RECONCILING)
 DAY = timedelta(days=1)
+# Plan §4/RT34: no new exposure while the Testnet price is more than 1% from Mainnet (latest 1m close, at most 3 minutes old).
+ENTRY_MAX_DEVIATION = Decimal("0.01")
+REFERENCE_MAX_AGE = timedelta(minutes=3)
 
 
 class LeaseFenced(RuntimeError):
@@ -98,6 +102,7 @@ class Executor:
     guardian: Guardian | None = None
     r10a: R10aBot | None = None
     quote: Callable[[], Quote | None] = lambda: None
+    reference: Callable[[], tuple[Decimal, datetime] | None] = lambda: None   # latest Mainnet 1m close and its close time
     verdict: Callable[[], tuple[str, datetime] | None] = lambda: None     # last account check and when it was read
     limits: PreTradeLimits = field(default_factory=PreTradeLimits)
     now: Callable[[], datetime] = lambda: datetime.now(UTC)
@@ -404,7 +409,15 @@ class Executor:
                     safety=self.safety, limits=self._limits_for(intent))
         if intent.increases_exposure and (block := self._entry_block()) is not None:
             out.append(block)
+        if intent.increases_exposure and self._divergent(mark, now):
+            out.append("PRICE_DIVERGENT")
         return out
+
+    def _divergent(self, price: Decimal, now: datetime) -> bool:
+        ref = self.reference()
+        if ref is None or now - ref[1] > REFERENCE_MAX_AGE or ref[0] <= 0:
+            return False
+        return abs(price / ref[0] - 1) > ENTRY_MAX_DEVIATION
 
     def _send(self, order: Order, oid: int, token: int) -> None:
         cid = order.client_order_id
