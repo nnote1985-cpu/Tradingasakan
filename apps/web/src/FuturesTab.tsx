@@ -51,7 +51,7 @@ function OpenTrade({ t, asOf }: { t: BacktestTrade; asOf: string }) {
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className={`rounded px-2 py-0.5 text-xs font-semibold text-white ${long ? "bg-[var(--gain)]" : "bg-[var(--loss)]"}`}>{SIDE_TH[t.side].toUpperCase()}</span>
         <span className="text-sm">เข้าที่ <span className="font-medium tabular-nums">{money(t.entry_price)}</span></span>
-        <span className="rounded bg-[var(--warn-bg)] px-1.5 text-xs text-[var(--warn-fg)]">ยังถืออยู่</span>
+        <span className="rounded bg-[var(--warn-bg)] px-1.5 text-xs text-[var(--warn-fg)]">ถืออยู่ ณ สิ้นช่วงย้อนหลัง</span>
         <span className={`ml-auto text-lg font-medium tabular-nums ${tone(t.pnl)}`}>{money(t.pnl, "USDT")} <span className="text-sm">({pct(t.return)})</span></span>
       </div>
       <p className="mt-1 text-xs text-[var(--text-muted)]">
@@ -113,6 +113,7 @@ function BacktestCard({ b }: { b: Backtest }) {
         <span className="rounded bg-[var(--warn-bg)] px-1.5 text-xs text-[var(--warn-fg)]">backtest ย้อนหลัง · {STATUS_TH[b.status] ?? b.status}</span>
         <span className="text-xs text-[var(--text-muted)]">{b.instrument} · {b.range[0]} ถึง {b.range[1]} (ช่วง {b.set})</span>
       </header>
+      <p className="notice">ผลย้อนหลังเท่านั้น · สถานะถือครองและกำไรด้านล่างเป็นข้อมูล ณ สิ้นช่วง Backtest ไม่ใช่สถานะซื้อขายปัจจุบัน</p>
       <div className="overflow-x-auto">
         <table className="text-sm [&_td]:py-1 [&_td]:pr-6 [&_th]:pr-6 [&_th]:text-left [&_th]:font-normal [&_th]:text-[var(--text-muted)]">
           <thead><tr><th /><th>ผลตอบแทน</th><th>Sharpe</th><th>ลดจากสูงสุด</th></tr></thead>
@@ -157,7 +158,8 @@ export function FuturesTab({ rows }: { rows: PortfolioRow[] }) {
       ) : (
         <>
           <p className="text-sm text-[var(--text-secondary)]">BTCUSDT perpetual 1x ด้วยเงินสมมติ ราคาปิดรายวันตามเวลา UTC ตัวเลขหลังหักค่าธรรมเนียมและ funding</p>
-          {books.map((g) => <BookGroupCard key={g.version} group={g} risk={risk.data?.portfolios} />)}
+          {books.filter((g) => g.rows.some((r) => r.economic_equity !== null)).map((g) => <BookGroupCard key={g.version} group={g} risk={risk.data?.portfolios} />)}
+          {books.some((g) => g.rows.every((r) => r.economic_equity === null)) && <details className="panel"><summary className="cursor-pointer font-medium">พอร์ต Futures ที่ยังไม่มีข้อมูล</summary><div className="mt-4 space-y-4">{books.filter((g) => g.rows.every((r) => r.economic_equity === null)).map((g) => <BookGroupCard key={g.version} group={g} risk={risk.data?.portfolios} />)}</div></details>}
         </>
       )}
       {q.isError && <p role="alert" className="text-sm text-[var(--loss)]">{q.error.message ?? "โหลดผล backtest ไม่สำเร็จ"}</p>}

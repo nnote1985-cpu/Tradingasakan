@@ -15,6 +15,8 @@ vi.mock("../src/api", () => ({
   apiGet: async (path: string): Promise<unknown> => {
     if (path === "/api/v1/overview") return { mode: "SHADOW", portfolios: [row("pathA-p5-r1/code"), row("pathA-p5-r1/ai")] };
     if (path === "/api/v1/risk-status") return { available: false, portfolios: [] };
+    if (path === "/api/v1/workers") return { available: true, workers: [] };
+    if (path === "/api/v1/bot-profile-drafts") return { items: [], can_edit: false };
     if (path === "/api/v1/backtests?market=futures") {
       const p = (day: string, s: string, b: string, sd: string, bd: string) => ({ day, strategy: s, buy_and_hold: b, strategy_drawdown: sd, buy_and_hold_drawdown: bd });
       return {
@@ -131,6 +133,13 @@ test("SHADOW banner says simulated money; LIVE is red", () => {
   expect(screen.getByTestId("shadow-banner").className).toContain("bg-red-600");
 });
 
+test("testnet banner explains exchange orders use test funds and scopes the API mode", () => {
+  const { container } = render(<ShadowBanner mode="TESTNET" liveEnabled={false} />);
+  expect(container.textContent).toContain("โหมด API: TESTNET");
+  expect(container.textContent).toContain("ส่งคำสั่งไป Binance Testnet ด้วยเงินทดสอบ");
+  expect(container.textContent).not.toContain("ไม่มีคำสั่งซื้อขายจริง");
+});
+
 test("a book group shows a tile per arm and both charts", async () => {
   const [g] = groupBooks([row("pathA-v1.2/paper"), row("pathA-v1.2/buy_and_hold")]);
   render(<QueryClientProvider client={new QueryClient()}><BookGroupCard group={g} /></QueryClientProvider>);
@@ -180,15 +189,17 @@ test("the AI tab shows locked settings and the helped-or-missed scorecard, count
   expect(rows[3].textContent).toContain("รอผล");
 });
 
-test("tabs switch through the URL hash; futures and options say they are not open yet", async () => {
+test("five main sections separate operations, research and settings and preserve subview hashes", async () => {
   window.location.hash = "";
   const { container } = render(<QueryClientProvider client={new QueryClient()}><Dashboard /></QueryClientProvider>);
-  expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Spot", "สินทรัพย์", "Futures", "Options", "AI", "กลยุทธ์"]);
+  expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["ภาพรวม", "บอตและพอร์ต", "งานวิจัย", "ระบบ", "ตั้งค่า"]);
+  await screen.findByText("ยังไม่มีบอตรายงานสถานะ");
+  expect(container.querySelectorAll("[data-testid=arm-tile]")).toHaveLength(0);
+  fireEvent.click(screen.getByRole("tab", { name: "งานวิจัย" }));
+  expect(screen.queryByRole("button", { name: "คลังกลยุทธ์" })).toBeNull();
   await waitFor(() => expect(container.querySelectorAll("[data-testid=arm-tile]")).toHaveLength(2));
-  fireEvent.click(screen.getByRole("tab", { name: "Options" }));
-  expect(window.location.hash).toBe("#options");
-  expect(container.querySelector("[data-testid=not-open]")?.textContent).toContain("Options ยังไม่เปิด");
-  fireEvent.click(screen.getByRole("tab", { name: "Futures" }));
+  expect(window.location.hash).toBe("#research");
+  fireEvent.click(screen.getByRole("button", { name: "Futures / Backtest" }));
   expect(container.querySelector("[data-testid=not-open]")?.textContent).toContain("Futures");
   await waitFor(() => expect(container.querySelector("[data-testid=backtest]")?.textContent).toContain("ผ่านช่วง dev แต่ยังไม่ยืนยัน"));
   expect(container.querySelector("[data-testid=backtest]")?.textContent).toContain("+103.37%");
@@ -209,9 +220,10 @@ test("tabs switch through the URL hash; futures and options say they are not ope
     "1Short2022-04-1239,497.702022-04-2041,481.198-513.09−5.13%",
     "2Long2022-04-2041,481.19ยังถืออยู่ (ตีราคาสิ้นช่วง)–2120.00+1.26%",
   ]);
-  fireEvent.click(screen.getByRole("tab", { name: "AI" }));
+  fireEvent.click(screen.getByRole("button", { name: "ผลทดลอง AI" }));
   await waitFor(() => expect(container.querySelector("[data-testid=ai-settings]")).not.toBeNull());
-  expect(screen.getByRole("tab", { name: "AI" }).getAttribute("aria-selected")).toBe("true");
+  expect(screen.getByRole("tab", { name: "งานวิจัย" }).getAttribute("aria-selected")).toBe("true");
+  expect(screen.getByRole("button", { name: "ผลทดลอง AI" }).getAttribute("aria-pressed")).toBe("true");
 });
 
 test("with a single close the charts wait and say why", async () => {
@@ -231,17 +243,27 @@ test("futures books show in the Futures tab above the backtests, and not in Spot
   expect(groupBooks(rows.filter((r) => !isFutures(r.label))).map((g) => g.version)).toEqual(["pathA-v1.2"]);
 });
 
-test("the strategies tab shows bot profiles by strategy number and the library", async () => {
-  window.location.hash = "strategies";
+test("settings separates read-only profiles from the strategy library", async () => {
+  window.location.hash = "settings";
   const { container } = render(<QueryClientProvider client={new QueryClient()}><Dashboard /></QueryClientProvider>);
   const view = within(container);
+  expect(view.getByRole("tab", { name: "ตั้งค่า" }).getAttribute("aria-selected")).toBe("true");
+  expect(view.getByText(/ยังไม่เชื่อม worker, Backtest หรือการส่งคำสั่งเทรด/)).toBeTruthy();
   const card = await view.findByTestId("bot-profile");
   expect(card.textContent).toContain("#1, #7");
   expect(card.textContent).toContain("(หลัก)");
   expect(card.textContent).toContain("(ตัวกรอง)");
   expect(card.textContent).toContain("ร่าง ยังไม่ผูกกับพอร์ต");
+  expect(view.queryByTestId("strategy-library")).toBeNull();
+  fireEvent.click(view.getByRole("button", { name: "คลังกลยุทธ์" }));
+  expect(window.location.hash).toBe("#strategies");
+  expect(view.getByRole("tab", { name: "ตั้งค่า" }).getAttribute("aria-selected")).toBe("true");
+  expect(view.queryByTestId("bot-profile")).toBeNull();
   const lib = await view.findByTestId("strategy-library");
   expect(lib.textContent).toContain("MACD Crossover");
   expect(lib.textContent).toContain("ยังไม่ทดสอบกับข้อมูลเรา");
+  fireEvent.click(view.getByRole("button", { name: "Bot profiles" }));
+  expect(window.location.hash).toBe("#settings");
+  expect(await view.findByTestId("bot-profile")).toBeTruthy();
   window.location.hash = "";
 });

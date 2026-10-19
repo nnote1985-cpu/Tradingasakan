@@ -69,4 +69,53 @@ body {
   background: var(--surface-0);
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
+  font-family: "Leelawadee UI", "Noto Sans Thai", system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.65;
+}
+
+button, summary, a { -webkit-tap-highlight-color: transparent; }
+button, summary { cursor: pointer; }
+:is(button, a, input, summary):focus-visible { outline: 3px solid var(--series-strategy); outline-offset: 4px; }
+button:disabled { cursor: wait; opacity: .6; }
+.app-shell { display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
+.app-shell > [data-testid="shadow-banner"] { flex: none; }
+.app-main { flex: 1; min-height: 0; overflow-y: auto; }
+.app-main-dashboard { display: flex; flex-direction: column; overflow: hidden; }
+.dashboard-shell { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.dashboard-header { flex: none; padding-bottom: 24px; background: var(--surface-0); }
+.dashboard-content { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; padding: 4px 6px 24px 4px; overscroll-behavior-y: contain; }
+.main-nav { padding: 6px; border-radius: 18px; background: var(--border); }
+.panel { min-width: 0; padding: 24px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface-1); }
+.eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .07em; color: var(--text-secondary); }
+.metric { min-width: 0; padding: 16px; background: var(--surface-0); border-radius: 12px; }
+.metric dt { color: var(--text-secondary); font-size: 13px; }
+.metric dd { margin-top: 8px; font-size: clamp(18px, 1.8vw, 24px); font-weight: 600; overflow-wrap: anywhere; line-height: 1.4; }
+.metric p { margin-top: 7px; font-size: 12px; color: var(--text-muted); }
+.status-chip { border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 600; }
+.status-warn, .notice { color: var(--warn-fg); background: var(--warn-bg); }
+.status-ok { color: var(--gain); background: var(--surface-0); border: 1px solid var(--border); }
+.notice { border-radius: 12px; padding: 12px 16px; font-size: 14px; }
+.notice button { text-decoration: underline; }
+.attention-panel { border-left: 4px solid var(--warn-fg); }
+.action, .filter-button { border: 1px solid var(--border); border-radius: 10px; padding: 10px 16px; min-height: 44px; background: var(--surface-1); }
+.filter-button { font-size: 14px; color: var(--text-secondary); }
+.filter-active { border-color: var(--text-primary); color: var(--text-primary); font-weight: 600; }
+.shortcut:hover { border-color: var(--series-strategy); }
+.primary-action { color: var(--surface-1); background: var(--text-primary); border-color: var(--text-primary); }
+.profile-field { display: flex; min-width: 0; flex-direction: column; gap: 6px; font-size: 14px; }
+.profile-field > span { font-weight: 500; }
+.profile-field small { color: var(--text-secondary); font-size: 12px; font-weight: 400; }
+.profile-field :is(input, select, textarea) { width: 100%; min-width: 0; min-height: 44px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; color: var(--text-primary); background: var(--surface-1); }
+.profile-field :is(input, select):disabled, .profile-field input[readonly] { color: var(--text-secondary); background: var(--surface-0); }
+.profile-rule { min-width: 0; padding: 16px; border: 1px solid var(--border); border-radius: 12px; }
+.profile-rule legend { padding: 0 6px; font-size: 14px; font-weight: 600; }
+@media (max-width: 639px) { .panel { padding: 18px; } .metric { padding: 12px; } }
+@media (max-height: 600px) {
+  .app-main-dashboard { padding-top: 12px; padding-bottom: 8px; }
+  .dashboard-header { padding-bottom: 12px; }
+  .dashboard-header > :first-child .eyebrow, .dashboard-header h1 + p { display: none; }
+  .dashboard-header h1 { margin-top: 0; font-size: 20px; }
+  .dashboard-header .main-nav { display: flex; overflow-x: auto; margin-top: 12px; }
+  .dashboard-header .main-nav button { flex: 1 0 auto; padding: 8px 12px; white-space: nowrap; }
 }

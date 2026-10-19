@@ -1,16 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AiTab } from "./AiTab";
 import { AssetTab } from "./AssetTab";
 import { type ApiError, apiGet, type Overview, type RiskStatusResponse, supabase } from "./api";
 import { BookGroupCard } from "./BookGroupCard";
 import { FuturesTab } from "./FuturesTab";
 import { groupBooks, isFutures } from "./books";
-import { ModeBadge } from "./ModeBadge";
+import { Operations } from "./Operations";
 import { PortfolioTable } from "./PortfolioTable";
 import { ShadowBanner } from "./ShadowBanner";
 import { StrategiesTab } from "./StrategiesTab";
-import { NotOpen, TabBar, useHashTab } from "./tabs";
+import { NotOpen, sectionOf, TabBar, useHashTab, type ViewKey } from "./tabs";
+import { WorkerTab } from "./WorkerTab";
 
 type Health = { status: string; mode: string; live_enabled: boolean };
 
@@ -40,6 +41,8 @@ function SpotTab({ data }: { data: Overview }) {
   const [showTable, setShowTable] = useState(false);
   const spot = data.portfolios.filter((r) => !isFutures(r.label));
   const groups = groupBooks(spot);
+  const populated = groups.filter((g) => g.rows.some((r) => r.economic_equity !== null));
+  const empty = groups.filter((g) => !g.rows.some((r) => r.economic_equity !== null));
   return (
     <div className="space-y-4">
       <p className="text-sm text-[var(--text-secondary)]">
@@ -48,7 +51,8 @@ function SpotTab({ data }: { data: Overview }) {
       {risk.data && !risk.data.available && (
         <p className="text-xs text-[var(--text-muted)]">ยังไม่มีข้อมูลสถานะ HALT ในฐานข้อมูล</p>
       )}
-      {groups.length === 0 ? <p>ยังไม่มีพอร์ต</p> : groups.map((g) => <BookGroupCard key={g.version} group={g} risk={risk.data?.portfolios} />)}
+      {groups.length === 0 ? <p>ยังไม่มีพอร์ต</p> : populated.map((g) => <BookGroupCard key={g.version} group={g} risk={risk.data?.portfolios} />)}
+      {empty.length > 0 && <details className="panel"><summary className="cursor-pointer font-medium">ยังไม่เริ่ม / ยังไม่มีข้อมูล · {empty.length} พอร์ตทดลอง</summary><p className="mt-2 text-sm text-[var(--text-muted)]">ยังไม่มีมูลค่าพอร์ตสำหรับเปรียบเทียบ</p><div className="mt-4 space-y-4">{empty.map((g) => <BookGroupCard key={g.version} group={g} risk={risk.data?.portfolios} />)}</div></details>}
       {groups.length > 0 && (
         <div>
           <button className="text-sm text-[var(--text-secondary)] underline" aria-expanded={showTable} onClick={() => setShowTable((s) => !s)}>
@@ -65,32 +69,32 @@ export function Dashboard() {
   // DEFAULT transport is REST polling (§21.3); paused automatically when the tab is hidden.
   const q = useQuery<Overview, ApiError>({ queryKey: ["overview"], queryFn: () => apiGet<Overview>("/api/v1/overview"), refetchInterval: 10_000, retry: false, networkMode: "always" });
   const [tab, setTab] = useHashTab();
+  const contentRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (contentRef.current) contentRef.current.scrollTop = 0; }, [tab]);
+  const section = sectionOf(tab);
+  const researchViews: { key: ViewKey; label: string }[] = [{ key: "spot", label: "พอร์ตจำลอง Spot" }, { key: "futures", label: "Futures / Backtest" }, { key: "ai", label: "ผลทดลอง AI" }];
+  const researchView = tab === "research" ? "spot" : tab;
+  const titles = { overview: ["ภาพรวมการทำงาน", "ติดตามบอต บัญชี และสิ่งที่ต้องจัดการในที่เดียว"], bots: ["บอตและพอร์ต", "บัญชีที่เชื่อมกับ Exchange และข้อมูลตลาดที่ใช้ติดตาม"], research: ["งานวิจัยและผลทดลอง", "แยกผลจำลองและผลย้อนหลังออกจากบัญชีที่กำลังซื้อขาย"], system: ["สถานะระบบ", "ตรวจการเชื่อมต่อ บันทึกข้อมูล และรายละเอียดเครื่องที่รันบอต"], settings: ["ตั้งค่าบอตและกลยุทธ์", "ดูชุดกลยุทธ์ใน Bot profiles และวิธีเทรดที่มีในคลัง"] };
+  const needsOverview = (section === "research" && tab !== "options") || tab === "asset";
   return (
-    <section className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <h1 className="text-xl font-semibold">ภาพรวมพอร์ต</h1>
-        {q.data && <ModeBadge mode={q.data.mode} />}
-        <button className="ml-auto text-sm text-[var(--text-secondary)] underline" onClick={() => supabase?.auth.signOut()}>ออกจากระบบ</button>
+    <section className="dashboard-shell">
+      <header className="dashboard-header space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div><p className="eyebrow">TRADINGASAKAN / CONTROL ROOM</p><h1 className="mt-2 text-2xl font-semibold sm:text-3xl">{titles[section][0]}</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">{titles[section][1]}</p></div>
+        <button className="action text-sm" onClick={() => supabase?.auth.signOut()}>ออกจากระบบ</button>
       </div>
-      <TabBar tab={tab} onSelect={setTab} />
-      <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
-        {tab === "futures" ? (
-          <FuturesTab rows={q.data?.portfolios ?? []} />
-        ) : tab === "strategies" ? (
-          <StrategiesTab />
-        ) : tab === "options" ? (
-          <NotOpen title="Options ยังไม่เปิด">จะเปิดเมื่อตัวจำลอง options ผ่านเทสต์ และจะเริ่มด้วยเงินสมมติเหมือนพอร์ตอื่น</NotOpen>
-        ) : q.isPending ? (
+      <TabBar tab={section} onSelect={setTab} />
+      </header>
+      <div ref={contentRef} role="tabpanel" tabIndex={0} id={`panel-${section}`} aria-labelledby={`tab-${section}`} className="dashboard-content space-y-5">
+        {section === "research" && <><div className="notice">พื้นที่ทดลอง · เงินสมมติและผลย้อนหลัง ไม่รวมอยู่ในยอดบัญชีของบอต</div><div className="flex flex-wrap gap-2" role="group" aria-label="หมวดงานวิจัย">{researchViews.map((v) => <button key={v.key} className={`filter-button ${researchView === v.key ? "filter-active" : ""}`} aria-pressed={researchView === v.key} onClick={() => setTab(v.key)}>{v.label}</button>)}</div></>}
+        {section === "bots" && <div className="flex gap-2" role="group" aria-label="หมวดบอตและพอร์ต"><button className={`filter-button ${tab !== "asset" ? "filter-active" : ""}`} aria-pressed={tab !== "asset"} onClick={() => setTab("bots")}>บัญชีและบอต</button><button className={`filter-button ${tab === "asset" ? "filter-active" : ""}`} aria-pressed={tab === "asset"} onClick={() => setTab("asset")}>ตลาด BTC</button></div>}
+        {section === "settings" ? <StrategiesTab view={tab === "strategies" ? "library" : "profiles"} onSelect={(view) => setTab(view === "library" ? "strategies" : "settings")} /> : section === "overview" ? <Operations overview /> : section === "system" ? <WorkerTab /> : section === "bots" && tab !== "asset" ? <Operations /> : needsOverview && q.isPending ? (
           <p>กำลังโหลด…</p>
-        ) : q.isError ? (
+        ) : needsOverview && q.isError ? (
           <div role="alert"><p>{q.error.message ?? "โหลดข้อมูลไม่สำเร็จ"}</p><button className="mt-2 rounded border px-3 py-1" onClick={() => void q.refetch()}>ลองใหม่</button>{["invalid_token", "missing_token"].includes(q.error.code) && <button className="ml-2 rounded border px-3 py-1" onClick={() => void supabase?.auth.signOut({ scope: "local" })}>เข้าสู่ระบบใหม่</button>}</div>
-        ) : tab === "asset" ? (
-          <AssetTab rows={q.data.portfolios} />
-        ) : tab === "ai" ? (
-          <AiTab rows={q.data.portfolios} />
-        ) : (
+        ) : tab === "asset" ? <AssetTab rows={q.data?.portfolios ?? []} /> : researchView === "futures" ? <FuturesTab rows={q.data?.portfolios ?? []} /> : researchView === "ai" ? <AiTab rows={q.data?.portfolios ?? []} /> : tab === "options" ? <NotOpen title="Options ยังไม่เปิด">ยังไม่มีการทดลอง Options ที่เปิดใช้งาน</NotOpen> : q.data ? (
           <SpotTab data={q.data} />
-        )}
+        ) : null}
       </div>
     </section>
   );
@@ -107,9 +111,9 @@ export function App() {
     return () => data.subscription.unsubscribe();
   }, []);
   return (
-    <>
+    <div className="app-shell">
       {health.data && <ShadowBanner mode={health.data.mode} liveEnabled={health.data.live_enabled} />}
-      <main className="mx-auto max-w-5xl p-4">{signedIn === null ? null : signedIn ? <Dashboard /> : <SignIn />}</main>
-    </>
+      <main className={`app-main mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-9 ${signedIn ? "app-main-dashboard" : ""}`}>{signedIn === null ? null : signedIn ? <Dashboard /> : <SignIn />}</main>
+    </div>
   );
 }

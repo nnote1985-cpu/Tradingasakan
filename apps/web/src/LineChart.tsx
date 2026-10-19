@@ -61,7 +61,7 @@ export function LineChart({ series, height = 200, yTick, zeroLine = false, title
 
   return (
     <figure ref={ref} className="relative m-0">
-      <svg role="img" aria-label={title} width={width} height={height} className="block touch-none select-none"
+      <svg role="img" aria-label={title} width={width} height={height} className="block touch-pan-y select-none"
         onPointerMove={onMove} onPointerLeave={() => setHover(null)}>
         {yt.map((v) => (
           <g key={v}>

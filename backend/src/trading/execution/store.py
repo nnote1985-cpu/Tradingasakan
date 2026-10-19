@@ -5,7 +5,7 @@ account name:
 
 - ``exec_intents``: immutable order intents, unique by client order id and by
   (book, decision, leg); TESTNET only at the database level too;
-- ``exec_reservations``: risk reserved for open buys, account-wide;
+- ``exec_reservations``: risk reserved for open buys;
 - ``exec_outbox``: EXECUTE_INTENT events the gateway claims under its lease;
 - ``exec_order_events`` / ``exec_fills``: append-only order history and fills
   (one row per execution id, so a repeated fill is ignored);
@@ -14,7 +14,9 @@ account name:
   grows on every new owner (§14.3).
 
 Accepting an intent, reserving its risk and queueing the outbox event commit
-in one transaction (§12.2). Gateway writes carry the fencing token and are
+in one transaction (§12.2). A book's budget covers what it already holds (its
+own net fills, valued at the new order's price) plus its open reservations plus
+the new order with a fee allowance, so filled buys keep counting against it. Gateway writes carry the fencing token and are
 refused when it is no longer the current, unexpired lease. When the database
 cannot be reached, Guardian writes to :mod:`trading.execution.journal` instead.
 """
@@ -35,6 +37,7 @@ from trading.execution.safety import AccountSafety, SafetyState
 from trading.execution.types import OrderType, Side
 
 ZERO = Decimal(0)
+FEE_ALLOWANCE = Decimal("0.001")          # taker fee on the new order, reserved with it
 
 
 class StaleFencingToken(RuntimeError):
@@ -126,12 +129,76 @@ class ExecStore:
 
     # --- intents, reservations, outbox (§12.2) ----------------------------
 
-    def reserved(self) -> Decimal:
+    def reserved(self, book: str | None = None) -> Decimal:
         row = self.conn.execute("select coalesce(sum(r.qty * r.unit_price), 0) from trading.exec_reservations r "
-                                "join trading.exec_intents i using (client_order_id) where i.account = %s", (self.account,)).fetchone()
+                                "join trading.exec_intents i using (client_order_id) where i.account = %s "
+                                "and (%s::text is null or i.book = %s)", (self.account, book, book)).fetchone()
         return Decimal(row[0]) if row else ZERO
 
-    def accept_intent(self, intent: OrderIntent, *, unit_price: Decimal, budget: Decimal) -> bool:
+    def held(self, book: str, symbol: str, base: str) -> Decimal:
+        """Base asset ``book`` holds from its own fills on ``symbol``: bought minus sold minus fees paid in the base asset."""
+        row = self.conn.execute(
+            "select coalesce(sum(case when i.side = 'BUY' then f.qty else -f.qty end), 0) "
+            "- coalesce(sum(case when f.fee_asset = %s then f.fee else 0 end), 0) "
+            "from trading.exec_fills f join trading.exec_intents i using (client_order_id) "
+            "where i.account = %s and i.book = %s and i.symbol = %s", (base, self.account, book, symbol)).fetchone()
+        return max(Decimal(row[0]), ZERO) if row else ZERO
+
+    def position(self, book: str, symbol: str, base: str, quote: str) -> tuple[Decimal, Decimal]:
+        """``book``'s own fills on ``symbol``: (base held, quote cash change), net of fees paid in base or quote.
+
+        Fees paid in a third asset (BNB) are not valued here; the Testnet charges BTC or USDT.
+        """
+        row = self.conn.execute(
+            "select coalesce(sum(case when i.side = 'BUY' then f.qty else -f.qty end), 0) "
+            "  - coalesce(sum(case when f.fee_asset = %s then f.fee else 0 end), 0), "
+            "coalesce(sum(case when i.side = 'SELL' then f.qty * f.price else -f.qty * f.price end), 0) "
+            "  - coalesce(sum(case when f.fee_asset = %s then f.fee else 0 end), 0) "
+            "from trading.exec_fills f join trading.exec_intents i using (client_order_id) "
+            "where i.account = %s and i.book = %s and i.symbol = %s", (base, quote, self.account, book, symbol)).fetchone()
+        return (Decimal(row[0]), Decimal(row[1])) if row else (ZERO, ZERO)
+
+    # --- Guardian (P5) ------------------------------------------------------
+
+    def load_book_risk(self, book: str) -> tuple[Any, ...] | None:
+        """(hwm, hwm_at, day, day_open) for ``book``, or None before its first mark."""
+        return self.conn.execute("select hwm, hwm_at, day, day_open from trading.exec_book_risk where account = %s and book = %s",
+                                 (self.account, book)).fetchone()
+
+    def save_book_risk(self, book: str, profile: str, allocation: Decimal, hwm: Decimal, hwm_at: datetime, day: Any,
+                       day_open: Decimal, equity: Decimal, at: datetime) -> None:
+        self.conn.execute(
+            "insert into trading.exec_book_risk values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+            "on conflict (account, book) do update set profile = excluded.profile, allocation = excluded.allocation, hwm = excluded.hwm, "
+            "hwm_at = excluded.hwm_at, day = excluded.day, day_open = excluded.day_open, last_equity = excluded.last_equity, "
+            "marked_at = excluded.marked_at",
+            (self.account, book, profile, allocation, hwm, hwm_at, day, day_open, equity, at))
+
+    def add_risk_event(self, book: str | None, kind: str, detail: str, epoch: int, at: datetime,
+                       equity: Decimal | None = None, hwm: Decimal | None = None) -> None:
+        self.conn.execute("insert into trading.exec_risk_events (account, book, kind, equity, hwm, detail, epoch, at) "
+                          "values (%s, %s, %s, %s, %s, %s, %s, %s)", (self.account, book, kind, equity, hwm, detail, epoch, at))
+
+    def open_requests(self) -> list[tuple[int, str, str, str]]:
+        """Operator requests not yet carried out, oldest first: (id, kind, actor, reason)."""
+        return [tuple(r) for r in self.conn.execute(
+            "select id, kind, actor, reason from trading.exec_operator_requests where account = %s and handled_at is null order by id",
+            (self.account,))]
+
+    def finish_request(self, request_id: int, token: int, now: datetime, outcome: str) -> None:
+        with self.conn.transaction():
+            self._check_token(token, now)
+            self.conn.execute("update trading.exec_operator_requests set handled_at = %s, outcome = %s where id = %s and handled_at is null",
+                              (now, outcome, request_id))
+
+    def request(self, kind: str, actor: str, reason: str) -> int:
+        """Queue a HALT or RESUME for the worker holding the lease (CLI now, web later)."""
+        row = self.conn.execute("insert into trading.exec_operator_requests (account, kind, actor, reason) values (%s, %s, %s, %s) "
+                                "returning id", (self.account, kind, actor, reason)).fetchone()
+        assert row is not None
+        return int(row[0])
+
+    def accept_intent(self, intent: OrderIntent, *, unit_price: Decimal, budget: Decimal, base: str = "BTC") -> bool:
         """Insert the intent, reserve a buy's notional and queue EXECUTE_INTENT in one transaction.
 
         Returns False if this client order id was already accepted (nothing changes). Raises
@@ -150,7 +217,8 @@ class ExecStore:
             if intent.increases_exposure:
                 if state != SafetyState.RUNNING:
                     raise IntentRefused(f"ENTRIES_BLOCKED_{state}")
-                if self.reserved() + intent.qty * unit_price > budget:
+                inventory = self.held(intent.book, intent.symbol, base) * unit_price
+                if inventory + self.reserved(intent.book) + intent.qty * unit_price * (1 + FEE_ALLOWANCE) > budget:
                     raise IntentRefused("INSUFFICIENT_BUDGET")
             self.conn.execute(
                 f"insert into trading.exec_intents (client_order_id, account, {_INTENT_COLS}) "
@@ -230,6 +298,27 @@ class ExecStore:
             order.exchange_order_id = eid
             order.history.append((order.state, reason))
         return order
+
+    def outbox_status(self, client_order_id: str) -> str | None:
+        row = self.conn.execute("select status from trading.exec_outbox where client_order_id = %s and kind = 'EXECUTE_INTENT'",
+                                (client_order_id,)).fetchone()
+        return None if row is None else str(row[0])
+
+    def submits_since(self, since: datetime) -> int:
+        """Orders this account sent since ``since`` (SUBMITTING events), for the daily pre-trade limits."""
+        row = self.conn.execute("select count(*) from trading.exec_order_events e join trading.exec_intents i using (client_order_id) "
+                                "where i.account = %s and e.state = 'SUBMITTING' and e.at >= %s", (self.account, since)).fetchone()
+        return int(row[0]) if row else 0
+
+    def client_id_for(self, exchange_order_id: str) -> str | None:
+        row = self.conn.execute("select e.client_order_id from trading.exec_order_events e join trading.exec_intents i "
+                                "using (client_order_id) where i.account = %s and e.exchange_order_id = %s limit 1",
+                                (self.account, exchange_order_id)).fetchone()
+        return None if row is None else str(row[0])
+
+    def has_intent(self, client_order_id: str) -> bool:
+        return self.conn.execute("select 1 from trading.exec_intents where client_order_id = %s and account = %s",
+                                 (client_order_id, self.account)).fetchone() is not None
 
     def unresolved_orders(self) -> list[Order]:
         """Every order not known to be terminal: what RECOVERING must reconcile before RUNNING."""

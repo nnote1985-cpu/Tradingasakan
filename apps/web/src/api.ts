@@ -40,6 +40,14 @@ export type Overview = { mode: string; live_enabled: boolean; portfolios: Portfo
 export type ApiError = { code: string; request_id: string | null; retryable: boolean; message: string };
 
 export async function apiGet<T>(path: string): Promise<T> {
+  return apiRequest<T>(path);
+}
+
+export async function apiPost<T>(path: string, body: unknown): Promise<T> {
+  return apiRequest<T>(path, body);
+}
+
+async function apiRequest<T>(path: string, payload?: unknown): Promise<T> {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout>;
   const timeout = new Promise<never>((_resolve, reject) => {
@@ -52,11 +60,16 @@ export async function apiGet<T>(path: string): Promise<T> {
     return await Promise.race([timeout, (async () => {
       const session = supabase ? (await supabase.auth.getSession()).data.session : null;
       const res = await fetch(`${config.apiBase}${path}`, {
-        headers: session ? { Authorization: `Bearer ${session.access_token}` } : {},
+        method: payload === undefined ? "GET" : "POST",
+        headers: { ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}), ...(payload === undefined ? {} : { "Content-Type": "application/json" }) },
+        body: payload === undefined ? undefined : JSON.stringify(payload),
         signal: controller.signal,
       });
       if (!res.ok) {
         const body = await res.json().catch(() => null);
+        if (res.status === 422 && Array.isArray(body?.detail)) {
+          throw new Error("ค่าตั้งไม่ถูกต้อง: " + body.detail.map((d: { loc?: string[]; msg?: string }) => `${d.loc?.slice(1).join(".") ?? ""}: ${d.msg ?? "invalid"}`).join(" · "));
+        }
         throw body?.message ? body as ApiError : new Error(`API ตอบกลับผิดพลาด (${res.status})`);
       }
       return await res.json() as T;
@@ -70,6 +83,23 @@ export async function apiGet<T>(path: string): Promise<T> {
     clearTimeout(timer!);
   }
 }
+
+export type DraftRule = { number: number; version: string; timeframe: string; params: Record<string, number> };
+export type DraftRecipe = {
+  schema_version: "bot-recipe-draft-v1"; status: "draft"; name: string; instrument: "BTCUSDT_SPOT"; timeframe: string;
+  setup_mode: "custom" | "preset"; preset_profile: PresetSnapshot | null; preset_strategy_versions: Record<string, string>;
+  trend_filter: DraftRule | null; entry: DraftRule | null;
+  stop_loss: { kind: "atr" | "trailing_atr" | "fixed_percent"; atr_period: number | null; atr_multiple: number | null; percent: number | null };
+  exit_kind: "entry_signal" | "strategy_signal"; exit_rule: DraftRule | null;
+  risk_per_trade_percent: number; max_exposure_percent: number; notes: string;
+};
+export type ProfileDraft = { profile_id: string; revision: number; profile: DraftRecipe; saved_at: string; saved_by: string; hash: string; execution_supported: false };
+export type ProfileDrafts = { items: ProfileDraft[]; can_edit: boolean };
+export type PresetSnapshot = {
+  profile_id: string; version: number; name: string; status: "draft"; instrument: "BTCUSDT_SPOT"; decision_clock: "1d";
+  combine: "average" | "main_with_filters"; risk_profile: string; ai_mode: "off"; notes: string;
+  strategies: { number: number; timeframe: string; params: Record<string, number> }[];
+};
 export type RiskStatus = { label: string; halted: boolean; halted_since: string | null; halt_reason: string | null };
 export type RiskStatusResponse = { available: boolean; portfolios: RiskStatus[] };
 export type AgentDecision = {
@@ -173,7 +203,7 @@ export type Backtest = {
   };
 };
 
-export type ParamBound = { default: number; min: number; max: number };
+export type ParamBound = { default: number; min: number; max: number; integer?: boolean };
 export type LibraryStrategy = {
   number: number;
   template_id: string;
@@ -225,3 +255,64 @@ export type AssetStatus = AssetInfo & {
   events?: string[];
   missing_inputs?: string[];
 };
+export type StreamStatus = { connected: boolean; connects: number; silent_ms: number | null; error: string | null };
+export type WorkerExecution = {
+  safety: string;
+  open_orders: number;
+  unresolved: { client_order_id: string; state: string; for_s: number }[];
+  waiting: number;
+  orders_today: number;
+  cancels_today: number;
+  counts: Record<string, number>;
+  last_error: string | null;
+  conformance: { book: string; cycle: string | null; cycles_done: number; note: string } | null;
+};
+
+export type WorkerStatus = {
+  account: string;
+  owner: string;
+  host: string;
+  started_at: string | null;
+  last_tick_at: string | null;
+  updated_at: string | null;
+  silent: boolean;
+  mode: string | null;
+  execution_enabled: boolean | null;
+  safety: string | null;
+  lease_token: number | null;
+  clock: { offset_ms: number | null; status: string | null; signing_paused: boolean | null };
+  account_ok: boolean | null;
+  deadman_ok: boolean | null;
+  streams: Record<string, StreamStatus>;
+  quote_age_ms: number | null;
+  bars: { last_1m: number | null; last_1d: number | null; gaps: number | null; revisions: number | null };
+  persist: { ok: boolean | null; pending: number; epoch: number | null } | null;
+  execution: WorkerExecution | null;
+  epoch: { epoch: number; opened_at: string | null } | null;
+  reconcile: { verdict: string; checked_at: string | null; differences: string[]; open_orders: number } | null;
+  balances: { asset: string; free: string; locked: string }[];
+  asset_count: number;
+  trades: number;
+};
+export type WorkerOrder = {
+  client_order_id: string; book: string; leg: string; side: "BUY" | "SELL"; type: "MARKET" | "LIMIT"; qty: string;
+  limit_price: string | null; created_at: string; state: string; filled_qty: string; updated_at: string; reason: string;
+  avg_price: string | null;
+};
+
+export type WorkerTrade = {
+  traded_at: string; epoch: number; trade_id: number; side: "BUY" | "SELL"; qty: string; price: string; quote_qty: string;
+  commission: string; commission_asset: string | null; client_order_id: string | null; book: string | null; leg: string | null;
+};
+
+export type WorkerPnl = {
+  epoch: number | null; opened_at: string | null; mark: string | null; mark_source: "quote" | "last_trade" | null;
+  balances: { asset: string; opening: string; now: string | null; change: string | null }[];
+  equity_change_usdt: string | null;
+  books: { book: string | null; buys: number; sells: number; btc_net: string; usdt_net: string; bnb_fees: string; volume: string;
+           pnl_usdt: string | null }[];
+};
+
+export type WorkerActivity = { available: boolean; orders: WorkerOrder[]; trades: WorkerTrade[]; pnl: WorkerPnl | null };
+
+export type WorkersResponse = { available: boolean; workers: WorkerStatus[] };
