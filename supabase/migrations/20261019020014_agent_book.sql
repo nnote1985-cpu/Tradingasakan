@@ -1,5 +1,4 @@
--- AI agent book, step 1 (docs/agent-book-plan.md §3, §6). NOT APPLIED: waits for Note's OK, then moves to
--- migrations/<recorded version>_agent_book.sql with history + fingerprint in the same PR (supabase/README.md).
+-- AI agent book, step 1 (docs/agent-book-plan.md §3): applied 2026-10-19 after Note's "apply".
 -- Signals the Decider asked for, every model call, and every tool call with its full response, so each decision
 -- can be replayed. Private like the rest of `trading`: RLS on, service_role only.
 

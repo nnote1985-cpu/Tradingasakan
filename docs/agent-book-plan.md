@@ -31,9 +31,8 @@ bar built from 1m bars (`trading.ingest.bars.aggregate`). A signal lives ≤ 72 
 per book, it never fires on a bar that closed before it was created, and missing data never
 fires. With nothing active, a `time_check` 24 h out is added.
 
-Tables: `supabase/pending/agent_book.sql` (`trading.agent_signals`, `agent_runs`,
-`agent_tool_calls`). Not applied: it is applied once Note says "Apply", then moved to
-`supabase/migrations/` with history and fingerprint as `supabase/README.md` says.
+Tables: `supabase/migrations/20261019020014_agent_book.sql` (`trading.agent_signals`,
+`agent_runs`, `agent_tool_calls`), applied to Supabase on 2026-10-19 after Note's "apply".
 
 ## 4. Order of work
 
