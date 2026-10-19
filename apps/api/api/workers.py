@@ -2,9 +2,11 @@
 
 Reads what the worker writes since P3: ``trading.worker_heartbeats``, the open
 account epoch, the latest reconcile run and the reconciled balances. Nothing
-here sends a command to the worker; pause/resume buttons come with P5's
-audited command table. Before the P3 migration is applied the tables do not
-exist and the endpoint answers ``"available": false``.
+here talks to the worker directly: HALT and RESUME from the page are rows in
+``trading.exec_operator_requests`` (P5), the same audited queue the CLI
+``scripts/testnet_request.py`` writes, which Guardian carries out under the
+writer lease. Before the P3 migration is applied the tables do not exist and
+the endpoint answers ``"available": false``.
 """
 
 from __future__ import annotations
@@ -94,6 +96,30 @@ order by 1
 MARK_SQL = "select body -> 'feeds' ->> 'quote_bid' from trading.worker_heartbeats where account = %s"
 
 
+DECISIONS_SQL = """
+select day, book, action, trim_scale(weight)::text, trim_scale(previous_weight)::text, notes, attempts, outcome, decided_at, executed_at
+from trading.exec_strategy_decisions where account = %s
+order by day desc, book limit %s
+"""
+
+RISK_EVENTS_SQL = """
+select at, book, kind, detail, epoch, trim_scale(round(equity, 2))::text, trim_scale(round(hwm, 2))::text
+from trading.exec_risk_events where account = %s
+order by id desc limit %s
+"""
+
+REQUESTS_SQL = """
+select id, kind, actor, reason, requested_at, handled_at, outcome
+from trading.exec_operator_requests where account = %s
+order by id desc limit %s
+"""
+
+ADD_REQUEST_SQL = """
+insert into trading.exec_operator_requests (account, kind, actor, reason) values (%s, %s, %s, %s) returning id
+"""
+CONTROL_LIMIT = 20
+
+
 class Unavailable(Exception):
     """The P3 tables have not been created yet."""
 
@@ -102,6 +128,8 @@ class WorkerStore(Protocol):
     async def worker_rows(self) -> list[tuple[Any, ...]]: ...
     async def activity_rows(self, account: str, limit: int) -> tuple[list[tuple[Any, ...]], list[tuple[Any, ...]]]: ...
     async def pnl_rows(self, account: str) -> tuple[list[tuple[Any, ...]], list[tuple[Any, ...]], str | None]: ...
+    async def control_rows(self, account: str, limit: int) -> tuple[list[tuple[Any, ...]], ...]: ...
+    async def add_request(self, account: str, kind: str, actor: str, reason: str) -> int: ...
 
 
 class NoWorkers:
@@ -112,6 +140,12 @@ class NoWorkers:
         raise Unavailable
 
     async def pnl_rows(self, account: str) -> tuple[list[tuple[Any, ...]], list[tuple[Any, ...]], str | None]:
+        raise Unavailable
+
+    async def control_rows(self, account: str, limit: int) -> tuple[list[tuple[Any, ...]], ...]:
+        raise Unavailable
+
+    async def add_request(self, account: str, kind: str, actor: str, reason: str) -> int:
         raise Unavailable
 
 
@@ -145,6 +179,23 @@ class PgWorkerStore:
                 books = list(await (await conn.execute(PNL_SQL, (account,))).fetchall())
                 mark = await (await conn.execute(MARK_SQL, (account,))).fetchone()
                 return balances, books, None if mark is None else mark[0]
+        except pg_errors.UndefinedTable as e:
+            raise Unavailable from e
+
+    async def control_rows(self, account: str, limit: int) -> tuple[list[tuple[Any, ...]], ...]:
+        try:
+            async with self.pool.connection() as conn:
+                return tuple([list(await (await conn.execute(sql, (account, limit))).fetchall())
+                              for sql in (DECISIONS_SQL, RISK_EVENTS_SQL, REQUESTS_SQL)])
+        except pg_errors.UndefinedTable as e:
+            raise Unavailable from e
+
+    async def add_request(self, account: str, kind: str, actor: str, reason: str) -> int:
+        try:
+            async with self.pool.connection() as conn:
+                row = await (await conn.execute(ADD_REQUEST_SQL, (account, kind, actor, reason))).fetchone()
+                assert row is not None
+                return int(row[0])
         except pg_errors.UndefinedTable as e:
             raise Unavailable from e
 
@@ -232,3 +283,15 @@ def pnl_items(balances: list[tuple[Any, ...]], books: list[tuple[Any, ...]], mar
                           "pnl_usdt": _txt(pnl, 4)})
     return {"epoch": epoch, "opened_at": _iso(opened), "mark": _txt(mark), "mark_source": "quote" if mark_text else "last_trade" if mark else None,
             "balances": rows, "equity_change_usdt": _txt(change, 4), "books": out_books}
+
+
+def control_items(decisions: list[tuple[Any, ...]], events: list[tuple[Any, ...]], requests: list[tuple[Any, ...]]) -> dict[str, Any]:
+    """R10a daily decisions, Guardian risk events and operator requests, newest first."""
+    return {
+        "decisions": [{"day": str(d[0]), "book": d[1], "action": d[2], "weight": d[3], "previous_weight": d[4], "notes": d[5],
+                       "attempts": d[6], "outcome": d[7], "decided_at": _iso(d[8]), "executed_at": _iso(d[9])} for d in decisions],
+        "risk_events": [{"at": _iso(e[0]), "book": e[1], "kind": e[2], "detail": e[3], "epoch": e[4], "equity": e[5], "hwm": e[6]}
+                        for e in events],
+        "requests": [{"id": r[0], "kind": r[1], "actor": r[2], "reason": r[3], "requested_at": _iso(r[4]), "handled_at": _iso(r[5]),
+                      "outcome": r[6]} for r in requests],
+    }

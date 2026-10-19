@@ -1,15 +1,18 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
-import type { WorkerActivity, WorkersResponse, WorkerStatus } from "../src/api";
+import type { WorkerActivity, WorkerControl, WorkersResponse, WorkerStatus } from "../src/api";
 import { WorkerTab } from "../src/WorkerTab";
 import { workerIssues } from "../src/Operations";
 
 const response: { current: WorkersResponse } = { current: { available: false, workers: [] } };
 const activity: { current: WorkerActivity } = { current: { available: true, orders: [], trades: [], pnl: null } };
+const control: { current: WorkerControl } = { current: { available: true, decisions: [], risk_events: [], requests: [] } };
+const posted: { path: string; body: unknown }[] = [];
 vi.mock("../src/api", () => ({
   supabase: null,
-  apiGet: async (path: string) => (path.endsWith("/activity") ? activity.current : response.current),
+  apiGet: async (path: string) => (path.endsWith("/activity") ? activity.current : path.endsWith("/control") ? control.current : response.current),
+  apiPost: async (path: string, body: unknown) => { posted.push({ path, body }); return { id: 1, kind: "HALT" }; },
 }));
 
 const now = new Date().toISOString();
@@ -102,4 +105,41 @@ test("the card lists recent Testnet trades and orders", async () => {
   expect(pnl).toMatch(/tn-conformance-v1.*2\/2.*24\.52.*\+0\.00001984/);
   expect(trades.textContent).toMatch(/ขาย.*0\.00007.*106512\.3.*7\.45586.*0\.00745586 USDT.*tn-conformance-v1 · mkt-sell/);
   expect(screen.getByTestId("worker-orders").textContent).toMatch(/limit-far.*ซื้อ.*LIMIT.*0\.00008.*101000.*ยกเลิก/);
+});
+
+const execution = {
+  safety: "RUNNING", open_orders: 0, waiting: 0, orders_today: 1, cancels_today: 0, last_error: null, unresolved: [],
+  counts: { sent: 1, filled: 1 }, conformance: null,
+  guardian: { profile: "spot.tn.v1", price_off: "Testnet bid 67500 is -18.2% from Mainnet 82530",
+              books: [{ book: "tn-r10a-code-v1", allocation: "2000", equity: "1979.41", hwm: "2005.33", drawdown: "0.0129", day_open: "2000.00" }] },
+};
+
+test("R10a decisions, Guardian events and a confirmed HALT from the page", async () => {
+  cleanup();
+  control.current = {
+    available: true,
+    decisions: [{ day: "2026-10-18", book: "tn-r10a-code-v1", action: "OPEN", weight: "1", previous_weight: null, notes: "close 82,078",
+                  attempts: 1, outcome: "BUY 0.02411 BTC, FILLED", decided_at: now, executed_at: now }],
+    risk_events: [{ at: now, book: "tn-r10a-code-v1", kind: "DRAWDOWN_ALERT", detail: "ลง 18.7%", epoch: 1, equity: "1631.03", hwm: "2005.33" }],
+    requests: [],
+  };
+  response.current = { available: true, workers: [worker({ safety: "RUNNING", execution })] };
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  show();
+  expect((await screen.findByTestId("worker-decisions")).textContent).toMatch(/2026-10-18.*เปิดพอร์ต.*100%.*BUY 0\.02411 BTC/);
+  expect(screen.getByTestId("worker-risk-events").textContent).toMatch(/เตือนลงจากจุดสูงสุด · ลง 18\.7%/);
+  expect(screen.getByText(/ราคา Testnet เพี้ยนจาก Mainnet/)).toBeTruthy();
+  const button = screen.getByRole("button", { name: "HALT" }) as HTMLButtonElement;
+  expect(button.disabled).toBe(true);                                           // a reason is required
+  fireEvent.change(screen.getByLabelText("เหตุผล"), { target: { value: "ซ้อม HALT" } });
+  fireEvent.click(button);
+  expect(await screen.findByRole("status")).toBeTruthy();
+  expect(posted).toEqual([{ path: "/api/v1/workers/DEFAULT/requests", body: { kind: "HALT", reason: "ซ้อม HALT" } }]);
+});
+
+test("a HALTED account offers RESUME instead", async () => {
+  cleanup();
+  response.current = { available: true, workers: [worker({ safety: "HALTED", execution: { ...execution, safety: "HALTED" } })] };
+  show();
+  expect(await screen.findByRole("button", { name: "RESUME" })).toBeTruthy();
 });
