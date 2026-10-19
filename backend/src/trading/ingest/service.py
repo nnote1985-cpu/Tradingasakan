@@ -114,7 +114,7 @@ class IngestService:
         for f in new:
             self.records.put(("trade", TradeRecord(f, received_ms)))
         if kind == "eventStreamTerminated":
-            self.events.put((Severity.WARNING, "user-stream", "Testnet user stream terminated; reconnecting"))
+            self.events.put((Severity.WARNING, "user-stream", "Testnet ตัดการเชื่อมต่อข้อมูลบัญชี กำลังต่อใหม่เอง"))
             self._reconcile_due = True
 
     async def _logon(self, ws: Any) -> None:
@@ -156,7 +156,7 @@ class IngestService:
         if out is Outcome.REVISION:
             self.records.put(("revision", bar))
             self.events.put((Severity.WARNING, f"revision-{bar.interval}",
-                             f"{bar.symbol} {bar.interval} bar at {bar.open_time} came again with different values; first value kept"))
+                             f"แท่งราคา {bar.symbol} {bar.interval} เวลา {bar.open_time} ถูกส่งมาซ้ำด้วยค่าที่ต่างไป ใช้ค่าแรกไว้ ไม่ต้องทำอะไร"))
         return out
 
     def backfill(self) -> int:
@@ -174,7 +174,7 @@ class IngestService:
                     status, rows = self.get(klines_url(SYMBOL, interval, t, b + step - 1), {})
                     if status != 200 or not isinstance(rows, list) or not rows:
                         if status != 200:
-                            self.events.put((Severity.WARNING, "backfill", f"kline backfill {interval} failed (HTTP {status})"))
+                            self.events.put((Severity.WARNING, "backfill", f"ดึงแท่งราคา {interval} ย้อนหลังไม่สำเร็จ จะลองใหม่ (HTTP {status})"))
                         break
                     for row in rows:
                         if self._accept(bar_from_rest(SYMBOL, interval, row), now) in (Outcome.NEW, Outcome.GAP_FILL):
@@ -191,7 +191,7 @@ class IngestService:
         s1, acct = self.rest.account()
         s2, orders = self.rest.open_orders(SYMBOL)
         if s1 != 200 or s2 != 200 or not isinstance(acct, dict) or not isinstance(orders, list):
-            self.events.put((Severity.WARNING, "reconcile", f"account check failed (HTTP {s1}/{s2}); entries stay paused"))
+            self.events.put((Severity.WARNING, "reconcile", f"เช็กยอดบัญชีกับ Testnet ไม่สำเร็จ หยุดเปิดคำสั่งซื้อใหม่ไว้ก่อน (HTTP {s1}/{s2})"))
             self.reconcile_failed(requested)
             return None
         with self.lock:
@@ -203,7 +203,9 @@ class IngestService:
             self._first_reconcile = False
         self.last_reconcile = {"verdict": r.verdict.value, "at_ms": requested, "differences": list(r.differences)}
         if r.verdict is Verdict.DISCREPANCY:
-            self.events.put((Severity.CRITICAL, "reconcile", "account reconcile discrepancy: " + "; ".join(r.differences)[:600]))
+            self.events.put((Severity.CRITICAL, "reconcile", "ยอดในบัญชี Testnet ไม่ตรงกับที่ระบบบันทึก หยุดเปิดคำสั่งซื้อใหม่แล้ว "
+                             "ถ้าไม่ได้ซื้อขายเองบนเว็บให้บอก Claude ใน thread: "
+                             + "; ".join(r.differences)[:600]))
         return r.verdict
 
     def reconcile_failed(self, at_ms: int) -> None:
@@ -222,14 +224,14 @@ class IngestService:
                 except Exception as e:  # noqa: BLE001 - network errors must not stop the feeds; retry later
                     self._backfill_due = True
                     next_backfill = time.monotonic() + RECONCILE_EVERY_S
-                    self.events.put((Severity.WARNING, "backfill", f"kline backfill failed: {type(e).__name__}"))
+                    self.events.put((Severity.WARNING, "backfill", f"ดึงแท่งราคาย้อนหลังไม่สำเร็จ จะลองใหม่ ({type(e).__name__})"))
             if self._reconcile_due or time.monotonic() >= next_reconcile:
                 try:
                     verdict = await asyncio.to_thread(self.reconcile)
                 except Exception as e:  # noqa: BLE001
                     verdict = None
                     self.reconcile_failed(self.now_ms())
-                    self.events.put((Severity.WARNING, "reconcile", f"account check failed: {type(e).__name__}; entries stay paused"))
+                    self.events.put((Severity.WARNING, "reconcile", f"เช็กยอดบัญชีกับ Testnet ไม่สำเร็จ หยุดเปิดคำสั่งซื้อใหม่ไว้ก่อน ({type(e).__name__})"))
                 self._reconcile_due = verdict in (None, Verdict.INCONCLUSIVE) and self.rest.creds is not None
                 next_reconcile = time.monotonic() + RECONCILE_EVERY_S
             try:
@@ -284,15 +286,16 @@ class IngestService:
         if self.started_ms is None or self.now_ms() - self.started_ms < STARTUP_GRACE_MS:
             return out
         if not h["alive"]:
-            return [(Severity.CRITICAL, "feeds", "feed thread stopped; restart the worker")]
+            return [(Severity.CRITICAL, "feeds", "ตัวรับข้อมูลราคาหยุดทำงาน ต้อง restart worker: ดับเบิลคลิก scripts\\windows\\update-worker.cmd")]
         age = h["quote_age_ms"]
         if age is None or age > SILENT_AFTER_MS:
-            seen = "none yet" if age is None else f"{age / 1000:.0f} s"
-            out.append((Severity.WARNING, "quotes", f"Testnet quotes silent ({seen}); entries blocked"))
+            seen = "ยังไม่เคยได้รับ" if age is None else f"{age / 1000:.0f} วินาที"
+            out.append((Severity.WARNING, "quotes", f"ราคาจาก Testnet ขาดหายไป ({seen}) หยุดส่งคำสั่งซื้อไว้ก่อน "
+                        "จะทำงานต่อเองเมื่อราคากลับมา ถ้าเด้งบ่อยแปลว่าเน็ตหรือ Testnet ไม่เสถียร"))
         k = h["streams"]["klines"]["silent_ms"]
         if k is None or k > KLINE_SILENT_AFTER_MS:
-            out.append((Severity.WARNING, "klines", "Mainnet kline stream silent; bars will backfill after reconnect"))
+            out.append((Severity.WARNING, "klines", "ข้อมูลแท่งราคา Mainnet เงียบไป จะดึงย้อนหลังให้เองเมื่อต่อได้"))
         acct = h["streams"].get("account")
         if acct is not None and not acct["connected"]:
-            out.append((Severity.WARNING, "user-stream", f"Testnet user stream down ({acct['error'] or 'connecting'})"))
+            out.append((Severity.WARNING, "user-stream", f"ข้อมูลบัญชี Testnet หลุด กำลังต่อใหม่ ({acct['error'] or 'connecting'})"))
         return out

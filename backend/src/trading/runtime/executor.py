@@ -188,7 +188,7 @@ class Executor:
             raise LeaseFenced(str(e)) from e
         except Exception as e:  # noqa: BLE001 - network and database errors are retried next tick; the alert queue holds repeats down
             self.last_error = f"{type(e).__name__}: {e}"[:300]
-            self.alerts.push(Severity.WARNING, "executor", f"order handling paused for now: {self.last_error}")
+            self.alerts.push(Severity.WARNING, "executor", f"การส่งคำสั่งสะดุดชั่วคราว จะลองใหม่รอบถัดไป ({self.last_error})")
 
     def _due_every(self, name: str, every: float) -> bool:
         t = self.mono()
@@ -242,12 +242,13 @@ class Executor:
                 w.unknown_since = since
                 if t - since >= UNKNOWN_ALERT_AFTER_S and not w.alerted:
                     w.alerted = True
-                    self.alerts.push(Severity.CRITICAL, f"unknown-{cid}", f"order {cid} ({o.intent.side.value} {o.intent.qty}) is still not "
-                                     f"found on the Testnet after {int(t - since)} s; new entries stay paused until it is resolved")
+                    self.alerts.push(Severity.CRITICAL, f"unknown-{cid}", f"ส่งคำสั่ง {o.intent.side.value} {o.intent.qty} BTC ไปแล้ว "
+                                     f"แต่ผ่านไป {int(t - since)} วินาทียังหาบน Testnet ไม่เจอ หยุดเปิดคำสั่งใหม่ไว้จนกว่าจะรู้ผล "
+                                     f"และจะถามซ้ำเรื่อยๆ ({cid})")
                 w.due = t + (UNKNOWN_SLOW_S if t - since >= UNKNOWN_ALERT_AFTER_S else UNKNOWN_FAST_S)
             else:
                 if w.alerted:
-                    self.alerts.push(Severity.INFO, f"unknown-{cid}", f"order {cid} found on the Testnet: {o.state.value}")
+                    self.alerts.push(Severity.INFO, f"unknown-{cid}", f"เจอคำสั่งบน Testnet แล้ว สถานะ {o.state.value} ({cid})")
                 w.unknown_since, w.alerted = None, False
                 w.due = t + OPEN_POLL_S
             if (o.state, o.reported_cum_qty, len(o.fills)) != before or o.is_terminal:
@@ -285,12 +286,12 @@ class Executor:
             self.safety.soft_pause(now, why)
             self.store.save_safety(self.safety)
             self.paused_by_us = True
-            self.alerts.push(Severity.WARNING, "entries", f"entries paused: {why}")
+            self.alerts.push(Severity.WARNING, "entries", "หยุดเปิดคำสั่งซื้อใหม่ชั่วคราว: " + ("มีคำสั่งที่ยังไม่รู้ผล" if stuck else "ยอดในบัญชีไม่ตรงกับที่ระบบบันทึก"))
         elif why is None and block is None and not self._unresolved() and self.paused_by_us and self.safety.state is SafetyState.SOFT_PAUSED:
             self.safety.unpause(now)
             self.store.save_safety(self.safety)
             self.paused_by_us = False
-            self.alerts.push(Severity.INFO, "entries", "orders resolved and the account check is MATCH again; entries allowed")
+            self.alerts.push(Severity.INFO, "entries", "ทุกคำสั่งรู้ผลแล้วและยอดบัญชีตรงกัน เปิดคำสั่งได้ตามปกติ")
 
     def _try_recover(self) -> None:
         """RECOVERING -> RUNNING once the stored orders and the exchange agree (§8.3, RT40)."""
@@ -301,14 +302,14 @@ class Executor:
         theirs = [r for r in self.adapter.list_open_orders(SYMBOL) if r.client_order_id not in self.orders]
         if theirs:
             ids = ", ".join(r.client_order_id for r in theirs[:5])
-            self.alerts.push(Severity.CRITICAL, "foreign-orders", f"open Testnet orders the bot does not know ({ids}); entries stay "
-                             "paused until they are canceled or adopted")
+            self.alerts.push(Severity.CRITICAL, "foreign-orders", "มีคำสั่งเปิดอยู่บน Testnet ที่บอทไม่รู้จัก เช่นสั่งเองบนเว็บ Binance "
+                             f"บอทจะไม่เริ่มเทรดจนกว่าจะยกเลิกคำสั่งเหล่านี้ ({ids})")
             return
         if self._entry_block() is not None:
             return
         self.safety.recovered(self.now(), reconciled=True)
         self.store.save_safety(self.safety)
-        self.alerts.push(Severity.INFO, "entries", "orders reconciled with the Testnet; safety RUNNING, entries allowed")
+        self.alerts.push(Severity.INFO, "entries", "เทียบคำสั่งกับ Testnet ตรงกันแล้ว พร้อมเทรด (RUNNING)")
 
     # --- conformance ----------------------------------------------------------------------
 
@@ -342,7 +343,7 @@ class Executor:
                 self.store.accept_intent(intent, unit_price=unit_price, budget=CONFORMANCE_BUDGET)
             except IntentRefused as e:
                 self._refused[cid] = now
-                self.alerts.push(Severity.WARNING, f"refused-{intent.leg}", f"conformance {intent.leg} not accepted: {e}")
+                self.alerts.push(Severity.WARNING, f"refused-{intent.leg}", f"คำสั่งทดสอบ conformance {intent.leg} ไม่ผ่าน ({e})")
 
     def cancel(self, cid: str, token: int, *, emergency: bool = False) -> None:
         """Cancel an open order; ``emergency`` (Guardian while HALTING) only stops at the emergency ceiling, whatever the side."""
@@ -355,7 +356,7 @@ class Executor:
         if o is None or o.is_terminal:
             return
         if held := check_cancel(self._activity(), limits, reduces_risk=emergency or o.intent.side is Side.BUY):
-            self.alerts.push(Severity.WARNING, "cancel-limit", f"{held[0]}: {cid} stays open")
+            self.alerts.push(Severity.WARNING, "cancel-limit", f"ยกเลิกคำสั่งไม่ได้เพราะครบโควตายกเลิกของวันนี้แล้ว คำสั่งยังเปิดอยู่ ({held[0]}, {cid})")
             return
         self._cancels_today += 1
         gateway.cancel(o, self.adapter)
@@ -387,7 +388,7 @@ class Executor:
             if reasons:
                 order.transition(OrderState.REJECTED, "pre-trade: " + ",".join(reasons))
                 self._finish(order, oid, token, "pre-trade")
-                self.alerts.push(Severity.WARNING, f"pretrade-{cid}", f"{intent.book} {intent.leg} refused before sending: {', '.join(reasons)}")
+                self.alerts.push(Severity.WARNING, f"pretrade-{cid}", f"{intent.book} {intent.leg} ไม่ผ่านการตรวจก่อนส่ง จึงไม่ได้ส่ง ({', '.join(reasons)})")
                 continue
             self._send(order, oid, token)
 

@@ -217,8 +217,9 @@ class Worker:
         s.safety = safety.state.value
         self._renew_lease()
         mode = self.settings.trading_mode.value + (" + execution" if self.settings.testnet_execution_enabled else "")
-        self.alerts.push(Severity.WARNING, "start", f"worker started: {mode}, safety {s.safety}, "
-                         f"lease {'token ' + str(s.lease_token) if s.lease_token else 'none (no database)'}")
+        self.alerts.push(Severity.WARNING, "start", "worker เริ่มทำงาน ปกติเกิดหลัง update หรือ restart ถ้าไม่ได้สั่งเองและเด้งบ่อย "
+                         "แปลว่า worker ล้มแล้วเริ่มใหม่ ให้ดูหน้า Worker "
+                         f"({mode}, สถานะ {s.safety}, สิทธิ์เขียน {'#' + str(s.lease_token) if s.lease_token else 'ไม่มี (ไม่มีฐานข้อมูล)'})")
         self._check_clock()
         if self.rest.creds is not None:
             self._check_account()
@@ -252,7 +253,7 @@ class Worker:
     def stop(self, reason: str) -> None:
         if self.feeds is not None:
             self.feeds.stop()
-        self.alerts.push(Severity.INFO, "stop", f"worker stopped: {reason}")
+        self.alerts.push(Severity.INFO, "stop", f"worker หยุดแล้ว ({reason})")
 
     def run(self, should_stop: Callable[[], bool], sleep: Callable[[float], None] = time.sleep) -> None:
         self.start()
@@ -275,10 +276,12 @@ class Worker:
         try:
             lease = self.store.acquire_lease(self.cfg.owner, self.now(), self.cfg.lease_ttl)
         except Exception as e:
-            self.alerts.push(Severity.CRITICAL, "lease", f"database unreachable, stopping: {type(e).__name__}")
+            self.alerts.push(Severity.CRITICAL, "lease", "ต่อฐานข้อมูล Supabase ไม่ได้ worker จึงหยุดตัวเองเพื่อความปลอดภัย Windows จะเปิดให้ใหม่เอง "
+                             f"ถ้าเด้งซ้ำหลายรอบให้เช็กเน็ตหรือหน้า Supabase ({type(e).__name__})")
             raise LeaseLost("database unreachable") from e
         if lease is None:
-            self.alerts.push(Severity.CRITICAL, "lease", "another worker holds the writer lease for this account; stopping")
+            self.alerts.push(Severity.CRITICAL, "lease", "มี worker อีกตัวถือสิทธิ์เขียนบัญชีนี้อยู่ ตัวนี้จึงหยุดเอง "
+                             "กันไม่ให้ส่งคำสั่งซ้ำ ถ้าไม่ได้เปิด worker สองเครื่องก็ไม่ต้องทำอะไร")
             raise LeaseLost("writer lease held by another owner")
         if self.state.lease_token is not None and lease.token != self.state.lease_token:
             raise LeaseLost(f"lease token changed {self.state.lease_token} -> {lease.token}")
@@ -290,18 +293,20 @@ class Worker:
             r = self.rest.clock()
         except (ConnectionError, OSError, endpoints.EndpointRefused) as e:
             s.signing_paused = True
-            self.alerts.push(Severity.WARNING, "testnet", f"Testnet unreachable, signed calls paused: {e}")
+            self.alerts.push(Severity.WARNING, "testnet", f"ต่อ Binance Testnet ไม่ได้ หยุดส่งคำสั่งไว้ก่อน จะลองใหม่เอง ถ้าหายเองในไม่กี่นาทีไม่ต้องทำอะไร ({e})")
             return
         prev = s.clock_status
         s.clock_offset_ms, s.clock_status = round(r.offset_ms, 1), r.status.value
         s.signing_paused = r.status is ClockStatus.PAUSE
         if r.status is ClockStatus.PAUSE:
-            self.alerts.push(Severity.CRITICAL, "clock", f"clock offset {r.offset_ms:+.0f} ms to Testnet; signed calls paused. Sync the Host clock")
+            self.alerts.push(Severity.CRITICAL, "clock", f"นาฬิกา PC คลาดจาก Testnet {r.offset_ms:+.0f} ms (เกิน 1 วินาที) หยุดส่งคำสั่งไว้แล้ว "
+                             "ให้ sync เวลา Windows: Settings > Time & language > Sync now")
         elif r.status is ClockStatus.WARN:
             self.alerts.push(Severity.WARNING, "clock",
-                             f"clock offset {r.offset_ms:+.0f} ms to Testnet (warn at 500, pause at 1000). Sync the Host clock")
+                             f"นาฬิกา PC คลาดจาก Testnet {r.offset_ms:+.0f} ms ยังส่งคำสั่งได้ (เตือนที่ 500 หยุดที่ 1000) "
+                             "ถ้าเตือนบ่อยให้ sync เวลา Windows")
         elif prev in (ClockStatus.WARN.value, ClockStatus.PAUSE.value):
-            self.alerts.push(Severity.INFO, "clock-ok", f"clock back in range ({r.offset_ms:+.0f} ms)")
+            self.alerts.push(Severity.INFO, "clock-ok", f"นาฬิกา PC กลับมาปกติ ({r.offset_ms:+.0f} ms)")
 
     def _check_account(self) -> None:
         try:
@@ -315,15 +320,16 @@ class Worker:
             self.log(f"Testnet account ok (key {key}, {self.rest.creds.key_type if self.rest.creds else ''})")
         else:
             msg = data.get("msg") if isinstance(data, dict) else None
-            self.alerts.push(Severity.CRITICAL, "credential", f"Testnet key {key} failed the account check (HTTP {status}"
-                             f"{', ' + str(msg) if msg else ''}); no orders will be sent")
+            self.alerts.push(Severity.CRITICAL, "credential", f"กุญแจ Testnet {key} ใช้ไม่ได้ จะไม่ส่งคำสั่งใดๆ ให้เช็กบน "
+                             f"testnet.binance.vision ว่ากุญแจยังอยู่ (HTTP {status}{', ' + str(msg) if msg else ''})")
 
     def _ping(self) -> None:
         if self.deadman is None:
             return
         ok = self.deadman.ping()
         if self.state.deadman_ok is not False and not ok:
-            self.alerts.push(Severity.WARNING, "deadman", "dead-man ping failed; the external monitor may alert soon")
+            self.alerts.push(Severity.WARNING, "deadman", "ส่งสัญญาณ 'ยังทำงานอยู่' ไป healthchecks.io ไม่สำเร็จ ครั้งเดียวไม่เป็นไร ถ้าเงียบนานเกินกำหนด "
+                             "healthchecks จะส่งข้อความแยกมาบอกว่า worker เงียบ")
         self.state.deadman_ok = ok
 
     def _drain_feeds(self) -> None:
@@ -345,7 +351,7 @@ class Worker:
         try:
             ex.start(token)
         except Exception as e:  # noqa: BLE001 - retried next tick; orders stay blocked until it works
-            self.alerts.push(Severity.WARNING, "executor", f"could not load stored orders: {type(e).__name__}; retrying")
+            self.alerts.push(Severity.WARNING, "executor", f"โหลดคำสั่งเดิมจากฐานข้อมูลไม่ได้ จะลองใหม่ ({type(e).__name__})")
 
     def _run_executor(self) -> None:
         ex, token = self.executor, self.state.lease_token
@@ -358,7 +364,8 @@ class Worker:
         try:
             ex.tick(token, ready=not self.state.signing_paused and self.state.account_ok is True)
         except LeaseFenced as e:
-            self.alerts.push(Severity.CRITICAL, "lease", f"order write refused by the fencing token; stopping: {e}")
+            self.alerts.push(Severity.CRITICAL, "lease", "worker ตัวนี้หมดสิทธิ์เขียนแล้ว จึงหยุดตัวเอง ปกติเกิดตอน update หรือ restart ที่ตัวใหม่รับสิทธิ์ต่อไปแล้ว "
+                             f"ถ้าตามด้วย 'worker เริ่มทำงาน' ก็ไม่ต้องทำอะไร ({e})")
             raise LeaseLost(str(e)) from e
         self.state.safety = ex.safety.state.value
 
@@ -370,7 +377,7 @@ class Worker:
                 if n:
                     self.log(f"stored {n} {interval} bars from the local files")
         except Exception as e:  # noqa: BLE001 - history can be sent again next start; the lease decides if the database is gone
-            self.alerts.push(Severity.WARNING, "persist", f"could not store bar history: {type(e).__name__}")
+            self.alerts.push(Severity.WARNING, "persist", f"บันทึกประวัติแท่งราคาไม่สำเร็จ จะลองใหม่ ({type(e).__name__})")
 
     def _persist(self) -> None:
         """Write queued feed records and the heartbeat. A failure keeps the records for the next try."""
@@ -389,11 +396,11 @@ class Worker:
             self.recorder.store.heartbeat(self.cfg.owner, self.cfg.host, s.started_at, s.last_tick_at, self._body())
         except Exception as e:  # noqa: BLE001
             if self.persist_ok is not False:
-                self.alerts.push(Severity.WARNING, "persist", f"could not write to Supabase ({type(e).__name__}); will retry")
+                self.alerts.push(Severity.WARNING, "persist", f"เขียนข้อมูลลง Supabase ไม่ได้ หน้าเว็บอาจไม่อัปเดตชั่วคราว จะลองใหม่เอง ({type(e).__name__})")
             self.persist_ok = False
             return
         if self.persist_ok is False:
-            self.alerts.push(Severity.INFO, "persist-ok", "writing to Supabase again")
+            self.alerts.push(Severity.INFO, "persist-ok", "เขียนข้อมูลลง Supabase ได้อีกแล้ว")
         self.persist_ok = True
 
     def _body(self) -> dict[str, Any]:
