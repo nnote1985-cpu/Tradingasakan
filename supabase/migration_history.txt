@@ -4,4 +4,5 @@
 20261017052727_testnet_persistence
 20261017085024_bot_profile_drafts
 20261018191151_guardian
+20261019020014_agent_book
 20261019021143_risk_and_agent_decisions
