@@ -302,7 +302,7 @@ def test_start_reports_recovering_checks_key_and_writes_heartbeat(tmp_path):
     hb = json.loads((tmp_path / "hb.json").read_text())
     assert hb["safety"] == "RECOVERING" and hb["lease_token"] == 1 and hb["account_ok"] is True
     assert hb["clock_status"] == "OK" and hb["signing_paused"] is False and hb["deadman_ok"] is True
-    assert "worker started" in sink.sent[0] and "SECRETKEY" not in " ".join(sink.sent)
+    assert "worker เริ่มทำงาน" in sink.sent[0] and "SECRETKEY" not in " ".join(sink.sent)
     signed = [(u, h) for u, h in http.urls if "/account" in u]
     assert signed and signed[0][0].startswith("https://testnet.binance.vision/") and "signature=" in signed[0][0]
 
@@ -321,7 +321,7 @@ def test_second_writer_is_refused(tmp_path):
     a.start()
     with pytest.raises(LeaseLost):
         b.start()
-    assert any("another worker holds" in t for t in sink_b.sent)
+    assert any("มี worker อีกตัวถือสิทธิ์" in t for t in sink_b.sent)
 
 
 def test_database_loss_stops_the_worker_with_a_critical_alert(tmp_path):
@@ -331,26 +331,26 @@ def test_database_loss_stops_the_worker_with_a_critical_alert(tmp_path):
     store.down = True
     with pytest.raises(LeaseLost):
         w.tick()
-    assert "CRITICAL" in sink.sent[-1] and "database unreachable" in sink.sent[-1]
+    assert "ด่วน" in sink.sent[-1] and "ต่อฐานข้อมูล Supabase ไม่ได้" in sink.sent[-1]
 
 
 def test_large_clock_offset_pauses_signing(tmp_path):
     http = FakeHttp(server_ms=1500)
     w, sink, _, t = _worker(tmp_path, http=http)
     w.start()
-    assert w.state.signing_paused is True and any("CRITICAL" in s and "clock offset +1500" in s for s in sink.sent)
+    assert w.state.signing_paused is True and any("ด่วน" in s and "+1500 ms" in s for s in sink.sent)
     http.server_ms = 100
     t[0] = 61
     w.tick()
-    assert w.state.signing_paused is False and "clock back in range" in sink.sent[-1]
+    assert w.state.signing_paused is False and "นาฬิกา PC กลับมาปกติ" in sink.sent[-1]
 
 
 def test_bad_key_is_a_critical_credential_alert(tmp_path):
     w, sink, _, _ = _worker(tmp_path, http=FakeHttp(account=(401, {"code": -2015, "msg": "Invalid API-key"})))
     w.start()
     assert w.state.account_ok is False
-    alert = next(s for s in sink.sent if "failed the account check" in s)
-    assert "CRITICAL" in alert and "qehU…" in alert and "SECRETKEY" not in alert
+    alert = next(s for s in sink.sent if "กุญแจ Testnet" in s)
+    assert "ด่วน" in alert and "qehU…" in alert and "SECRETKEY" not in alert
 
 
 def test_deadman_pings_on_schedule(tmp_path):
@@ -425,7 +425,7 @@ def test_worker_persists_heartbeat_and_keeps_records_through_an_outage(tmp_path)
     w.tick()
     assert rec.got == [("bar", 1)] and w.persist_ok is True
     w.alerts.flush()
-    assert any("could not write to Supabase" in m for m in sink.sent) and any("writing to Supabase again" in m for m in sink.sent)
+    assert any("เขียนข้อมูลลง Supabase ไม่ได้" in m for m in sink.sent) and any("เขียนข้อมูลลง Supabase ได้อีกแล้ว" in m for m in sink.sent)
 
 
 # --- P4: the executor inside the worker ----------------------------------------------------------------------

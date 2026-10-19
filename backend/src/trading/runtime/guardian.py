@@ -98,14 +98,14 @@ class Guardian:
         for rid, kind, actor, reason in self.store.open_requests():
             now = ex.now()
             if kind == "HALT":
-                outcome = self.halt(ex, f"operator {actor}: {reason}", book=None)
+                outcome = self.halt(ex, f"สั่งโดย {actor} ({reason})", book=None)
             elif ex.safety.state is SafetyState.HALTED:
                 ex.safety.operator_resume(now, actor)
                 ex.store.save_safety(ex.safety)
                 self.reset_hwm = True
                 self.store.add_risk_event(None, "RESUME", f"{actor}: {reason}", ex.safety.epoch, now)
-                ex.alerts.push(Severity.INFO, "guardian-resume", f"resumed by {actor} ({reason}); entries start again once the account "
-                               "check is MATCH")
+                ex.alerts.push(Severity.INFO, "guardian-resume", f"เริ่มเทรดต่อแล้ว สั่งโดย {actor} ({reason}) จะเปิดคำสั่งใหม่ได้"
+                               "หลังเช็กยอดบัญชีตรงกัน")
                 outcome = "resumed; RECOVERING until the account check is MATCH"
             else:
                 outcome = f"refused: account is {ex.safety.state.value}, resume needs HALTED (flat confirmed)"
@@ -125,8 +125,8 @@ class Guardian:
         ex.store.save_safety(ex.safety)
         ex.paused_by_us = False
         self.store.add_risk_event(book, "HALT", reason, ex.safety.epoch, now, equity, hwm)
-        ex.alerts.push(Severity.CRITICAL, "guardian-halt", f"HALT: {reason}. New entries are blocked; open buys are being canceled "
-                       "and the guarded books sold. A resume needs a named operator.")
+        ex.alerts.push(Severity.CRITICAL, "guardian-halt", f"HALT หยุดฉุกเฉิน: {reason} บล็อกการซื้อใหม่แล้ว กำลังยกเลิกคำสั่งที่เปิดอยู่"
+                       "และขาย BTC ของ book ออก จะเทรดต่อได้เมื่อมีคนสั่ง resume เท่านั้น")
         return f"halted at epoch {ex.safety.epoch}"
 
     # --- marks and limits ----------------------------------------------------------------
@@ -157,20 +157,22 @@ class Guardian:
         self.last_note = f"{b.book}: equity {equity:.2f}, drawdown {dd:.2%}, day {-day_loss:+.2%}"
         if day_loss >= self.profile.daily_loss_trigger_fraction and not m.day_alerted:
             m.day_alerted = True
-            text = f"{b.book} is down {day_loss:.1%} today (equity {equity:.2f} USDT, day open {m.day_open:.2f}); alert only"
+            text = (f"{b.book} ขาดทุนวันนี้ {day_loss:.1%} (ตอนนี้ {equity:.2f} USDT ต้นวัน {m.day_open:.2f}) "
+                    "แจ้งให้รู้เฉยๆ ยังเทรดต่อ จะ HALT เองถ้าลงจากจุดสูงสุดถึง 25%")
             self.store.add_risk_event(b.book, "DAY_LOSS_ALERT", text, ex.safety.epoch, now, equity, m.hwm)
             ex.alerts.push(Severity.WARNING, f"guardian-day-{b.book}", text)
         alert_at = self.profile.drawdown_alert_fraction
         if alert_at is not None and dd >= alert_at and not m.dd_alerted:
             m.dd_alerted = True
-            text = f"{b.book} drawdown {dd:.1%} from the high of {m.hwm:.2f} USDT (equity {equity:.2f}); alert only"
+            text = (f"{b.book} ลงจากจุดสูงสุด {dd:.1%} (สูงสุด {m.hwm:.2f} ตอนนี้ {equity:.2f} USDT) "
+                    "แจ้งให้รู้เฉยๆ ยังเทรดต่อ จะ HALT เองถ้าถึง 25%")
             self.store.add_risk_event(b.book, "DRAWDOWN_ALERT", text, ex.safety.epoch, now, equity, m.hwm)
             ex.alerts.push(Severity.WARNING, f"guardian-dd-{b.book}", text)
         elif alert_at is not None and dd < alert_at:
             m.dd_alerted = False
         halt_at = self.profile.portfolio_drawdown_halt_fraction
         if halt_at is not None and dd >= halt_at:
-            self.halt(ex, f"{b.book} drawdown {dd:.1%} reached the {halt_at:.0%} {PROFILE_NAME} limit", book=b.book,
+            self.halt(ex, f"{b.book} ลงจากจุดสูงสุด {dd:.1%} ถึงเส้น {halt_at:.0%} ของ {PROFILE_NAME}", book=b.book,
                       equity=equity, hwm=m.hwm)
         if changed or ex.mono() - m.saved_mono >= SAVE_EVERY_S:
             self.store.save_book_risk(b.book, PROFILE_NAME, b.allocation, m.hwm, m.hwm_at, m.day, m.day_open, equity, now)
@@ -205,8 +207,8 @@ class Guardian:
             ex.store.save_safety(ex.safety)
             self.store.add_risk_event(None, "FLAT_CONFIRMED", "no open orders, nothing unresolved, guarded books below the exchange "
                                       "minimum", ex.safety.epoch, now)
-            ex.alerts.push(Severity.CRITICAL, "guardian-halt", "HALTED: the guarded books are flat on the Testnet and no order is open. "
-                           "Entries stay blocked until a named operator resumes.")
+            ex.alerts.push(Severity.CRITICAL, "guardian-halt", "HALT เสร็จแล้ว: ขาย BTC ของ book หมดและไม่มีคำสั่งค้างบน Testnet "
+                           "การซื้อถูกบล็อกจนกว่าจะสั่ง resume (scripts/testnet_request.py resume)")
 
     def _sell(self, ex: Executor, b: GuardedBook, qty: Decimal, bid: Decimal, now: datetime) -> None:
         """Queue one MARKET SELL of ``qty`` for ``b`` on the current epoch, unless one is already on its way."""
@@ -219,8 +221,8 @@ class Guardian:
             if not o.is_terminal:
                 return                                                # the last one is still working
         else:
-            ex.alerts.push(Severity.CRITICAL, f"guardian-reduce-{b.book}", f"{b.book}: {MAX_REDUCE_LEGS} reduce orders did not make "
-                           "it flat; stopped sending, check the Testnet by hand")
+            ex.alerts.push(Severity.CRITICAL, f"guardian-reduce-{b.book}", f"{b.book}: ส่งคำสั่งขายตอน HALT ไป {MAX_REDUCE_LEGS} ครั้ง"
+                           "แล้วยังขายไม่หมด หยุดส่งแล้ว ต้องเข้าไปดูบน Testnet เอง")
             return
         intent = OrderIntent(mode=TradingMode.TESTNET, book=b.book, decision_id=decision, leg=f"reduce-{n}", symbol=b.symbol,
                              side=Side.SELL, order_type=OrderType.MARKET, qty=qty, limit_price=None, created_at=now,
@@ -229,7 +231,7 @@ class Guardian:
             if not self.store.accept_intent(intent, unit_price=bid, budget=b.allocation, base=b.base):
                 raise IntentRefused(f"client order id {intent.client_order_id} is taken by another account")
         except IntentRefused as e:
-            ex.alerts.push(Severity.CRITICAL, f"guardian-reduce-{b.book}", f"{b.book}: reduce order refused: {e}")
+            ex.alerts.push(Severity.CRITICAL, f"guardian-reduce-{b.book}", f"{b.book}: คำสั่งขายตอน HALT ถูกปฏิเสธ ต้องดูด่วน ({e})")
 
     # --- status ------------------------------------------------------------------------
 

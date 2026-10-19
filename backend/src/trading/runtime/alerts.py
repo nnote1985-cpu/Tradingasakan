@@ -17,7 +17,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import StrEnum
 from pathlib import Path
 from typing import Protocol
@@ -35,6 +35,9 @@ class Severity(StrEnum):
 
 COOLDOWN = {Severity.CRITICAL: timedelta(minutes=5), Severity.WARNING: timedelta(minutes=15), Severity.INFO: timedelta(0)}
 ICON = {Severity.CRITICAL: "🔴", Severity.WARNING: "🟠", Severity.INFO: "🔵"}
+# What Note reads first: how urgent it is, in Thai. The texts say what happened, whether it is dangerous and what to do.
+LABEL = {Severity.CRITICAL: "ด่วน ต้องดู", Severity.WARNING: "เตือน", Severity.INFO: "แจ้งให้ทราบ"}
+LOCAL_TZ = timezone(timedelta(hours=7))   # Note reads alerts in Thai time; the queue file keeps ISO UTC
 
 
 @dataclass(frozen=True)
@@ -45,7 +48,11 @@ class Alert:
     at: str             # ISO time it was raised
 
     def render(self, host: str) -> str:
-        return f"{ICON[self.severity]} {self.severity.value} [{host}] {self.text}\n{self.at}"[:TELEGRAM_LIMIT]
+        try:
+            when = datetime.fromisoformat(self.at).astimezone(LOCAL_TZ).strftime("%d/%m %H:%M:%S") + " เวลาไทย"
+        except ValueError:
+            when = self.at
+        return f"{ICON[self.severity]} {LABEL[self.severity]} · {host}\n{self.text}\n{when}"[:TELEGRAM_LIMIT]
 
 
 def mask(text: str, token: str | None = None) -> str:

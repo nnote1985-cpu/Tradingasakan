@@ -57,6 +57,7 @@ MAX_ATTEMPTS = 5
 HISTORY_DAYS = 400                          # SMA100 needs 100 closes; the Shadow book loads 400
 TRADING = (SafetyState.RUNNING, SafetyState.SOFT_PAUSED, SafetyState.REDUCING)
 ZERO = Decimal(0)
+ACTION_TH = {"OPEN": "เปิดพอร์ต", "REBALANCE": "ปรับสัดส่วน", "HOLD": "เป้าเท่าเดิม ไม่เทรด", "NO_DECISION": "ข้อมูลไม่พอ คงสถานะเดิม"}
 
 
 @dataclass(frozen=True)
@@ -156,7 +157,7 @@ class R10aBot:
                 d = fut.result()
             except Exception as e:  # noqa: BLE001 - a download error waits for the next try
                 self.last_note = f"inputs for {day} failed: {type(e).__name__}: {e}"[:300]
-                ex.alerts.push(Severity.WARNING, "r10a-inputs", f"{BOOK}: {self.last_note}; trying again in 30 minutes")
+                ex.alerts.push(Severity.WARNING, "r10a-inputs", f"R10a โหลดข้อมูลราคาหรือ funding ไม่สำเร็จ จะลองใหม่ใน 30 นาที ({self.last_note})")
                 return
             if d is None:
                 self.last_note = f"the archive does not have {day} yet; trying again in 30 minutes"
@@ -188,7 +189,8 @@ class R10aBot:
                                    previous_weight=previous, action=action, notes=notes, inputs=d.inputs,
                                    inputs_sha256=d.inputs_sha256, data_ready_at=d.data_ready_at):
             w = "–" if d.weight is None else f"{d.weight:.0%}"
-            ex.alerts.push(Severity.INFO, "r10a-decision", f"{BOOK} {d.day}: {action}, BTC weight {w} ({notes})")
+            ex.alerts.push(Severity.INFO, "r10a-decision", f"R10a ตัดสินใจจากราคาปิดวันที่ {d.day}: {ACTION_TH[action]} "
+                           f"เป้าถือ BTC {w} ({notes})")
             ex.log(f"r10a: {d.day} {action} weight {w}")
 
     def _off_target(self, weight: Decimal, bid: Decimal, min_notional: Decimal) -> bool:
@@ -211,12 +213,13 @@ class R10aBot:
                 return
             if o is not None and o.filled_qty > 0:
                 self.store.finish_decision(token, now, BOOK, day, f"{o.intent.side.value} {o.filled_qty} BTC, {o.state.value}")
-                ex.alerts.push(Severity.INFO, "r10a-trade", f"{BOOK} {day}: {o.intent.side.value} {o.filled_qty} BTC ({o.state.value})")
+                ex.alerts.push(Severity.INFO, "r10a-trade", f"R10a {'ซื้อ' if o.intent.side is Side.BUY else 'ขาย'} {o.filled_qty} BTC "
+                               f"แล้ว ตามคำตัดสินวันที่ {day} ({o.state.value})")
                 return
             if row["attempts"] >= MAX_ATTEMPTS:
                 self.store.finish_decision(token, now, BOOK, day, f"gave up after {MAX_ATTEMPTS} orders without a fill")
-                ex.alerts.push(Severity.CRITICAL, "r10a-trade", f"{BOOK} {day}: {MAX_ATTEMPTS} orders ended without a fill; "
-                               "the book stays off target until the next decision")
+                ex.alerts.push(Severity.CRITICAL, "r10a-trade", f"R10a ส่งคำสั่ง {MAX_ATTEMPTS} ครั้งแล้วไม่ได้ fill เลย หยุดสำหรับวันที่ "
+                               f"{day} book จะยังไม่ตรงเป้าจนกว่าจะมีคำตัดสินถัดไป ให้บอก Claude ใน thread")
                 return
         q = ex.quote()
         if q is None:
@@ -248,7 +251,7 @@ class R10aBot:
         except IntentRefused as e:
             self.last_note = f"{day} {side.value} {qty} not accepted: {e}"
             if str(e) != "ENTRIES_BLOCKED_" + ex.safety.state.value:
-                ex.alerts.push(Severity.WARNING, "r10a-trade", f"{BOOK}: {self.last_note}")
+                ex.alerts.push(Severity.WARNING, "r10a-trade", f"R10a ส่งคำสั่งไม่ได้ ({self.last_note})")
             return
         self.store.decision_attempt(token, now, BOOK, day, n, intent.client_order_id)
         self.last_note = f"{day}: {side.value} {qty} BTC sent (attempt {n})"
