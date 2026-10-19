@@ -320,3 +320,44 @@ def test_pnl_marks_net_btc_and_keeps_bnb_fees_apart():
     assert pnl_items(bal, books, None)["mark_source"] == "last_trade"
     assert pnl_items([], [], None) | {} == {"epoch": None, "opened_at": None, "mark": None, "mark_source": None, "balances": [],
                                              "equity_change_usdt": None, "books": []}
+
+
+def test_halt_and_resume_from_the_web_need_an_operator_and_land_in_the_request_queue():
+    from datetime import UTC, date, datetime
+    from decimal import Decimal as D
+
+    from api.workers import NoWorkers
+
+    at = datetime(2026, 10, 19, 8, 25, tzinfo=UTC)
+
+    class _Workers(NoWorkers):
+        def __init__(self) -> None:
+            self.added: list[tuple[str, str, str, str]] = []
+
+        async def control_rows(self, account, limit):
+            return ([(date(2026, 10, 18), "tn-r10a-code-v1", "OPEN", "1", None, "close 82,078", 1, "BUY 0.02411 BTC, FILLED", at, at)],
+                    [(at, "tn-r10a-code-v1", "DRAWDOWN_ALERT", "ลง 18.7%", 1, "1631.03", "2005.33")],
+                    [(7, "HALT", "web:x", "drill", at, None, None)])
+
+        async def add_request(self, account, kind, actor, reason):
+            self.added.append((account, kind, actor, reason))
+            return 8
+
+    operator = uuid.uuid4()
+    store = _Workers()
+    c = TestClient(create_app(Settings(), SupabaseJwtVerifier(URL, jwks_client=_Jwks()),
+                              _Roles({VIEWER: {OperatorRole.VIEWER}, operator: {OperatorRole.OPERATOR}}), workers=store))
+    body = _get(c, "/api/v1/workers/DEFAULT/control", _token(VIEWER)).json()
+    assert body["available"] and body["decisions"][0]["day"] == "2026-10-18" and body["decisions"][0]["weight"] == "1"
+    assert body["risk_events"][0]["kind"] == "DRAWDOWN_ALERT" and body["requests"][0]["outcome"] is None
+    halt = {"kind": "HALT", "reason": "  drill  "}
+    assert c.post("/api/v1/workers/DEFAULT/requests", json=halt).status_code == 401
+    assert c.post("/api/v1/workers/DEFAULT/requests", json=halt, headers={"Authorization": f"Bearer {_token(VIEWER)}"}).status_code == 403
+    ok = c.post("/api/v1/workers/DEFAULT/requests", json=halt, headers={"Authorization": f"Bearer {_token(operator)}"})
+    assert ok.json() == {"id": 8, "kind": "HALT"} and store.added == [("DEFAULT", "HALT", f"web:{operator}", "drill")]
+    for bad in ({"kind": "LIVE", "reason": "x"}, {"kind": "RESUME", "reason": "   "}):
+        assert c.post("/api/v1/workers/DEFAULT/requests", json=bad, headers={"Authorization": f"Bearer {_token(operator)}"}).status_code == 422
+    gone = TestClient(create_app(Settings(), SupabaseJwtVerifier(URL, jwks_client=_Jwks()), _Roles({operator: {OperatorRole.OPERATOR}})))
+    assert gone.post("/api/v1/workers/DEFAULT/requests", json=halt, headers={"Authorization": f"Bearer {_token(operator)}"}).status_code == 503
+    assert _get(gone, "/api/v1/workers/DEFAULT/control", _token(operator)).json()["available"] is False
+    assert D("1") == D(body["decisions"][0]["weight"])

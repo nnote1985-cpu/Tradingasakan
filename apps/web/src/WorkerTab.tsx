@@ -1,10 +1,13 @@
-import { useQuery } from "@tanstack/react-query";
-import type { ReactNode } from "react";
-import { type ApiError, apiGet, type WorkerActivity, type WorkerPnl, type WorkerExecution, type WorkerStatus, type WorkersResponse } from "./api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { type ReactNode, useState } from "react";
+import {
+  type ApiError, apiGet, apiPost, type WorkerActivity, type WorkerControl, type WorkerPnl, type WorkerExecution, type WorkerStatus,
+  type WorkersResponse,
+} from "./api";
 import { workerIssues } from "./Operations";
 
-// Read-only status of the Testnet worker (testnet-development-plan.md §9). The worker writes this to
-// Supabase about every 10 s; nothing on this page sends a command to it. Pause/resume come with P5.
+// Status of the Testnet worker (testnet-development-plan.md §9). The worker writes this to Supabase about every 10 s.
+// The only command from this page is HALT/RESUME: a row in trading.exec_operator_requests that Guardian carries out (P5).
 
 const STREAM_TH: Record<string, string> = { klines: "แท่งราคา (Mainnet)", quotes: "ราคา Testnet", account: "บัญชี Testnet" };
 const STATE_TH: Record<string, string> = {
@@ -27,14 +30,14 @@ function utc(ms: number | null): string {
 
 function Dot({ ok }: { ok: boolean | null | undefined }) {
   const c = ok === null || ok === undefined ? "bg-[var(--series-cash)]" : ok ? "bg-[var(--gain)]" : "bg-[var(--loss)]";
-  return <span aria-hidden className={`mr-1.5 inline-block h-2 w-2 rounded-full ${c}`} />;
+  return <span aria-hidden className={`mr-1.5 inline-block h-2 w-2 shrink-0 rounded-full ${c}`} />;
 }
 
 function Row({ label, ok, children }: { label: string; ok?: boolean | null; children: ReactNode }) {
   return (
     <div className="grid gap-1 border-t border-[var(--grid)] py-3 text-sm sm:grid-cols-[12rem_minmax(0,1fr)] sm:gap-4">
       <span className="text-[var(--text-secondary)]">{label}</span>
-      <span className="min-w-0 break-words">{ok !== undefined && <Dot ok={ok} />}{children}</span>
+      <span className="flex min-w-0 items-baseline break-words">{ok !== undefined && <Dot ok={ok} />}<span className="min-w-0">{children}</span></span>
     </div>
   );
 }
@@ -69,7 +72,8 @@ function GuardianRow({ g }: { g: NonNullable<WorkerExecution["guardian"]> }) {
   const dds = g.books.map((b) => (b.drawdown === undefined ? null : Number(b.drawdown)));
   const ok = dds.every((d) => d === null || d < DD_ALERT);
   return (
-    <Row label={`Guardian (${g.profile})`} ok={g.books.length ? ok : null}>
+    <Row label={`Guardian (${g.profile})`} ok={g.books.length ? ok && !g.price_off : null}>
+      {g.price_off && <div className="text-[var(--loss)]">ราคา Testnet เพี้ยนจาก Mainnet จึงพักการตีมูลค่าไว้ ({g.price_off})</div>}
       {g.books.length === 0 && "ยังไม่ได้ดูแล book ไหน (รับคำสั่ง HALT/RESUME อย่างเดียว)"}
       {g.books.map((b, i) => {
         const dd = dds[i];
@@ -232,6 +236,113 @@ function Activity({ account }: { account: string }) {
   );
 }
 
+const ACTION_TH: Record<string, string> = { OPEN: "เปิดพอร์ต", REBALANCE: "ปรับสัดส่วน", HOLD: "คงเดิม", NO_DECISION: "ข้อมูลไม่พอ" };
+const EVENT_TH: Record<string, string> = {
+  DAY_LOSS_ALERT: "เตือนขาดทุนรายวัน", DRAWDOWN_ALERT: "เตือนลงจากจุดสูงสุด", HALT: "HALT", FLAT_CONFIRMED: "ขายหมดแล้ว", RESUME: "กลับมาทำงาน",
+};
+
+function pct(w: string | null): string {
+  return w === null ? "–" : `${Math.round(Number(w) * 100)}%`;
+}
+
+function HaltControl({ account, safety }: { account: string; safety: string | null }) {
+  const cache = useQueryClient();
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const kind = safety === "HALTED" ? "RESUME" : safety === "HALTING" ? null : "HALT";
+  if (kind === null) return <p className="text-sm">กำลัง HALT: ยกเลิกคำสั่งซื้อและขาย BTC ของบอทอยู่ รอให้เป็น HALTED ก่อนจึงจะ RESUME ได้</p>;
+  async function send() {
+    const text = kind === "HALT"
+      ? "HALT จะหยุดเปิดคำสั่งใหม่ ยกเลิกคำสั่งซื้อที่เปิดอยู่ และขาย BTC ของบอทออกทั้งหมด แล้วรอจนกว่าจะสั่ง RESUME ยืนยันไหม"
+      : "RESUME จะให้ worker ตรวจบัญชีใหม่แล้วกลับมาเทรดตามกลยุทธ์ จุดสูงสุดของพอร์ตจะเริ่มนับใหม่จากตอนนี้ ยืนยันไหม";
+    if (!window.confirm(text)) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      await apiPost(`/api/v1/workers/${encodeURIComponent(account)}/requests`, { kind, reason: reason.trim() });
+      setReason("");
+      setMsg({ ok: true, text: `ส่งคำสั่ง ${kind} แล้ว worker จะทำภายในไม่กี่วินาที ดูผลในรายการด้านล่าง` });
+      await cache.invalidateQueries({ queryKey: ["worker-control", account] });
+    } catch (e) {
+      setMsg({ ok: false, text: (e as { message?: string }).message ?? "ส่งคำสั่งไม่สำเร็จ" });
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <input aria-label="เหตุผล" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={200}
+        placeholder={kind === "HALT" ? "เหตุผลที่ HALT เช่น ซ้อม HALT" : "เหตุผลที่ RESUME"}
+        className="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--surface-0)] px-2 py-1" />
+      <button type="button" disabled={busy || !reason.trim()} onClick={send}
+        className={`rounded px-3 py-1 font-medium text-white disabled:opacity-50 ${kind === "HALT" ? "bg-[var(--loss)]" : "bg-[var(--gain)]"}`}>
+        {kind}
+      </button>
+      {msg && <p role={msg.ok ? "status" : "alert"} className={`w-full ${msg.ok ? "" : "text-[var(--loss)]"}`}>{msg.text}</p>}
+    </div>
+  );
+}
+
+function Control({ account, safety }: { account: string; safety: string | null }) {
+  const q = useQuery<WorkerControl, ApiError>({
+    queryKey: ["worker-control", account],
+    queryFn: () => apiGet<WorkerControl>(`/api/v1/workers/${encodeURIComponent(account)}/control`),
+    refetchInterval: 15_000,
+  });
+  if (q.isPending) return <p className="mt-3 text-sm">กำลังโหลดการตัดสินใจของบอท…</p>;
+  if (q.isError) return <p role="alert" className="mt-3 text-sm text-[var(--loss)]">{q.error.message ?? "โหลดการตัดสินใจของบอทไม่สำเร็จ"}</p>;
+  if (!q.data.available) return null;
+  const { decisions, risk_events, requests } = q.data;
+  return (
+    <div className="mt-4 space-y-4">
+      <section data-testid="worker-halt">
+        <h3 className="mb-1 text-sm font-semibold">หยุดฉุกเฉิน (HALT) และกลับมาทำงาน (RESUME)</h3>
+        <HaltControl account={account} safety={safety} />
+        {requests.length > 0 && (
+          <ul className="mt-2 space-y-1 text-sm text-[var(--text-secondary)]">
+            {requests.slice(0, 5).map((r) => (
+              <li key={r.id}>{when(r.requested_at)} · {r.kind} โดย {r.actor.startsWith("web:") ? "เว็บ" : r.actor} ({r.reason}) · {r.outcome ?? "รอ worker"}</li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <section>
+        <h3 className="mb-1 text-sm font-semibold">การตัดสินใจรายวันของบอท</h3>
+        {decisions.length === 0 ? <p className="text-sm text-[var(--text-muted)]">ยังไม่มี (บอทตัดสินใจวันละครั้งหลัง 00:10 UTC)</p> : (
+          <div className="overflow-x-auto">
+            <table data-testid="worker-decisions" className={TABLE}>
+              <thead><tr><th>วัน (ปิดแท่ง)</th><th>บอท</th><th>ตัดสินใจ</th><th>เป้าถือ BTC</th><th>ผล</th><th>เหตุผล</th></tr></thead>
+              <tbody>
+                {decisions.map((d) => (
+                  <tr key={`${d.book}-${d.day}`} className="border-t border-[var(--grid)] align-top">
+                    <td className="whitespace-nowrap">{d.day}</td>
+                    <td className="whitespace-nowrap">{d.book}</td>
+                    <td className="whitespace-nowrap">{ACTION_TH[d.action] ?? d.action}</td>
+                    <td className="whitespace-nowrap">{d.previous_weight !== null && d.previous_weight !== d.weight ? `${pct(d.previous_weight)} → ` : ""}{pct(d.weight)}</td>
+                    <td>{d.outcome ?? (d.action === "HOLD" || d.action === "NO_DECISION" ? "ไม่ต้องเทรด" : `รอส่ง (ลองแล้ว ${d.attempts})`)}</td>
+                    <td className="text-[var(--text-secondary)]">{d.notes}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+      {risk_events.length > 0 && (
+        <section>
+          <h3 className="mb-1 text-sm font-semibold">เหตุการณ์ของ Guardian</h3>
+          <ul data-testid="worker-risk-events" className="space-y-1 text-sm">
+            {risk_events.slice(0, 10).map((e, i) => (
+              <li key={`${e.at}-${i}`}><span className="whitespace-nowrap">{when(e.at)}</span> · {EVENT_TH[e.kind] ?? e.kind} · {e.detail}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+  );
+}
+
 const hasActivity = (w: WorkerStatus) => w.epoch !== null || w.execution !== null;
 
 function WorkerCard({ w }: { w: WorkerStatus }) {
@@ -252,6 +363,7 @@ function WorkerCard({ w }: { w: WorkerStatus }) {
           Worker ไม่ได้ส่งสถานะมา {ago(w.updated_at)} ให้ดูที่เครื่อง {w.host} ว่ายังเปิดอยู่ หรือดับเบิลคลิก update-worker.cmd เพื่อเริ่มใหม่
         </p>
       )}
+      {w.execution && <Control account={w.account} safety={w.execution.safety ?? w.safety} />}
       {hasActivity(w) && <Activity account={w.account} />}
       <details className="mt-5 rounded-xl border border-[var(--border)] p-4">
         <summary className="cursor-pointer font-medium">รายละเอียดการเชื่อมต่อและระบบ</summary>
@@ -302,7 +414,7 @@ export function WorkerTab() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-[var(--text-secondary)]">
-        ตรวจสถานะเครื่องและบัญชีของแต่ละบอต หน้านี้อ่านอย่างเดียว ยังไม่มีปุ่มหยุดหรือเริ่มส่งคำสั่งจากเว็บ
+        ตรวจสถานะเครื่องและบัญชีของแต่ละบอต ปุ่มเดียวที่สั่งงานได้คือ HALT/RESUME ซึ่ง Guardian จะทำให้ภายในไม่กี่วินาที
       </p>
       {!q.data.available ? (
         <p data-testid="workers-unavailable">ยังไม่มีตารางสถานะ worker ในฐานข้อมูล (รอ apply migration ของ P3)</p>

@@ -269,6 +269,7 @@ export type WorkerExecution = {
   guardian?: {
     profile: string;
     books: { book: string; allocation: string; equity: string | null; hwm?: string; drawdown?: string; day_open?: string }[];
+    price_off?: string | null;
   } | null;
 };
 
@@ -318,5 +319,15 @@ export type WorkerPnl = {
 };
 
 export type WorkerActivity = { available: boolean; orders: WorkerOrder[]; trades: WorkerTrade[]; pnl: WorkerPnl | null };
+
+export type StrategyDecision = {
+  day: string; book: string; action: "OPEN" | "REBALANCE" | "HOLD" | "NO_DECISION"; weight: string | null; previous_weight: string | null;
+  notes: string; attempts: number; outcome: string | null; decided_at: string | null; executed_at: string | null;
+};
+export type RiskEvent = { at: string; book: string | null; kind: string; detail: string; epoch: number; equity: string | null; hwm: string | null };
+export type OperatorRequestRow = {
+  id: number; kind: "HALT" | "RESUME"; actor: string; reason: string; requested_at: string; handled_at: string | null; outcome: string | null;
+};
+export type WorkerControl = { available: boolean; decisions: StrategyDecision[]; risk_events: RiskEvent[]; requests: OperatorRequestRow[] };
 
 export type WorkersResponse = { available: boolean; workers: WorkerStatus[] };

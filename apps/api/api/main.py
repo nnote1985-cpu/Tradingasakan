@@ -5,12 +5,13 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from psycopg_pool import PoolTimeout
+from pydantic import BaseModel, ConfigDict, Field
 
 from api.ai import ai_settings, scorecard
 from api.assets import ASSETS, AssetCache
@@ -19,10 +20,17 @@ from api.backtests import load_backtests
 from api.portfolios import NoPortfolios, PortfolioStore, Unavailable, decision_items, equity_series, overview_items, risk_items
 from api.profile_drafts import DraftConflict, DraftStore, DraftsUnavailable, NoDrafts, PgDraftStore, SaveDraft
 from api.strategies import catalog_view, profiles_view
-from api.workers import ACTIVITY_LIMIT, NoWorkers, PgWorkerStore, WorkerStore, activity_items, pnl_items, worker_items
+from api.workers import ACTIVITY_LIMIT, CONTROL_LIMIT, NoWorkers, PgWorkerStore, WorkerStore, activity_items, control_items, pnl_items, worker_items
 from api.workers import Unavailable as WorkersUnavailable
 from trading.config import Settings
 from trading.contracts.enums import OperatorRole
+
+
+class OperatorRequest(BaseModel):
+    """HALT or RESUME from the Worker tab; Guardian carries it out (runbook §12)."""
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    kind: Literal["HALT", "RESUME"]
+    reason: str = Field(min_length=1, max_length=200)
 
 
 def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
@@ -172,6 +180,27 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
         except WorkersUnavailable:
             return {"available": False, "orders": [], "trades": [], "pnl": None}
         return {"available": True, **activity_items(orders, trades), "pnl": pnl_items(balances, books, mark)}
+
+    @app.get("/api/v1/workers/{account}/control")
+    async def worker_control(account: str, p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        """R10a decisions, Guardian events and HALT/RESUME requests (P5)."""
+        try:
+            decisions, events, requests = await worker_store.control_rows(account, CONTROL_LIMIT)
+        except WorkersUnavailable:
+            return {"available": False, "decisions": [], "risk_events": [], "requests": []}
+        return {"available": True, **control_items(decisions, events, requests)}
+
+    @app.post("/api/v1/workers/{account}/requests")
+    async def worker_request(account: str, body: OperatorRequest, request: Request,
+                             p: Principal = Depends(require(OperatorRole.OPERATOR))) -> Any:
+        """Queue a HALT or RESUME. The worker acts on it within a tick and writes the outcome to the same row."""
+        try:
+            rid = await worker_store.add_request(account, body.kind, f"web:{p.user_id}", body.reason)
+        except WorkersUnavailable:
+            return JSONResponse(status_code=503, content={
+                "code": "requests_unavailable", "request_id": getattr(request.state, "request_id", None), "retryable": True,
+                "message": "ยังไม่มีตารางคำสั่ง HALT/RESUME ในฐานข้อมูล"})
+        return {"id": rid, "kind": body.kind}
 
     return app
 
