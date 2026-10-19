@@ -7,6 +7,7 @@ import { BookGroupCard } from "./BookGroupCard";
 import { FuturesTab } from "./FuturesTab";
 import { groupBooks, isFutures } from "./books";
 import { Operations } from "./Operations";
+import { PerformanceOverview } from "./PerformanceOverview";
 import { PortfolioTable } from "./PortfolioTable";
 import { ShadowBanner } from "./ShadowBanner";
 import { StrategiesTab } from "./StrategiesTab";
@@ -75,7 +76,7 @@ export function Dashboard() {
   const section = sectionOf(tab);
   const researchViews: { key: ViewKey; label: string }[] = [{ key: "spot", label: "พอร์ตจำลอง Spot" }, { key: "futures", label: "Futures / Backtest" }, { key: "ai", label: "ผลทดลอง AI" }];
   const researchView = tab === "research" ? "spot" : tab;
-  const titles = { overview: ["ภาพรวมการทำงาน", "ติดตามบอต บัญชี และสิ่งที่ต้องจัดการในที่เดียว"], bots: ["บอตและพอร์ต", "บัญชีที่เชื่อมกับ Exchange และข้อมูลตลาดที่ใช้ติดตาม"], research: ["งานวิจัยและผลทดลอง", "แยกผลจำลองและผลย้อนหลังออกจากบัญชีที่กำลังซื้อขาย"], system: ["สถานะระบบ", "ตรวจการเชื่อมต่อ บันทึกข้อมูล และรายละเอียดเครื่องที่รันบอต"], settings: ["ตั้งค่าบอตและกลยุทธ์", "ดูชุดกลยุทธ์ใน Bot profiles และวิธีเทรดที่มีในคลัง"] };
+  const titles = { overview: ["ภาพรวมพอร์ต", "มูลค่าเงินลงทุน กำไรขาดทุน และผลของแต่ละพอร์ตในหน้าเดียว"], bots: ["บอตและพอร์ต", "บัญชีที่เชื่อมกับ Exchange และข้อมูลตลาดที่ใช้ติดตาม"], research: ["งานวิจัยและผลทดลอง", "แยกผลจำลองและผลย้อนหลังออกจากบัญชีที่กำลังซื้อขาย"], system: ["สถานะระบบ", "ตรวจการเชื่อมต่อ บันทึกข้อมูล และรายละเอียดเครื่องที่รันบอต"], settings: ["ตั้งค่าบอตและกลยุทธ์", "ดูชุดกลยุทธ์ใน Bot profiles และวิธีเทรดที่มีในคลัง"] };
   const needsOverview = (section === "research" && tab !== "options") || tab === "asset";
   return (
     <section className="dashboard-shell">
@@ -99,7 +100,7 @@ export function Dashboard() {
       <div ref={contentRef} role="tabpanel" tabIndex={0} id={`panel-${section}`} aria-labelledby={`tab-${section}`} className="dashboard-content space-y-5">
         {section === "research" && <><div className="notice">พื้นที่ทดลอง · เงินสมมติและผลย้อนหลัง ไม่รวมอยู่ในยอดบัญชีของบอต</div><div className="flex flex-wrap gap-2" role="group" aria-label="หมวดงานวิจัย">{researchViews.map((v) => <button key={v.key} className={`filter-button ${researchView === v.key ? "filter-active" : ""}`} aria-pressed={researchView === v.key} onClick={() => setTab(v.key)}>{v.label}</button>)}</div></>}
         {section === "bots" && <div className="flex gap-2" role="group" aria-label="หมวดบอตและพอร์ต"><button className={`filter-button ${tab !== "asset" ? "filter-active" : ""}`} aria-pressed={tab !== "asset"} onClick={() => setTab("bots")}>บัญชีและบอต</button><button className={`filter-button ${tab === "asset" ? "filter-active" : ""}`} aria-pressed={tab === "asset"} onClick={() => setTab("asset")}>ตลาด BTC</button></div>}
-        {section === "settings" ? <StrategiesTab view={tab === "strategies" ? "library" : "profiles"} onSelect={(view) => setTab(view === "library" ? "strategies" : "settings")} /> : section === "overview" ? <Operations overview /> : section === "system" ? <WorkerTab /> : section === "bots" && tab !== "asset" ? <Operations /> : needsOverview && q.isPending ? (
+        {section === "settings" ? <StrategiesTab view={tab === "strategies" ? "library" : "profiles"} onSelect={(view) => setTab(view === "library" ? "strategies" : "settings")} /> : section === "overview" ? <PerformanceOverview /> : section === "system" ? <WorkerTab /> : section === "bots" && tab !== "asset" ? <Operations /> : needsOverview && q.isPending ? (
           <p>กำลังโหลด…</p>
         ) : needsOverview && q.isError ? (
           <div role="alert"><p>{q.error.message ?? "โหลดข้อมูลไม่สำเร็จ"}</p><button className="mt-2 rounded border px-3 py-1" onClick={() => void q.refetch()}>ลองใหม่</button>{["invalid_token", "missing_token"].includes(q.error.code) && <button className="ml-2 rounded border px-3 py-1" onClick={() => void supabase?.auth.signOut({ scope: "local" })}>เข้าสู่ระบบใหม่</button>}</div>

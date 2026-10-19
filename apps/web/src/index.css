@@ -1,5 +1,42 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: "Noto Sans Thai";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/noto-sans-thai-400.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Noto Sans Thai";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./assets/fonts/noto-sans-thai-500.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Noto Sans Thai";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./assets/fonts/noto-sans-thai-600.ttf") format("truetype");
+}
+@font-face {
+  font-family: "Noto Sans Thai";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./assets/fonts/noto-sans-thai-700.ttf") format("truetype");
+}
+
+@theme {
+  --font-sans: "Noto Sans Thai", "Leelawadee UI", system-ui, sans-serif;
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.65;
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: 1.65;
+}
+
 /* Colour roles, light and dark (charts read these too). Series slots follow the
    dataviz reference palette; the benchmark is a neutral grey so the strategy stays the subject. */
 :root {
@@ -69,9 +106,9 @@ body {
   background: var(--surface-0);
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
-  font-family: "Leelawadee UI", "Noto Sans Thai", system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 16px;
-  line-height: 1.65;
+  line-height: 1.7;
 }
 
 button, summary, a { -webkit-tap-highlight-color: transparent; }
@@ -93,11 +130,11 @@ button:disabled { cursor: wait; opacity: .6; }
 .dashboard-header { flex: none; padding: 28px 32px 24px; border-bottom: 1px solid var(--border); background: var(--surface-0); }
 .dashboard-content { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; padding: 24px 32px 32px; overscroll-behavior-y: contain; }
 .panel { min-width: 0; padding: 24px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface-1); }
-.eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .07em; color: var(--text-secondary); }
+.eyebrow { font-size: 13px; font-weight: 600; letter-spacing: .03em; color: var(--text-secondary); }
 .metric { min-width: 0; padding: 16px; background: var(--surface-0); border-radius: 12px; }
-.metric dt { color: var(--text-secondary); font-size: 13px; }
+.metric dt { color: var(--text-secondary); font-size: 14px; }
 .metric dd { margin-top: 8px; font-size: clamp(18px, 1.8vw, 24px); font-weight: 600; overflow-wrap: anywhere; line-height: 1.4; }
-.metric p { margin-top: 7px; font-size: 12px; color: var(--text-muted); }
+.metric p { margin-top: 7px; font-size: 13px; color: var(--text-muted); }
 .status-chip { border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 600; }
 .status-warn, .notice { color: var(--warn-fg); background: var(--warn-bg); }
 .status-ok { color: var(--gain); background: var(--surface-0); border: 1px solid var(--border); }
@@ -105,17 +142,47 @@ button:disabled { cursor: wait; opacity: .6; }
 .notice button { text-decoration: underline; }
 .attention-panel { border-left: 4px solid var(--warn-fg); }
 .action, .filter-button { border: 1px solid var(--border); border-radius: 10px; padding: 10px 16px; min-height: 44px; background: var(--surface-1); }
-.filter-button { font-size: 14px; color: var(--text-secondary); }
+.filter-button { font-size: 15px; color: var(--text-secondary); }
 .filter-active { border-color: var(--text-primary); color: var(--text-primary); font-weight: 600; }
 .shortcut:hover { border-color: var(--series-strategy); }
 .primary-action { color: var(--surface-1); background: var(--text-primary); border-color: var(--text-primary); }
-.profile-field { display: flex; min-width: 0; flex-direction: column; gap: 6px; font-size: 14px; }
+.profile-field { display: flex; min-width: 0; flex-direction: column; gap: 6px; font-size: 15px; }
 .profile-field > span { font-weight: 500; }
-.profile-field small { color: var(--text-secondary); font-size: 12px; font-weight: 400; }
+.profile-field small { color: var(--text-secondary); font-size: 13px; font-weight: 400; }
 .profile-field :is(input, select, textarea) { width: 100%; min-width: 0; min-height: 44px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; color: var(--text-primary); background: var(--surface-1); }
 .profile-field :is(input, select):disabled, .profile-field input[readonly] { color: var(--text-secondary); background: var(--surface-0); }
 .profile-rule { min-width: 0; padding: 16px; border: 1px solid var(--border); border-radius: 12px; }
 .profile-rule legend { padding: 0 6px; font-size: 14px; font-weight: 600; }
+.performance-toolbar, .performance-section-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
+.performance-mode-switch { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-1); }
+.performance-mode-switch button { min-height: 44px; padding: 8px 20px; border-radius: 8px; font-size: 15px; color: var(--text-secondary); }
+.performance-mode-switch button:hover { background: var(--surface-0); }
+.performance-mode-switch button.is-selected { background: var(--text-primary); color: var(--surface-1); font-weight: 600; }
+.performance-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.performance-metric { min-width: 0; padding: 24px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface-1); }
+.performance-metric-primary { border-color: color-mix(in srgb, var(--series-strategy) 35%, var(--border)); background: color-mix(in srgb, var(--series-strategy) 6%, var(--surface-1)); }
+.performance-metric dt { font-size: 14px; color: var(--text-secondary); }
+.performance-metric dd { margin-top: 14px; font-size: clamp(24px, 2.2vw, 36px); font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; letter-spacing: -.02em; }
+.performance-metric p { margin-top: 12px; font-size: 13px; color: var(--text-muted); }
+.performance-count { padding: 4px 12px; border: 1px solid var(--border); border-radius: 999px; font-size: 13px; color: var(--text-secondary); white-space: nowrap; }
+.performance-explanation { padding: 12px 16px; border-radius: 10px; background: color-mix(in srgb, var(--series-strategy) 7%, var(--surface-1)); font-size: 14px; color: var(--text-secondary); }
+.account-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; }
+.account-tile { min-width: 0; padding: 20px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-0); }
+.performance-table { width: 100%; font-size: 15px; }
+.performance-table th { padding: 12px 16px; background: var(--surface-0); text-align: left; font-size: 13px; font-weight: 500; color: var(--text-secondary); white-space: nowrap; }
+.performance-table td { padding: 16px; border-bottom: 1px solid var(--border); }
+.performance-table .numeric { text-align: right; white-space: nowrap; }
+.performance-alert { padding: 16px 20px; border: 1px solid var(--border); border-left: 3px solid var(--warn-fg); border-radius: 12px; background: var(--surface-1); }
+.performance-alert summary { min-height: 28px; font-size: 14px; font-weight: 500; }
+@media (max-width: 1199px) { .performance-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 479px) {
+  .performance-metrics { gap: 10px; }
+  .performance-metric { padding: 16px 12px; }
+  .performance-metric dd { font-size: 24px; }
+  .performance-metric dt, .performance-metric p { font-size: 13px; }
+  .performance-mode-switch { width: 100%; }
+  .performance-mode-switch button { flex: 1; padding: 8px 12px; }
+}
 @media (max-width: 639px) { .panel { padding: 18px; } .metric { padding: 12px; } }
 @media (max-width: 767px) {
   .dashboard-shell { flex-direction: column; }

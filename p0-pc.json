@@ -1,0 +1,179 @@
+{
+  "schema": "testnet_discovery.v1",
+  "at": "2026-10-17T02:44:22.526891+00:00",
+  "environment": "BINANCE_SPOT_TEST_NETWORK",
+  "host": "DESKTOP-6U1AMNC",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "testnet_rest": {
+    "reachable": true,
+    "status": 200,
+    "rtt_ms": 251.1
+  },
+  "clock": {
+    "server_time": "2026-10-17T02:44:23.675000+00:00",
+    "offset_ms": 750.7,
+    "rtt_ms": 168.7,
+    "ok": true
+  },
+  "btcusdt": {
+    "status": "TRADING",
+    "orderTypes": [
+      "LIMIT",
+      "LIMIT_MAKER",
+      "MARKET",
+      "STOP_LOSS",
+      "STOP_LOSS_LIMIT",
+      "TAKE_PROFIT",
+      "TAKE_PROFIT_LIMIT"
+    ],
+    "permissionSets": [
+      [
+        "SPOT"
+      ]
+    ],
+    "isSpotTradingAllowed": true,
+    "ocoAllowed": true,
+    "otoAllowed": true,
+    "cancelReplaceAllowed": true,
+    "filters": {
+      "PRICE_FILTER": {
+        "minPrice": "0.01000000",
+        "maxPrice": "1000000.00000000",
+        "tickSize": "0.01000000"
+      },
+      "LOT_SIZE": {
+        "minQty": "0.00001000",
+        "maxQty": "9000.00000000",
+        "stepSize": "0.00001000"
+      },
+      "ICEBERG_PARTS": {
+        "limit": 100
+      },
+      "MARKET_LOT_SIZE": {
+        "minQty": "0.00000000",
+        "maxQty": "133.97193096",
+        "stepSize": "0.00000000"
+      },
+      "TRAILING_DELTA": {
+        "minTrailingAboveDelta": 10,
+        "maxTrailingAboveDelta": 2000,
+        "minTrailingBelowDelta": 10,
+        "maxTrailingBelowDelta": 2000
+      },
+      "PERCENT_PRICE_BY_SIDE": {
+        "bidMultiplierUp": "1.2",
+        "bidMultiplierDown": "0.5",
+        "askMultiplierUp": "2",
+        "askMultiplierDown": "0.8",
+        "avgPriceMins": 5
+      },
+      "NOTIONAL": {
+        "minNotional": "5.00000000",
+        "applyMinToMarket": true,
+        "maxNotional": "9000000.00000000",
+        "applyMaxToMarket": false,
+        "avgPriceMins": 5
+      },
+      "MAX_NUM_ORDERS": {
+        "maxNumOrders": 200
+      },
+      "MAX_NUM_ORDER_LISTS": {
+        "maxNumOrderLists": 20
+      },
+      "MAX_NUM_ALGO_ORDERS": {
+        "maxNumAlgoOrders": 5
+      },
+      "MAX_NUM_ORDER_AMENDS": {
+        "maxNumOrderAmends": 10
+      }
+    }
+  },
+  "rate_limits": [
+    {
+      "rateLimitType": "REQUEST_WEIGHT",
+      "interval": "MINUTE",
+      "intervalNum": 1,
+      "limit": 6000
+    },
+    {
+      "rateLimitType": "ORDERS",
+      "interval": "SECOND",
+      "intervalNum": 10,
+      "limit": 50
+    },
+    {
+      "rateLimitType": "ORDERS",
+      "interval": "DAY",
+      "intervalNum": 1,
+      "limit": 160000
+    },
+    {
+      "rateLimitType": "RAW_REQUESTS",
+      "interval": "MINUTE",
+      "intervalNum": 5,
+      "limit": 300000
+    }
+  ],
+  "used_weight_header": {
+    "x-mbx-used-weight": "22",
+    "x-mbx-used-weight-1m": "22"
+  },
+  "account": {
+    "checked": false,
+    "why": "no Testnet keys in the environment"
+  },
+  "testnet_market_stream": {
+    "reachable": true,
+    "connect_ms": 576.0,
+    "first_message_ms": 1022.5,
+    "sample": {
+      "u": 5009592,
+      "s": "BTCUSDT",
+      "b": "81468.00000000",
+      "B": "29.25668000",
+      "a": "81468.01000000",
+      "A": "16.58218000"
+    }
+  },
+  "testnet_ws_api": {
+    "reachable": true,
+    "connect_ms": 449.8,
+    "first_message_ms": 558.3,
+    "sample": {
+      "id": "p0",
+      "status": 200,
+      "result": {},
+      "rateLimits": [
+        {
+          "rateLimitType": "REQUEST_WEIGHT",
+          "interval": "MINUTE",
+          "intervalNum": 1,
+          "limit": 6000,
+          "count": 25
+        }
+      ]
+    }
+  },
+  "mainnet_public_readonly": {
+    "spot_api": {
+      "status": 200,
+      "reachable": true,
+      "rtt_ms": 184.5
+    },
+    "spot_data_api": {
+      "status": 200,
+      "reachable": true,
+      "rtt_ms": 437.0
+    },
+    "usdm_futures": {
+      "status": 200,
+      "reachable": true,
+      "rtt_ms": 172.6
+    },
+    "archive": {
+      "status": 200,
+      "reachable": true,
+      "rtt_ms": 380.0
+    }
+  }
+}
