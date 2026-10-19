@@ -186,3 +186,21 @@ uv run python scripts/testnet_request.py resume --actor note --reason "drill don
 RESUME ทำได้เฉพาะตอน HALTED และจะผ่าน RECOVERING ก่อน: entry เริ่มอีกครั้งเมื่อการเช็กบัญชีเป็น MATCH เท่านั้น และจุดสูงสุดของทุก book เริ่มใหม่จาก equity ตอน resume
 
 HALT drill (P5 gate): หยุด conformance ก่อน (§5.4) แล้ว `halt` → ดูว่า Telegram ได้ CRITICAL, Worker tab เป็น HALTING แล้ว HALTED, บน Testnet ไม่มีคำสั่งค้าง → `resume` → RECOVERING แล้ว RUNNING
+
+## 13. P5: บอท R10a (tn-r10a-code-v1)
+
+กติกาเดียวกับ Shadow book pathA-r10a (frozen bd98dd8): band ±2% รอบ SMA100 ของราคาปิด perp × funding factor (0.5 เมื่อ funding เฉลี่ย 7 วัน > 0.0009) ได้เป้า BTC 0 / 50% / 100% ของ equity book (เริ่ม 2,000 USDT)
+
+- ตัดสินใจวันละครั้งจากราคาปิดเมื่อวาน: เริ่มลองตั้งแต่ 00:10 UTC และลองใหม่ทุก 30 นาทีจนกว่า data.binance.vision จะมีวันนั้น (ปกติหลายชั่วโมงหลังปิด เช่นเดียวกับ Shadow ที่รัน 08:28 UTC) ดาวน์โหลดใน thread แยก tick ไม่รอ
+- เก็บคำตัดสินพร้อม snapshot ของ input ใน `trading.exec_strategy_decisions` ครั้งเดียวต่อวัน (OPEN / REBALANCE / HOLD / NO_DECISION)
+- เป้าไม่เปลี่ยน = ไม่เทรด เว้นแต่สถานะจริงไม่ตรงเป้าเกิน 10% ของ equity (วันแรก หรือหลัง HALT แล้ว resume)
+- เทรดเป็น MARKET คำสั่งเดียวผ่าน gateway และ pre-trade ปกติ ลองได้ 5 ครั้งถ้าไม่ได้ fill; buy รอระหว่าง entry ถูกบล็อก; ไม่ส่งอะไรตอน RECOVERING / HALTING / HALTED; Guardian ดู book นี้ด้วย spot.tn.v1
+
+เปิดใช้ (หลัง P4 gate ผ่าน และหยุด conformance ตาม §5.4; ถ้าเปิดทั้งคู่ worker จะไม่ยอมเริ่ม):
+
+```
+setx WORKER_CONFORMANCE off
+setx WORKER_R10A on
+```
+
+แล้วดับเบิลคลิก `scripts\windows\update-worker.cmd`

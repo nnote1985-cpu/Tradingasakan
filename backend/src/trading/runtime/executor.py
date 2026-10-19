@@ -10,7 +10,8 @@ lease. One tick:
    every 30 s; never given up on by time alone) and polls open ones;
 3. lets Guardian (P5, ``runtime/guardian.py``) carry out operator HALT/RESUME
    requests, mark the guarded books and, while HALTING, cancel and reduce;
-4. asks the conformance profile, when it is on, for its next intent or cancel;
+4. asks the conformance profile, when it is on, for its next intent or cancel,
+   and the tn-r10a-code-v1 bot (``runtime/r10a.py``) for its daily rebalance;
 5. claims outbox rows under the lease token and submits them once, after
    writing SUBMITTING to the store, so a crash mid-submit is reconciled on the
    next start and never sent again.
@@ -55,6 +56,7 @@ from trading.runtime.persist import PersistStore, Record, TradeRecord
 
 if TYPE_CHECKING:
     from trading.runtime.guardian import Guardian
+    from trading.runtime.r10a import R10aBot
 
 SYMBOL = "BTCUSDT"
 UNKNOWN_FAST_S, UNKNOWN_ALERT_AFTER_S, UNKNOWN_SLOW_S = 2.0, 30.0, 30.0
@@ -94,6 +96,7 @@ class Executor:
     persist: PersistStore | None = None
     conformance: Conformance | None = None
     guardian: Guardian | None = None
+    r10a: R10aBot | None = None
     quote: Callable[[], Quote | None] = lambda: None
     verdict: Callable[[], tuple[str, datetime] | None] = lambda: None     # last account check and when it was read
     limits: PreTradeLimits = field(default_factory=PreTradeLimits)
@@ -174,6 +177,8 @@ class Executor:
                 self._try_recover()
             if in_budget() and self.conformance is not None and self.safety.allows_entries:
                 self._conformance(token)
+            if in_budget() and self.r10a is not None:
+                self.r10a.step(self, token)
             if in_budget():
                 self._submit_claimed(token)
             if in_budget() and self.persist is not None and self._due_every("backfill", BACKFILL_EVERY_S):
@@ -480,4 +485,5 @@ class Executor:
             "counts": dict(self.counts), "last_error": self.last_error,
             "conformance": None if self.conformance is None else self.conformance.body(),
             "guardian": None if self.guardian is None else self.guardian.body(),
+            "r10a": None if self.r10a is None else self.r10a.body(),
         }
