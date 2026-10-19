@@ -15,7 +15,9 @@ after stored orders and the exchange agree, and with WORKER_CONFORMANCE=on
 it runs the tn-conformance-v1 order profile every 4 hours (§5.4).
 Since P5 Guardian marks the guarded books at the bid on every fresh quote
 (spot.tn.v1: alert at 5% day loss or 15% drawdown, HALT at 25%) and carries out
-HALT/RESUME requests queued with scripts/testnet_request.py.
+HALT/RESUME requests queued with scripts/testnet_request.py, and with
+WORKER_R10A=on it runs the tn-r10a-code-v1 strategy (2,000 USDT, one decision
+per daily close; Guardian watches it). Conformance must be off then (§5.4).
 Run it under the process manager (scripts/windows/testnet-worker.ps1 on the
 PC, deploy/systemd/tradingasakan-worker.service on the VPS) so a crash restarts it.
 
@@ -29,6 +31,7 @@ Environment (all on the Host only; none of them belong in the repo or in chat):
     WORKER_FEEDS=off                        run without the P2 feeds (klines, quotes, user stream)
     WORKER_PERSIST=off                      do not write bars, trades, account checks or heartbeats to Supabase (P3)
     WORKER_CONFORMANCE=on                   send the tn-conformance-v1 orders (P4; default off). Needs execution enabled
+    WORKER_R10A=on                          run the tn-r10a-code-v1 strategy (P5; default off). Not with WORKER_CONFORMANCE=on
 """
 
 from __future__ import annotations
@@ -97,10 +100,19 @@ def build(env: dict[str, str] | None = None) -> tuple[Worker, Any]:
         from trading.runtime.conformance import Conformance
         from trading.runtime.executor import Executor
         from trading.runtime.guardian import GuardedBook, Guardian
+        from trading.runtime.r10a import ALLOCATION as R10A_ALLOCATION
+        from trading.runtime.r10a import BOOK as R10A_BOOK
+        from trading.runtime.r10a import R10aBot
 
         conformance = Conformance() if env.get("WORKER_CONFORMANCE", "off").strip().lower() == "on" else None
-        # Guardian always runs (operator HALT/RESUME); it marks the conformance book while that profile is on. R10a joins in P5 PR 2.
-        guardian = Guardian(store, [GuardedBook(CONFORMANCE_BOOK, CONFORMANCE_BUDGET)] if conformance else [])
+        r10a = R10aBot(store) if env.get("WORKER_R10A", "off").strip().lower() == "on" else None
+        if conformance and r10a:
+            # One Spot account runs one strategy; conformance stops before the P5 soak (§5.4).
+            raise WorkerRefused("WORKER_CONFORMANCE=on and WORKER_R10A=on: turn conformance off (setx WORKER_CONFORMANCE off) "
+                                "before the R10a soak")
+        # Guardian always runs (operator HALT/RESUME) and marks every book that may trade.
+        guardian = Guardian(store, ([GuardedBook(CONFORMANCE_BOOK, CONFORMANCE_BUDGET)] if conformance else [])
+                            + ([GuardedBook(R10A_BOOK, R10A_ALLOCATION)] if r10a else []))
 
         def quote() -> Any:
             return None if feeds is None else feeds.quotes.fresh_for_entry(SYMBOL, int(time.time() * 1000))
@@ -112,8 +124,8 @@ def build(env: dict[str, str] | None = None) -> tuple[Worker, Any]:
             return last["verdict"], datetime.fromtimestamp(last["at_ms"] / 1000, UTC)
 
         executor = Executor(store, BinanceSpotTestnet(rest), alerts, persist=recorder.store if recorder else None,
-                            conformance=conformance, guardian=guardian, quote=quote, verdict=verdict, log=_log)
-        _log(f"order execution on; conformance profile {'on' if conformance else 'off'}; "
+                            conformance=conformance, guardian=guardian, r10a=r10a, quote=quote, verdict=verdict, log=_log)
+        _log(f"order execution on; conformance profile {'on' if conformance else 'off'}; r10a {'on' if r10a else 'off'}; "
              f"guardian {', '.join(b.book for b in guardian.books) or 'requests only'}")
     worker = Worker(settings, cfg, rest, alerts, deadman=DeadMan(ping) if ping else None, store=store, feeds=feeds,
                     recorder=recorder, executor=executor, log=_log)

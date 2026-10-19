@@ -29,6 +29,7 @@ from decimal import Decimal
 from typing import Any
 
 import psycopg
+from psycopg.types.json import Jsonb
 
 from trading.contracts.enums import TradingMode
 from trading.execution.intent import OrderIntent
@@ -197,6 +198,53 @@ class ExecStore:
                                 "returning id", (self.account, kind, actor, reason)).fetchone()
         assert row is not None
         return int(row[0])
+
+    # --- strategy decisions (P5) ---------------------------------------------
+
+    def load_decision(self, book: str, day: Any) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            "select day, weight, previous_weight, action, notes, attempts, client_order_id, executed_at, outcome, decided_at "
+            "from trading.exec_strategy_decisions where account = %s and book = %s and day = %s", (self.account, book, day)).fetchone()
+        keys = ("day", "weight", "previous_weight", "action", "notes", "attempts", "client_order_id", "executed_at", "outcome",
+                "decided_at")
+        return None if row is None else dict(zip(keys, row, strict=True))
+
+    def last_weight(self, book: str, before: Any) -> Decimal | None:
+        """The weight of ``book``'s latest decision before ``before`` that had one."""
+        row = self.conn.execute("select weight from trading.exec_strategy_decisions where account = %s and book = %s and day < %s "
+                                "and weight is not null order by day desc limit 1", (self.account, book, before)).fetchone()
+        return None if row is None else Decimal(row[0])
+
+    def add_decision(self, token: int, now: datetime, *, book: str, rules_version: str, day: Any, weight: Decimal | None,
+                     previous_weight: Decimal | None, action: str, notes: str, inputs: dict[str, Any], inputs_sha256: str,
+                     data_ready_at: datetime) -> bool:
+        """Record ``book``'s decision for ``day`` once; earlier unexecuted decisions end as superseded. False if one exists."""
+        with self.conn.transaction():
+            self._check_token(token, now)
+            row = self.conn.execute(
+                "insert into trading.exec_strategy_decisions (account, book, rules_version, day, weight, previous_weight, action, notes, "
+                "inputs, inputs_sha256, data_ready_at, decided_at) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                "on conflict do nothing returning day",
+                (self.account, book, rules_version, day, weight, previous_weight, action, notes, Jsonb(inputs), inputs_sha256,
+                 data_ready_at, now)).fetchone()
+            if row is None:
+                return False
+            self.conn.execute("update trading.exec_strategy_decisions set executed_at = %s, outcome = 'superseded by ' || %s "
+                              "where account = %s and book = %s and day < %s and executed_at is null",
+                              (now, str(day), self.account, book, day))
+            return True
+
+    def decision_attempt(self, token: int, now: datetime, book: str, day: Any, attempts: int, client_order_id: str) -> None:
+        with self.conn.transaction():
+            self._check_token(token, now)
+            self.conn.execute("update trading.exec_strategy_decisions set attempts = %s, client_order_id = %s "
+                              "where account = %s and book = %s and day = %s", (attempts, client_order_id, self.account, book, day))
+
+    def finish_decision(self, token: int, now: datetime, book: str, day: Any, outcome: str) -> None:
+        with self.conn.transaction():
+            self._check_token(token, now)
+            self.conn.execute("update trading.exec_strategy_decisions set executed_at = %s, outcome = %s "
+                              "where account = %s and book = %s and day = %s and executed_at is null", (now, outcome, self.account, book, day))
 
     def accept_intent(self, intent: OrderIntent, *, unit_price: Decimal, budget: Decimal, base: str = "BTC") -> bool:
         """Insert the intent, reserve a buy's notional and queue EXECUTE_INTENT in one transaction.
