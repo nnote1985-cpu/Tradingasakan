@@ -164,3 +164,25 @@ setx WORKER_CONFORMANCE on
 | Restart ระหว่างรอบ | ปิด worker (Task Scheduler → End) ตอนที่ LIMIT ข้อ 4 ยังเปิดอยู่ แล้วเปิดใหม่ | เริ่มที่ RECOVERING, ถามคำสั่งเดิมแล้วทำรอบต่อ ไม่ส่งซ้ำ |
 | คำสั่งที่บอทไม่รู้จัก | วาง LIMIT เองบนเว็บ Testnet แล้ว restart worker | alert "open Testnet orders the bot does not know" และไม่เป็น RUNNING จนกว่าจะยกเลิกคำสั่งนั้น |
 | ปิดเน็ตตอนส่ง | ยากจะจับจังหวะบน PC จึงทดสอบด้วยโค้ด (`tests/integration/test_executor_p4.py`) | UNKNOWN → ถามซ้ำ → หยุดเปิดคำสั่งใหม่หลัง 30 วินาที |
+
+## 12. P5: Guardian และ HALT drill
+
+Guardian รันใน worker ทุก tick (ภายใต้ writer lease เดียวกับคำสั่ง) ไม่รอ strategy หรือ LLM
+
+- ทุกครั้งที่มีราคาสด (ไม่เกิน 5 วินาที) จะ mark แต่ละ book ที่ bid: allocation + เงินสดที่ fill ของ book นั้นขยับ + BTC ที่ถือ × bid
+- ระดับ `spot.tn.v1` (เท่ากับ `spot.v1`): ขาดทุน 5% ในวัน UTC เดียว = แจ้งเตือน, drawdown 15% จากจุดสูงสุด = แจ้งเตือน, drawdown 25% = HALT
+- HALT ทั้งบัญชีและ latch: ขึ้น safety epoch, บล็อก entry, ยกเลิกคำสั่งที่เปิดอยู่, ขาย BTC ของแต่ละ book ด้วย MARKET ผ่าน gateway ปกติ, ขายซ้ำถ้ามี fill มาช้า แล้วเป็น HALTED เมื่อไม่มีคำสั่งเปิด ไม่มีคำสั่งที่ไม่รู้ผล และทุก book ถือน้อยกว่าขั้นต่ำของ exchange
+- เที่ยงคืนหรือ restart ไม่ล้าง HALT; ทุกการแจ้งเตือน HALT, FLAT_CONFIRMED และ RESUME เก็บถาวรใน `trading.exec_risk_events`
+- ตอนนี้ guard เฉพาะ `tn-conformance-v1` (200 USDT) เมื่อ `WORKER_CONFORMANCE=on`; R10a เพิ่มใน P5 PR 2
+
+คำสั่ง (รันบน PC หรือ VPS ที่มี `DATABASE_URL`; สคริปต์ไม่คุยกับ Binance):
+
+```
+uv run python scripts/testnet_request.py status
+uv run python scripts/testnet_request.py halt --actor note --reason "HALT drill"
+uv run python scripts/testnet_request.py resume --actor note --reason "drill done"
+```
+
+RESUME ทำได้เฉพาะตอน HALTED และจะผ่าน RECOVERING ก่อน: entry เริ่มอีกครั้งเมื่อการเช็กบัญชีเป็น MATCH เท่านั้น และจุดสูงสุดของทุก book เริ่มใหม่จาก equity ตอน resume
+
+HALT drill (P5 gate): หยุด conformance ก่อน (§5.4) แล้ว `halt` → ดูว่า Telegram ได้ CRITICAL, Worker tab เป็น HALTING แล้ว HALTED, บน Testnet ไม่มีคำสั่งค้าง → `resume` → RECOVERING แล้ว RUNNING
