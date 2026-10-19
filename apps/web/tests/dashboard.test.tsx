@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { expect, test, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, expect, test, vi } from "vitest";
 import { AiTab } from "../src/AiTab";
 import type { DecisionsResponse, EquitySeries, PortfolioRow } from "../src/api";
 import { Dashboard } from "../src/App";
@@ -104,6 +104,8 @@ function row(label: string, over: Partial<PortfolioRow> = {}): PortfolioRow {
   return: "-0.01", drawdown: "0.1", exposure_share: "0", ...over,
   };
 }
+
+afterEach(cleanup);   // unmount, so no query keeps rendering after jsdom is torn down
 
 test("formats decimal strings without float money math", () => {
   expect(money("1234567.891", "USDT")).toBe("1,234,567.89 USDT");
