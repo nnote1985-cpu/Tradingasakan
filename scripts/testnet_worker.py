@@ -142,6 +142,11 @@ def build(env: dict[str, str] | None = None) -> tuple[Worker, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # The Windows task pipes stdout to a log in the console code page (cp874 on Note's PC); a character outside it, such
+    # as "§" in an operator's HALT reason, raised UnicodeEncodeError mid-tick on 2026-10-20 and dropped the HALT alert.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
     ap = argparse.ArgumentParser()
     ap.add_argument("--once", action="store_true", help="start, run one tick, stop")
     args = ap.parse_args(argv)

@@ -476,3 +476,13 @@ def test_a_fenced_order_write_stops_the_worker(tmp_path):
     w.start()
     with pytest.raises(LeaseLost):
         w.tick()
+
+
+def test_a_console_that_cannot_print_the_text_still_sends_the_alert(tmp_path):
+    def cp874_console(line: str) -> None:
+        line.encode("cp874")                                       # what print() does on Note's PC when piped to the log
+
+    sink = FlakySink()
+    q = AlertQueue(tmp_path / "alerts.jsonl", sink, "pc", lambda: T0, log=cp874_console)
+    q.push(Severity.CRITICAL, "guardian-halt", "HALT หยุดฉุกเฉิน: สั่งโดย note (ซ้อม HALT runbook §14)")
+    assert len(sink.sent) == 1 and "§14" in sink.sent[0] and q.pending() == []
