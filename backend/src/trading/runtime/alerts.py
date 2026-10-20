@@ -99,9 +99,12 @@ class AlertQueue:
             return
         self._last[key] = now
         alert = Alert(severity, key, text, now.isoformat(timespec="seconds"))
-        self.log(f"alert {alert.severity.value} {key}: {text}")
         with self.path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(asdict(alert), ensure_ascii=False) + "\n")
+        try:
+            self.log(f"alert {alert.severity.value} {key}: {text}")
+        except UnicodeError:
+            pass                                       # a console that cannot show the text must not drop the alert
         self.flush()
 
     def pending(self) -> list[Alert]:
