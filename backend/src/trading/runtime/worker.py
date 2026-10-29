@@ -231,8 +231,8 @@ class Worker:
         self._start_executor()
         self.alerts.flush()
         t = self.mono()
-        s._due |= {"clock": t + self.cfg.clock_every_s, "deadman": t + self.cfg.deadman_every_s, "flush": t + self.cfg.flush_every_s,
-                   "persist": t + self.cfg.persist_every_s}
+        s._due |= {"clock": t + self.cfg.clock_every_s, "account": t + self.cfg.clock_every_s, "deadman": t + self.cfg.deadman_every_s,
+                   "flush": t + self.cfg.flush_every_s, "persist": t + self.cfg.persist_every_s}
         self._heartbeat()
         self._persist()
 
@@ -242,6 +242,10 @@ class Worker:
             self._check_clock()
         if self.deadman is not None and self._due("deadman", self.cfg.deadman_every_s):
             self._ping()
+        # A failed account check at start (often the network, not the key) kept orders off for two days on 2026-10-26:
+        # until it passes, check again every minute.
+        if self.rest.creds is not None and self.state.account_ok is not True and self._due("account", self.cfg.clock_every_s):
+            self._check_account()
         if self._due("flush", self.cfg.flush_every_s):
             self.alerts.flush()
         self._drain_feeds()
@@ -314,10 +318,13 @@ class Worker:
         except Exception as e:  # noqa: BLE001 - any failure here is a credential incident, reported without the key
             status, data = 0, {"msg": type(e).__name__}
         ok = status == 200 and isinstance(data, dict) and data.get("canTrade") is True
+        was = self.state.account_ok
         self.state.account_ok = ok
         key = mask(self.rest.creds.api_key) if self.rest.creds else ""
         if ok:
             self.log(f"Testnet account ok (key {key}, {self.rest.creds.key_type if self.rest.creds else ''})")
+            if was is False:
+                self.alerts.push(Severity.INFO, "credential-ok", f"กุญแจ Testnet {key} ใช้ได้แล้ว worker กลับมาส่งคำสั่งได้")
         else:
             msg = data.get("msg") if isinstance(data, dict) else None
             self.alerts.push(Severity.CRITICAL, "credential", f"กุญแจ Testnet {key} ใช้ไม่ได้ จะไม่ส่งคำสั่งใดๆ ให้เช็กบน "
