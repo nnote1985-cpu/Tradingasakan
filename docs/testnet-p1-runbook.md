@@ -75,6 +75,11 @@ Task เริ่มเองตอน logon, รันแบบซ่อนห�
 ใช้ `deploy/systemd/tradingasakan-worker.service` ใส่ค่าใน `/etc/tradingasakan/worker.env` (mode 600) และเปิด NTP
 แล้วรัน `scripts/testnet_discovery.py` บน VPS ก่อน (ADR 0002 §2)
 
+ตั้งแต่ 2026-10-31 worker รันบน Oracle Cloud (Singapore, VM.Standard.A1.Flex 1 OCPU 6 GB, Ubuntu 22.04, user `trading`, โค้ดที่ `/opt/tradingasakan`) และ task บน PC ถูก Disable แล้ว
+อัปเดตโค้ดจาก PowerShell บน PC:
+`ssh -i $HOME\.ssh\oracle.key ubuntu@<ip> "sudo -u trading git -C /opt/tradingasakan pull --ff-only && sudo systemctl restart tradingasakan-worker"`
+ดู log: `sudo journalctl -u tradingasakan-worker -n 50` (เริ่มหรือรีสตาร์ทใช้เวลาเตรียมตัว 1–2 นาที)
+
 ## 8. ผล drill บน PC ของ Note (2026-10-17)
 
 | Drill | ผล |
@@ -224,4 +229,12 @@ setx WORKER_R10A on
 ผลซ้อม (2026-10-20, สั่งผ่านคิวคำสั่งโดย Claude ตามที่ Note ขอ):
 - ข้อ 1 HALT: 15:40:02Z ขึ้น epoch 2 ขาย 0.02408 BTC แบบ MARKET ได้ครบ FLAT_CONFIRMED แล้วเป็น HALTED เมื่อ 15:40:27Z พบบั๊ก: เหตุผลมีตัว "§" ซึ่ง console ของ PC (cp874) พิมพ์ไม่ได้ ทำให้แจ้งเตือน HALT ไม่ถึง Telegram แก้แล้วใน PR นี้
 - ข้อ 3 RESUME: 15:43:31Z เป็น RECOVERING แล้ว RUNNING เมื่อ 15:43:35Z บอทถือเงินสดอยู่ และจะซื้อกลับตามเป้าในรอบตัดสินใจถัดไป
-- ข้อ 2, 4, 5: ยังไม่ได้ซ้อม
+- ข้อ 2, 4, 5: ยังไม่ได้ซ้อม (ซ้อมแล้วบน Oracle VM ด้านล่าง)
+
+ผลซ้อม (2026-10-31, worker บน Oracle VM, HALT/RESUME สั่งผ่านคิวโดย Claude ตามที่ Note ขอ; บอทถือเงินสดอยู่ จึงไม่มีการขาย):
+- HALT: 01:32:23Z ขึ้น epoch 3 แล้วเป็น HALTED
+- ข้อ 4 Dead-man: `systemctl stop` 04:26:02Z แล้ว healthchecks.io แจ้ง DOWN ทาง Telegram และแจ้ง UP เมื่อเปิดกลับ
+- ข้อ 2 HALT ค้างข้ามการรีสตาร์ท: `systemctl start` 04:33:05Z แล้ว worker ตัวใหม่ยังเป็น HALTED, reconcile MATCH, ไม่มีคำสั่ง
+- ข้อ 5 เน็ตหลุด: บล็อก TCP ขาออก 443/5432/6543 ด้วย iptables 04:34:42Z–04:35:42Z (`systemd-run --on-active=60` ปลดเอง) stream ทั้งสามขึ้น error, worker ไม่ล่มและไม่เปลี่ยน process, heartbeat กลับมา 04:36:43Z, ไม่มีคำสั่ง UNKNOWN
+- RESUME: 04:37:07Z เป็น RECOVERING แล้ว RUNNING
+- ครบทั้ง 5 ข้อของ §14 แล้ว
