@@ -353,6 +353,25 @@ def test_bad_key_is_a_critical_credential_alert(tmp_path):
     assert "ด่วน" in alert and "qehU…" in alert and "SECRETKEY" not in alert
 
 
+def test_a_failed_account_check_is_retried_every_minute_until_it_passes(tmp_path):
+    http = FakeHttp(account=(0, {"msg": "TimeoutError"}))                      # the network, not the key, on 2026-10-26
+    w, sink, _, t = _worker(tmp_path, http=http)
+    w.start()
+    assert w.state.account_ok is False
+    http.account = (200, {"canTrade": True})
+    t[0] = 30
+    w.tick()
+    assert w.state.account_ok is False                                         # not due yet
+    t[0] = 60
+    w.tick()
+    assert w.state.account_ok is True and any("ใช้ได้แล้ว" in s for s in sink.sent)
+    assert any("/account" in u for u, _ in http.urls)
+    calls = len(http.urls)
+    t[0] = 200
+    w.tick()
+    assert not any("/account" in u for u, _ in http.urls[calls:])                # once it passes, no more checks
+
+
 def test_deadman_pings_on_schedule(tmp_path):
     pings: list[str] = []
     w, _, _, t = _worker(tmp_path, deadman=DeadMan("https://hc-ping.com/u", get=lambda u, _t: pings.append(u) or 200))
