@@ -166,6 +166,12 @@ class ExecStore:
         return self.conn.execute("select hwm, hwm_at, day, day_open from trading.exec_book_risk where account = %s and book = %s",
                                  (self.account, book)).fetchone()
 
+    def book_equity(self, book: str) -> tuple[Decimal | None, Decimal | None]:
+        """(hwm, last marked equity) for ``book``, (None, None) before its first mark."""
+        row = self.conn.execute("select hwm, last_equity from trading.exec_book_risk where account = %s and book = %s",
+                                (self.account, book)).fetchone()
+        return (None, None) if row is None else (row[0], row[1])
+
     def save_book_risk(self, book: str, profile: str, allocation: Decimal, hwm: Decimal, hwm_at: datetime, day: Any,
                        day_open: Decimal, equity: Decimal, at: datetime) -> None:
         self.conn.execute(
@@ -233,6 +239,13 @@ class ExecStore:
                               "where account = %s and book = %s and day < %s and executed_at is null",
                               (now, str(day), self.account, book, day))
             return True
+
+    def ai_spend(self, book: str, since: Any) -> Decimal:
+        """USD billed for ``book``'s stored AI proposals on decision days from ``since`` (unknown costs count as 0 here)."""
+        row = self.conn.execute(
+            "select coalesce(sum((inputs->'proposal'->>'cost_usd')::numeric), 0) from trading.exec_strategy_decisions "
+            "where account = %s and book = %s and day >= %s", (self.account, book, since)).fetchone()
+        return ZERO if row is None else Decimal(row[0])
 
     def decision_attempt(self, token: int, now: datetime, book: str, day: Any, attempts: int, client_order_id: str) -> None:
         with self.conn.transaction():
