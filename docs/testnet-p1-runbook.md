@@ -238,3 +238,32 @@ setx WORKER_R10A on
 - ข้อ 5 เน็ตหลุด: บล็อก TCP ขาออก 443/5432/6543 ด้วย iptables 04:34:42Z–04:35:42Z (`systemd-run --on-active=60` ปลดเอง) stream ทั้งสามขึ้น error, worker ไม่ล่มและไม่เปลี่ยน process, heartbeat กลับมา 04:36:43Z, ไม่มีคำสั่ง UNKNOWN
 - RESUME: 04:37:07Z เป็น RECOVERING แล้ว RUNNING
 - ครบทั้ง 5 ข้อของ §14 แล้ว
+
+## 15. P6: worker ตัวที่สองสำหรับบัญชี AI (tn-r2-v1)
+
+บัญชี Spot Testnet ที่สองรันเป็น service แยกบน VM เดียวกัน (`tradingasakan-worker@AI`) มี lease, heartbeat, dead-man,
+`var/worker-AI` และ `var/ingest-AI` ของตัวเอง ส่วน alert ขึ้นชื่อเครื่องตามด้วย `(AI)` และบัญชี DEFAULT (R10a) รันต่อตามเดิม
+ทุกคำสั่งรันบน VM หลัง `ssh` เข้าไปแล้ว ห้ามส่ง key, .pem หรือเนื้อหา env file ลงแชท
+
+1. อัปเดตโค้ด: `sudo -u trading git -C /opt/tradingasakan pull --ff-only && sudo systemctl restart tradingasakan-worker`
+2. สร้าง key บน VM (ไฟล์ .pem ไม่ออกจาก VM):
+   `sudo openssl genpkey -algorithm ed25519 -out /etc/tradingasakan/testnet-AI-ed25519.pem`
+   `sudo chown trading:trading /etc/tradingasakan/testnet-AI-ed25519.pem && sudo chmod 600 /etc/tradingasakan/testnet-AI-ed25519.pem`
+   `sudo openssl pkey -in /etc/tradingasakan/testnet-AI-ed25519.pem -pubout` แล้วนำ public key (ส่วน BEGIN/END PUBLIC KEY)
+   ไปลงทะเบียนที่ testnet.binance.vision ด้วย GitHub บัญชีที่สอง จะได้ API key ของบัญชีที่สอง
+3. สร้าง env file: `sudo cp /etc/tradingasakan/worker.env /etc/tradingasakan/worker-AI.env && sudo nano /etc/tradingasakan/worker-AI.env`
+   - เปลี่ยน `BINANCE_TESTNET_API_KEY` เป็น key ของบัญชีที่สอง และ `BINANCE_TESTNET_PRIVATE_KEY_PATH=/etc/tradingasakan/testnet-AI-ed25519.pem`
+   - ใส่ `WORKER_ACCOUNT=AI` และ `TN_ANTHROPIC_KEY=...`; ลบบรรทัด `WORKER_R10A` และ `WORKER_CONFORMANCE` (ถ้ามี worker จะไม่ยอมเริ่ม)
+   - `DEADMAN_PING_URL` ใช้ check ใหม่ของ healthchecks.io แยกจากของ DEFAULT
+   - ยังไม่ใส่ `WORKER_AI_R2=on`
+   - `sudo chown trading:trading /etc/tradingasakan/worker-AI.env && sudo chmod 600 /etc/tradingasakan/worker-AI.env`
+4. ติดตั้ง service: `sudo cp /opt/tradingasakan/deploy/systemd/tradingasakan-worker@.service /etc/systemd/system/ && sudo systemctl daemon-reload`
+   แล้ว `sudo systemctl enable --now tradingasakan-worker@AI`; ดู log `sudo journalctl -u tradingasakan-worker@AI -n 50`
+   ผ่านเมื่อ heartbeat ของบัญชี AI ขึ้นในแท็บ Worker และ reconcile เป็น MATCH
+5. ทดลองเรียกโมเดลจริงหนึ่งครั้ง (ประมาณ 0.02 USD ไม่บันทึกลง Supabase และไม่ส่งคำสั่ง):
+   `sudo -u trading bash -c 'set -a; . /etc/tradingasakan/worker-AI.env; set +a; cd /opt/tradingasakan && /usr/local/bin/uv run python scripts/ai_provider_smoke.py'`
+   ผ่านเมื่อพิมพ์ `status SUCCESS` และ target เป็น 0, 0.5 หรือ 1
+6. เปิดบอท: เพิ่ม `WORKER_AI_R2=on` ใน `worker-AI.env` แล้ว `sudo systemctl restart tradingasakan-worker@AI`
+   อัปเดตโค้ดครั้งต่อไปให้ restart ทั้งสอง service: `sudo systemctl restart tradingasakan-worker tradingasakan-worker@AI`
+
+ปิดบอท AI: ลบ `WORKER_AI_R2=on` แล้ว restart หรือ `sudo systemctl disable --now tradingasakan-worker@AI` (HALT ก่อนถ้ามี BTC ค้าง)

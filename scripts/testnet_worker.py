@@ -27,7 +27,8 @@ Environment (all on the Host only; none of them belong in the repo or in chat):
     BINANCE_TESTNET_API_KEY + BINANCE_TESTNET_PRIVATE_KEY_PATH (or BINANCE_TESTNET_API_SECRET)
     TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID    alerts (optional; queued in var/worker/alerts.jsonl without them)
     DEADMAN_PING_URL                        external monitor ping, e.g. https://hc-ping.com/<uuid> (optional)
-    WORKER_ACCOUNT                          default DEFAULT
+    WORKER_ACCOUNT                          default DEFAULT; another account (e.g. AI) keeps its own var/worker-<account>
+                                            and var/ingest-<account>, and its alerts name the account
     WORKER_FEEDS=off                        run without the P2 feeds (klines, quotes, user stream)
     WORKER_PERSIST=off                      do not write bars, trades, account checks or heartbeats to Supabase (P3)
     WORKER_CONFORMANCE=on                   send the tn-conformance-v1 orders (P4; default off). Needs execution enabled
@@ -41,6 +42,7 @@ from __future__ import annotations
 import argparse
 import os
 import platform
+import re
 import signal
 import sys
 import time
@@ -58,6 +60,7 @@ from trading.runtime.worker import LeaseLost, TestnetRest, Worker, WorkerConfig,
 
 ROOT = Path(__file__).resolve().parents[1]
 VAR = ROOT / "var" / "worker"
+ACCOUNT_NAME = re.compile(r"[A-Za-z0-9_-]{1,32}")
 
 # Exit codes the process manager reads: 0 clean stop, 2 configuration refused (do not restart fast), 3 lease lost.
 EXIT_REFUSED, EXIT_LEASE = 2, 3
@@ -67,13 +70,25 @@ def _log(msg: str) -> None:
     print(f"{datetime.now(UTC).isoformat(timespec='seconds')} {msg}", flush=True)
 
 
+def account_paths(account: str) -> tuple[Path, Path]:
+    """(worker var dir, ingest bars dir) for ``account``: DEFAULT keeps the original paths, others their own (P6)."""
+    if not ACCOUNT_NAME.fullmatch(account):
+        raise WorkerRefused(f"WORKER_ACCOUNT must be 1-32 letters, digits, '_' or '-', got {account!r}")
+    if account == "DEFAULT":
+        return VAR, ROOT / "var" / "ingest" / "bars"
+    return ROOT / "var" / f"worker-{account}", ROOT / "var" / f"ingest-{account}" / "bars"
+
+
 def build(env: dict[str, str] | None = None) -> tuple[Worker, Any]:
     env = dict(os.environ) if env is None else env
     settings = load_settings()
+    account = env.get("WORKER_ACCOUNT", "DEFAULT").strip() or "DEFAULT"
+    var, bars = account_paths(account)
     host = platform.node() or "host"
+    label = host if account == "DEFAULT" else f"{host} ({account})"
     token, chat = env.get("TELEGRAM_BOT_TOKEN", "").strip(), env.get("TELEGRAM_CHAT_ID", "").strip()
     sink = TelegramSink(token, chat) if token and chat else None
-    alerts = AlertQueue(VAR / "alerts.jsonl", sink, host, lambda: datetime.now(UTC), log=_log)
+    alerts = AlertQueue(var / "alerts.jsonl", sink, label, lambda: datetime.now(UTC), log=_log)
     creds = load_testnet_credentials(settings, env) if settings.testnet_execution_enabled else None
     ping = env.get("DEADMAN_PING_URL", "").strip()
     conn = None
@@ -86,13 +101,12 @@ def build(env: dict[str, str] | None = None) -> tuple[Worker, Any]:
         from trading.runtime.persist import PersistStore, Recorder
 
         conn = psycopg.connect(settings.database_url, autocommit=True, connect_timeout=10)
-        account = env.get("WORKER_ACCOUNT", "DEFAULT")
         store = ExecStore(conn, account)
         if env.get("WORKER_PERSIST", "on").strip().lower() != "off":
             recorder = Recorder(PersistStore(conn, account))
-    cfg = WorkerConfig(owner=f"{host}:{os.getpid()}", heartbeat_path=VAR / "heartbeat.json", host=host)
+    cfg = WorkerConfig(owner=f"{host}:{os.getpid()}", heartbeat_path=var / "heartbeat.json", host=host)
     rest = TestnetRest(creds)
-    feeds = None if env.get("WORKER_FEEDS", "on").strip().lower() == "off" else IngestService(BarStore(ROOT / "var" / "ingest" / "bars"), rest)
+    feeds = None if env.get("WORKER_FEEDS", "on").strip().lower() == "off" else IngestService(BarStore(bars), rest)
     executor = None
     if settings.testnet_execution_enabled and store is not None:
         from trading.execution.binance_spot import BinanceSpotTestnet
@@ -149,7 +163,7 @@ def build(env: dict[str, str] | None = None) -> tuple[Worker, Any]:
     worker = Worker(settings, cfg, rest, alerts, deadman=DeadMan(ping) if ping else None, store=store, feeds=feeds,
                     recorder=recorder, executor=executor, log=_log)
     if sink is None:
-        _log("TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set: alerts stay queued in var/worker/alerts.jsonl")
+        _log(f"TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set: alerts stay queued in {var / 'alerts.jsonl'}")
     if not ping:
         _log("DEADMAN_PING_URL not set: no external dead-man")
     return worker, conn
