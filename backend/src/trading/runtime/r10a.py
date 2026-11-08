@@ -160,13 +160,19 @@ def decide(daily: pd.DataFrame, funding: pd.Series, est: pd.Series, day: date, d
     return Decision(day, weight, notes, snap, sha, data_ready_at)
 
 
-def fetch_decision(day: date) -> Decision | None:
-    """Download the inputs (data.binance.vision, as the Shadow book) and decide. Runs off the tick thread."""
+def load_inputs(day: date) -> tuple[pd.DataFrame, pd.Series, pd.Series, list[str]]:
+    """Daily klines (gaps filled), funding and its proxy flags, as the Shadow book loads them."""
     from trading.alerts.live_data import daily_funding, daily_klines
 
     daily = daily_klines(SYMBOL, day - timedelta(days=HISTORY_DAYS), day)
     daily, filled = fill_gaps(daily, day, rest_daily_klines)
     funding, est = daily_funding(SYMBOL, day - timedelta(days=40), day)
+    return daily, funding, est, filled
+
+
+def fetch_decision(day: date) -> Decision | None:
+    """Download the inputs (data.binance.vision, as the Shadow book) and decide. Runs off the tick thread."""
+    daily, funding, est, filled = load_inputs(day)
     return decide(daily, funding, est, day, datetime.now(UTC), filled)
 
 
@@ -175,6 +181,11 @@ class R10aBot:
     store: ExecStore
     fetch: Callable[[date], Decision | None] = fetch_decision
     pool: ThreadPoolExecutor = field(default_factory=lambda: ThreadPoolExecutor(max_workers=1, thread_name_prefix="r10a"))
+    book: str = BOOK
+    rules_version: str = RULES_VERSION
+    allocation: Decimal = ALLOCATION
+    label: str = "R10a"                     # name in alerts
+    tag: str = "r10a"                       # decision_id prefix, alert keys, log lines
     _future: Future[Decision | None] | None = None
     _future_day: date | None = None
     _next_try: float = 0.0
@@ -185,11 +196,11 @@ class R10aBot:
     def step(self, ex: Executor, token: int) -> None:
         now = ex.now()
         day = now.date() - timedelta(days=1)
-        row = self.store.load_decision(BOOK, day)
+        row = self.store.load_decision(self.book, day)
         if row is None:
             if now.time() >= TRY_FROM:
                 self._decide(ex, token, day, now)
-            row = self.store.load_decision(BOOK, day)
+            row = self.store.load_decision(self.book, day)
         self.last = row
         if row is not None and row["executed_at"] is None and row["action"] in ("OPEN", "REBALANCE"):
             self._execute(ex, token, row)
@@ -206,7 +217,8 @@ class R10aBot:
                 d = fut.result()
             except Exception as e:  # noqa: BLE001 - a download error waits for the next try
                 self.last_note = f"inputs for {day} failed: {type(e).__name__}: {e}"[:300]
-                ex.alerts.push(Severity.WARNING, "r10a-inputs", f"R10a โหลดข้อมูลราคาหรือ funding ไม่สำเร็จ จะลองใหม่ใน 30 นาที ({self.last_note})")
+                ex.alerts.push(Severity.WARNING, f"{self.tag}-inputs",
+                               f"{self.label} โหลดข้อมูลราคาหรือ funding ไม่สำเร็จ จะลองใหม่ใน 30 นาที ({self.last_note})")
                 return
             if d is None:
                 self.last_note = f"the archive does not have {day} yet; trying again in 30 minutes"
@@ -215,12 +227,15 @@ class R10aBot:
             return
         if self._future is None and ex.mono() >= self._next_try:
             self._next_try = ex.mono() + RETRY_EVERY_S
-            self._future, self._future_day = self.pool.submit(self.fetch, day), day
+            self._future, self._future_day = self._submit(day), day
             self.last_note = f"loading inputs for {day}"
+
+    def _submit(self, day: date) -> Future[Decision | None]:
+        return self.pool.submit(self.fetch, day)
 
     def _record(self, ex: Executor, token: int, d: Decision, now: datetime) -> None:
         q, rules = ex.quote(), ex.rules
-        previous = self.store.last_weight(BOOK, d.day)
+        previous = self.store.last_weight(self.book, d.day)
         if d.weight is None:
             action = "NO_DECISION"
         elif previous is None:
@@ -234,17 +249,17 @@ class R10aBot:
             action = "REBALANCE" if self._off_target(d.weight, q.bid, rules.min_notional) else "HOLD"
         notes = d.notes if action != "REBALANCE" or d.weight != previous else d.notes + "; position does not match the target"
         self._pending = None
-        if self.store.add_decision(token, now, book=BOOK, rules_version=RULES_VERSION, day=d.day, weight=d.weight,
+        if self.store.add_decision(token, now, book=self.book, rules_version=self.rules_version, day=d.day, weight=d.weight,
                                    previous_weight=previous, action=action, notes=notes, inputs=d.inputs,
                                    inputs_sha256=d.inputs_sha256, data_ready_at=d.data_ready_at):
             w = "–" if d.weight is None else f"{d.weight:.0%}"
-            ex.alerts.push(Severity.INFO, "r10a-decision", f"R10a ตัดสินใจจากราคาปิดวันที่ {d.day}: {ACTION_TH[action]} "
+            ex.alerts.push(Severity.INFO, f"{self.tag}-decision", f"{self.label} ตัดสินใจจากราคาปิดวันที่ {d.day}: {ACTION_TH[action]} "
                            f"เป้าถือ BTC {w} ({notes})")
-            ex.log(f"r10a: {d.day} {action} weight {w}")
+            ex.log(f"{self.tag}: {d.day} {action} weight {w}")
 
     def _off_target(self, weight: Decimal, bid: Decimal, min_notional: Decimal) -> bool:
-        held, cash = self.store.position(BOOK, SYMBOL, BASE, QUOTE)
-        equity = ALLOCATION + cash + held * bid
+        held, cash = self.store.position(self.book, SYMBOL, BASE, QUOTE)
+        equity = self.allocation + cash + held * bid
         return abs(weight * equity - held * bid) > max(min_notional, equity * Decimal("0.1"))
 
     # --- executing ---------------------------------------------------------------------------
@@ -252,8 +267,8 @@ class R10aBot:
     def _execute(self, ex: Executor, token: int, row: dict[str, Any]) -> None:
         if ex.safety.state not in TRADING or ex.rules is None:
             return
-        if any(o.intent.book == BOOK and not o.is_terminal for o in ex.orders.values()) or \
-                any(i.book == BOOK for _, i in ex.waiting.values()):
+        if any(o.intent.book == self.book and not o.is_terminal for o in ex.orders.values()) or \
+                any(i.book == self.book for _, i in ex.waiting.values()):
             return
         now, day = ex.now(), row["day"]
         if row["client_order_id"]:
@@ -261,13 +276,13 @@ class R10aBot:
             if o is not None and not o.is_terminal:
                 return
             if o is not None and o.filled_qty > 0:
-                self.store.finish_decision(token, now, BOOK, day, f"{o.intent.side.value} {o.filled_qty} BTC, {o.state.value}")
-                ex.alerts.push(Severity.INFO, "r10a-trade", f"R10a {'ซื้อ' if o.intent.side is Side.BUY else 'ขาย'} {o.filled_qty} BTC "
+                self.store.finish_decision(token, now, self.book, day, f"{o.intent.side.value} {o.filled_qty} BTC, {o.state.value}")
+                ex.alerts.push(Severity.INFO, f"{self.tag}-trade", f"{self.label} {'ซื้อ' if o.intent.side is Side.BUY else 'ขาย'} {o.filled_qty} BTC "
                                f"แล้ว ตามคำตัดสินวันที่ {day} ({o.state.value})")
                 return
             if row["attempts"] >= MAX_ATTEMPTS:
-                self.store.finish_decision(token, now, BOOK, day, f"gave up after {MAX_ATTEMPTS} orders without a fill")
-                ex.alerts.push(Severity.CRITICAL, "r10a-trade", f"R10a ส่งคำสั่ง {MAX_ATTEMPTS} ครั้งแล้วไม่ได้ fill เลย หยุดสำหรับวันที่ "
+                self.store.finish_decision(token, now, self.book, day, f"gave up after {MAX_ATTEMPTS} orders without a fill")
+                ex.alerts.push(Severity.CRITICAL, f"{self.tag}-trade", f"{self.label} ส่งคำสั่ง {MAX_ATTEMPTS} ครั้งแล้วไม่ได้ fill เลย หยุดสำหรับวันที่ "
                                f"{day} book จะยังไม่ตรงเป้าจนกว่าจะมีคำตัดสินถัดไป ให้บอก Claude ใน thread")
                 return
         q = ex.quote()
@@ -275,8 +290,8 @@ class R10aBot:
             return
         rules = ex.rules
         weight = Decimal(row["weight"])
-        held, cash = self.store.position(BOOK, SYMBOL, BASE, QUOTE)
-        equity = ALLOCATION + cash + held * q.bid
+        held, cash = self.store.position(self.book, SYMBOL, BASE, QUOTE)
+        equity = self.allocation + cash + held * q.bid
         delta = weight * equity - held * q.bid
         if delta > 0:
             side, price = Side.BUY, q.ask
@@ -286,12 +301,12 @@ class R10aBot:
             side, price = Side.SELL, q.bid
             qty = rules.round_qty(max(held, ZERO) if weight == 0 else min(max(held, ZERO), -delta / q.bid))
         if qty < rules.min_qty or qty * price < rules.min_notional:
-            self.store.finish_decision(token, now, BOOK, day, "already at the target (the difference is below the exchange minimum)")
+            self.store.finish_decision(token, now, self.book, day, "already at the target (the difference is below the exchange minimum)")
             return
         if side is Side.BUY and not ex.safety.allows_entries:
             return                                                 # waits for RUNNING
         n = int(row["attempts"]) + 1
-        intent = OrderIntent(mode=TradingMode.TESTNET, book=BOOK, decision_id=f"r10a-{day}", leg=f"rebalance-{n}", symbol=SYMBOL,
+        intent = OrderIntent(mode=TradingMode.TESTNET, book=self.book, decision_id=f"{self.tag}-{day}", leg=f"rebalance-{n}", symbol=SYMBOL,
                              side=side, order_type=OrderType.MARKET, qty=qty, limit_price=None, created_at=now,
                              safety_epoch=ex.safety.epoch, reduce_only=side is Side.SELL)
         try:
@@ -300,16 +315,16 @@ class R10aBot:
         except IntentRefused as e:
             self.last_note = f"{day} {side.value} {qty} not accepted: {e}"
             if str(e) != "ENTRIES_BLOCKED_" + ex.safety.state.value:
-                ex.alerts.push(Severity.WARNING, "r10a-trade", f"R10a ส่งคำสั่งไม่ได้ ({self.last_note})")
+                ex.alerts.push(Severity.WARNING, f"{self.tag}-trade", f"{self.label} ส่งคำสั่งไม่ได้ ({self.last_note})")
             return
-        self.store.decision_attempt(token, now, BOOK, day, n, intent.client_order_id)
+        self.store.decision_attempt(token, now, self.book, day, n, intent.client_order_id)
         self.last_note = f"{day}: {side.value} {qty} BTC sent (attempt {n})"
 
     # --- status ------------------------------------------------------------------------------
 
     def body(self) -> dict[str, Any]:
         r = self.last
-        return {"book": BOOK, "allocation": str(ALLOCATION), "note": self.last_note,
+        return {"book": self.book, "allocation": str(self.allocation), "note": self.last_note,
                 "decision": None if r is None else {"day": str(r["day"]), "weight": None if r["weight"] is None else str(r["weight"]),
                                                     "action": r["action"], "attempts": r["attempts"], "outcome": r["outcome"]}}
 

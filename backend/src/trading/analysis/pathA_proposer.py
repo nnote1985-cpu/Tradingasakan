@@ -133,8 +133,12 @@ def user_message(proposal_id: str, snap: dict[str, Any], current: float) -> str:
 
 def propose(proposal_id: str, snap: dict[str, Any], current: float, code_weight: float | None,
             provider: pf.Provider, graph: AgentGraphConfig, budget_left: Decimal,
-            clock: Callable[[], datetime]) -> dict[str, Any]:
-    """Ask for one proposal and compile it. Returns a JSON-safe record; ``outcome.accepted`` False keeps ``current``."""
+            clock: Callable[[], datetime], experiment_id: str = EXPERIMENT_ID,
+            arm_id: str = "pathA-p5-r2.ai") -> dict[str, Any]:
+    """Ask for one proposal and compile it. Returns a JSON-safe record; ``outcome.accepted`` False keeps ``current``.
+
+    ``experiment_id`` and ``arm_id`` label the request record only; the model never sees them (Testnet P6 reuses the
+    prompt unchanged under its own experiment)."""
     role = graph.role("proposer")
     assert role.timeout_ms is not None and role.max_output_tokens is not None and graph.max_run_cost_usd is not None
     if provider.model_id not in ("mock", role.model_id):
@@ -142,8 +146,8 @@ def propose(proposal_id: str, snap: dict[str, Any], current: float, code_weight:
     start = clock()
     deadline = start + timedelta(milliseconds=role.timeout_ms)
     manifest = hashlib.sha256(json.dumps(snap, sort_keys=True).encode()).hexdigest()
-    req = AnalysisRequest(request_id=f"{proposal_id}:req", run_id=f"{proposal_id}:run", experiment_id=EXPERIMENT_ID,
-                          arm_id="pathA-p5-r2.ai", proposal_id=proposal_id, snapshot_id=snap["snapshot_id"],
+    req = AnalysisRequest(request_id=f"{proposal_id}:req", run_id=f"{proposal_id}:run", experiment_id=experiment_id,
+                          arm_id=arm_id, proposal_id=proposal_id, snapshot_id=snap["snapshot_id"],
                           context_manifest_hash=manifest, as_of=start, valid_until=deadline, graph_hash=graph.graph_hash(),
                           task=TASK.format(current=current))
     resp: SpotWeightProposal | None = None

@@ -32,6 +32,8 @@ Environment (all on the Host only; none of them belong in the repo or in chat):
     WORKER_PERSIST=off                      do not write bars, trades, account checks or heartbeats to Supabase (P3)
     WORKER_CONFORMANCE=on                   send the tn-conformance-v1 orders (P4; default off). Needs execution enabled
     WORKER_R10A=on                          run the tn-r10a-code-v1 strategy (P5; default off). Not with WORKER_CONFORMANCE=on
+    WORKER_AI_R2=on                         run the tn-r2-v1 AI proposer instead (P6; default off; its own account).
+                                            Needs TN_ANTHROPIC_KEY; not with WORKER_R10A=on or WORKER_CONFORMANCE=on
 """
 
 from __future__ import annotations
@@ -101,18 +103,30 @@ def build(env: dict[str, str] | None = None) -> tuple[Worker, Any]:
         from trading.runtime.executor import Executor
         from trading.runtime.guardian import GuardedBook, Guardian
         from trading.runtime.r10a import ALLOCATION as R10A_ALLOCATION
-        from trading.runtime.r10a import BOOK as R10A_BOOK
         from trading.runtime.r10a import R10aBot
 
         conformance = Conformance() if env.get("WORKER_CONFORMANCE", "off").strip().lower() == "on" else None
-        r10a = R10aBot(store) if env.get("WORKER_R10A", "off").strip().lower() == "on" else None
+        r10a: R10aBot | None = R10aBot(store) if env.get("WORKER_R10A", "off").strip().lower() == "on" else None
+        if env.get("WORKER_AI_R2", "off").strip().lower() == "on":
+            from trading.analysis.pathA_filter import AnthropicProvider
+            from trading.analysis.pathA_proposer import load_proposer_graph
+            from trading.runtime.ai_r2 import KEY_ENV, AiR2Bot
+
+            if r10a or conformance:
+                # One Spot account runs one strategy: the AI book needs its own Testnet account (testnet-p6-plan.md §2).
+                raise WorkerRefused("WORKER_AI_R2=on with WORKER_R10A=on or WORKER_CONFORMANCE=on: the AI book runs alone "
+                                    "on its own account")
+            if not env.get(KEY_ENV, "").strip():
+                raise WorkerRefused(f"WORKER_AI_R2=on needs {KEY_ENV} in the environment")
+            graph = load_proposer_graph()
+            r10a = AiR2Bot(store, provider=AnthropicProvider(graph.role("proposer").model_id, env[KEY_ENV].strip()), graph=graph)
         if conformance and r10a:
             # One Spot account runs one strategy; conformance stops before the P5 soak (§5.4).
             raise WorkerRefused("WORKER_CONFORMANCE=on and WORKER_R10A=on: turn conformance off (setx WORKER_CONFORMANCE off) "
                                 "before the R10a soak")
         # Guardian always runs (operator HALT/RESUME) and marks every book that may trade.
         guardian = Guardian(store, ([GuardedBook(CONFORMANCE_BOOK, CONFORMANCE_BUDGET)] if conformance else [])
-                            + ([GuardedBook(R10A_BOOK, R10A_ALLOCATION)] if r10a else []))
+                            + ([GuardedBook(r10a.book, R10A_ALLOCATION)] if r10a else []))
 
         def quote() -> Any:
             return None if feeds is None else feeds.quotes.fresh_for_entry(SYMBOL, int(time.time() * 1000))
@@ -130,7 +144,7 @@ def build(env: dict[str, str] | None = None) -> tuple[Worker, Any]:
         executor = Executor(store, BinanceSpotTestnet(rest), alerts, persist=recorder.store if recorder else None,
                             conformance=conformance, guardian=guardian, r10a=r10a, quote=quote, reference=reference,
                             verdict=verdict, log=_log)
-        _log(f"order execution on; conformance profile {'on' if conformance else 'off'}; r10a {'on' if r10a else 'off'}; "
+        _log(f"order execution on; conformance profile {'on' if conformance else 'off'}; strategy {r10a.book if r10a else 'off'}; "
              f"guardian {', '.join(b.book for b in guardian.books) or 'requests only'}")
     worker = Worker(settings, cfg, rest, alerts, deadman=DeadMan(ping) if ping else None, store=store, feeds=feeds,
                     recorder=recorder, executor=executor, log=_log)
