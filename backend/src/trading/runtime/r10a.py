@@ -12,7 +12,11 @@ inputs and rule as the Shadow book pathA-r10a (frozen bd98dd8, unchanged):
 
 Inputs come from data.binance.vision in a background thread, from 00:10 UTC
 and every 30 minutes until the archive has the day; a tick never waits on
-them. The decision and a snapshot of its inputs are stored once
+them. Since v1.1, a daily close the archive skipped before that day (the
+archive has no 2026-10-28) is taken from the Binance futures REST API, so one
+missing file cannot stop SMA100 for 100 days; the day being decided still comes
+only from the archive, so the decision time is unchanged. Filled days are listed
+in the snapshot (``rest_filled_days``). The decision and a snapshot of its inputs are stored once
 (``trading.exec_strategy_decisions``). As in the Shadow book, an unchanged
 target is not traded again; the bot also trades when the book's position does
 not match the target (the first day, or after a HALT and a resume).
@@ -48,13 +52,14 @@ if TYPE_CHECKING:
     from trading.runtime.executor import Executor
 
 BOOK = "tn-r10a-code-v1"
-RULES_VERSION = "tn-r10a-code-v1"          # pathA-r10a's rule at bd98dd8, on Testnet orders
+RULES_VERSION = "tn-r10a-code-v1.1"        # pathA-r10a's rule at bd98dd8, on Testnet orders; v1.1 fills archive gaps
 ALLOCATION = Decimal("2000")               # first soak (§12): one rebalance stays under the 2,000 USDT order cap
 SYMBOL, BASE, QUOTE = "BTCUSDT", "BTC", "USDT"
 TRY_FROM = dtime(0, 10)                     # UTC; the daily archive usually has the day some hours later
 RETRY_EVERY_S = 1800.0
 MAX_ATTEMPTS = 5
 HISTORY_DAYS = 400                          # SMA100 needs 100 closes; the Shadow book loads 400
+REST_KLINES = "https://fapi.binance.com/fapi/v1/klines"
 TRADING = (SafetyState.RUNNING, SafetyState.SOFT_PAUSED, SafetyState.REDUCING)
 ZERO = Decimal(0)
 ACTION_TH = {"OPEN": "เปิดพอร์ต", "REBALANCE": "ปรับสัดส่วน", "HOLD": "เป้าเท่าเดิม ไม่เทรด", "NO_DECISION": "ข้อมูลไม่พอ คงสถานะเดิม"}
@@ -74,7 +79,46 @@ def _num(x: Any) -> float | None:
     return None if x is None or x != x else float(x)
 
 
-def decide(daily: pd.DataFrame, funding: pd.Series, est: pd.Series, day: date, data_ready_at: datetime) -> Decision | None:
+def fill_gaps(daily: pd.DataFrame, day: date, rest: Callable[[date, date], pd.DataFrame]) -> tuple[pd.DataFrame, list[str]]:
+    """Daily closes the archive skipped between its first row and the day before ``day``, taken from ``rest``.
+
+    ``day`` itself is never filled: whether the day is decided still waits on the archive."""
+    from trading.alerts.live_data import missing_days
+
+    if not len(daily):
+        return daily, []
+    idx = pd.DatetimeIndex(daily.index)
+    gaps = missing_days(idx, idx[0].date(), day - timedelta(days=1))
+    if not gaps:
+        return daily, []
+    got = rest(date.fromisoformat(gaps[0]), date.fromisoformat(gaps[-1]))
+    got = got[pd.DatetimeIndex(got.index).strftime("%Y-%m-%d").isin(gaps)]
+    if not len(got):
+        return daily, []
+    out = pd.concat([daily, got]).sort_index()
+    return out[~out.index.duplicated(keep="first")], [str(t.date()) for t in got.index]
+
+
+def rest_daily_klines(start: date, end: date) -> pd.DataFrame:
+    """Closed 1d perp klines for [start, end] from the futures REST API (public, no key)."""
+    import urllib.parse
+
+    from trading.market_data.binance_public import _get
+
+    lo = int(pd.Timestamp(start, tz="UTC").timestamp() * 1000)
+    hi = int((pd.Timestamp(end, tz="UTC") + pd.Timedelta(days=1)).timestamp() * 1000) - 1
+    q = urllib.parse.urlencode({"symbol": SYMBOL, "interval": "1d", "startTime": lo, "endTime": hi, "limit": 1000})
+    raw = _get(f"{REST_KLINES}?{q}", timeout=30)
+    rows = json.loads(raw or b"[]")
+    now_ms = datetime.now(UTC).timestamp() * 1000
+    rows = [r for r in rows if r[6] < now_ms]                         # closed days only
+    idx = pd.DatetimeIndex([pd.Timestamp(int(r[0]), unit="ms", tz="UTC") for r in rows], name="open_time")
+    return pd.DataFrame({c: [float(r[i]) for r in rows] for i, c in enumerate(["open", "high", "low", "close", "volume"], 1)},
+                        index=idx)
+
+
+def decide(daily: pd.DataFrame, funding: pd.Series, est: pd.Series, day: date, data_ready_at: datetime,
+           rest_filled: list[str] | None = None) -> Decision | None:
     """The R10a decision at ``day``'s close, or None when the data does not reach ``day`` yet."""
     from trading.alerts.live_data import FUNDING_POLICY
     from trading.alerts.risk_check import missing_inputs, signals
@@ -94,11 +138,15 @@ def decide(daily: pd.DataFrame, funding: pd.Series, est: pd.Series, day: date, d
         d = last - timedelta(days=i)
         window.append({"day": str(d.date()), "funding": _num(funding.get(d)),
                        "source": "proxy" if bool(est.get(d, False)) else ("actual" if d in funding.index else "missing")})
+    if window[-1]["source"] == "missing":
+        return None                       # the day's funding (print or premium-index proxy) is not out yet: wait
     proxy = sum(1 for x in window if x["source"] == "proxy")
     snap = {"close_perp": _num(t["close"]), "sma100": _num(t["sma100"]), "band": BAND, "band_state": _num(state.iloc[-1]),
             "funding_7d_per_day": _num(t["funding_7d_per_day"]), "funding_hot": None if t["funding_hot"] is None
             or t["funding_hot"] != t["funding_hot"] else bool(t["funding_hot"]), "suggested_btc_weight": _num(w),
             "funding_window": window, "funding_policy": FUNDING_POLICY["version"], "funding_proxy_days": proxy}
+    if rest_filled:
+        snap["rest_filled_days"] = rest_filled
     if w != w:
         weight, notes = None, ", ".join(missing_inputs(sig)) or "inputs missing"
     else:
@@ -117,8 +165,9 @@ def fetch_decision(day: date) -> Decision | None:
     from trading.alerts.live_data import daily_funding, daily_klines
 
     daily = daily_klines(SYMBOL, day - timedelta(days=HISTORY_DAYS), day)
+    daily, filled = fill_gaps(daily, day, rest_daily_klines)
     funding, est = daily_funding(SYMBOL, day - timedelta(days=40), day)
-    return decide(daily, funding, est, day, datetime.now(UTC))
+    return decide(daily, funding, est, day, datetime.now(UTC), filled)
 
 
 @dataclass
