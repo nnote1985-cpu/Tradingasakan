@@ -1,0 +1,31 @@
+# A Testnet worker for another Spot Testnet account (testnet-p6-plan.md §4, PR 2), e.g. the AI book:
+#   sudo systemctl enable --now tradingasakan-worker@AI
+# Keys go in /etc/tradingasakan/worker-<instance>.env (mode 600, owner trading), never in the repo:
+#   TRADING_MODE=TESTNET
+#   TESTNET_EXECUTION_ENABLED=true
+#   WORKER_ACCOUNT=AI                        (must match the instance name; the lease and heartbeat are per account)
+#   WORKER_AI_R2=on                          (only after scripts/ai_provider_smoke.py passed)
+#   TN_ANTHROPIC_KEY=...
+#   DATABASE_URL=...
+#   BINANCE_TESTNET_API_KEY=...              (the second Testnet account's key, not DEFAULT's)
+#   BINANCE_TESTNET_PRIVATE_KEY_PATH=/etc/tradingasakan/testnet-<instance>-ed25519.pem
+#   TELEGRAM_BOT_TOKEN=...  TELEGRAM_CHAT_ID=...  DEADMAN_PING_URL=... (its own healthchecks.io check)
+# The DEFAULT account keeps running under tradingasakan-worker.service.
+[Unit]
+Description=Tradingasakan Testnet worker (%i)
+After=network-online.target time-sync.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+User=trading
+WorkingDirectory=/opt/tradingasakan
+EnvironmentFile=/etc/tradingasakan/worker-%i.env
+ExecStart=/usr/local/bin/uv run python scripts/testnet_worker.py
+Restart=always
+RestartSec=30
+TimeoutStopSec=20
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target
