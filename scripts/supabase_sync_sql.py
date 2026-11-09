@@ -32,11 +32,12 @@ def j(v) -> str:
     return q(json.dumps(v, ensure_ascii=False)) + "::jsonb"
 
 
-def book_sql(state: dict) -> list[str]:
+def book_sql(state: dict, base: str | None = None) -> list[str]:
+    """``base``: for a continued version (<book>-<id>, docs/data-patches.md), the frozen book it runs."""
     v = state["rules_version"]
     opened = state["journal"][0]["date"]
     out = [f"insert into paper.books (rules_version, frozen_branch, start_equity, opened_on) values "
-           f"({q(v)}, {q('frozen/' + v)}, {q(state['start_equity'])}, {q(opened)}) "
+           f"({q(v)}, {q('frozen/' + (base or v))}, {q(state['start_equity'])}, {q(opened)}) "
            f"on conflict (rules_version) do update set updated_at = now();"]
     for i, e in enumerate(state["journal"]):
         out.append("insert into paper.journal (rules_version, seq, close_date, kind, weight, at, notes) values "
@@ -64,7 +65,12 @@ def main() -> None:
         if state.get("format"):     # pathA-v1.2 and later: mirrored to the trading schema only
             print(f"-- {state.get('rules_version') or state.get('experiment_id')} ({state['format']}) is not mirrored to paper.*", file=sys.stderr)
             continue
-        lines += book_sql(state)
+        marker = p.with_name("continued_from.json")
+        if marker.exists():
+            cont = json.loads(marker.read_text())
+            lines += book_sql({**state, "rules_version": cont["book"]}, cont["base_book"])
+        else:
+            lines += book_sql(state)
     if args.risk_json:
         s = json.loads(Path(args.risk_json).read_text())
         lines.append(f"insert into paper.risk_checks (day, summary) values ({q(s['date'])}, {j(s)}) "

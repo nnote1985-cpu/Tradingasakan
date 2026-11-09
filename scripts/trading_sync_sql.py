@@ -67,7 +67,7 @@ def _entry(key: str, portfolio: str, at: str, memo: str, lines: list[tuple[str, 
 
 def book_sql(state: dict, commit: str) -> list[str]:
     v = state["rules_version"]
-    out = [f"insert into trading.strategy_versions (label, code_commit, frozen_ref) values ({q(v)}, {q(commit)}, {q('frozen/' + v)}) "
+    out = [f"insert into trading.strategy_versions (label, code_commit, frozen_ref) values ({q(v)}, {q(commit)}, {q('frozen/' + BASE_OF.get(v, v))}) "
            "on conflict (label) do nothing;"]
     opened_at = state["journal"][0].get("at") or state["journal"][0]["date"]
     for book in ("paper", "buy_and_hold"):
@@ -107,6 +107,7 @@ def book_sql(state: dict, commit: str) -> list[str]:
 
 
 RISK_AND_AGENT_TABLES = False      # set by --risk-and-agent-tables
+BASE_OF: dict[str, str] = {}       # continued version (<book>-<id>) -> the frozen book whose code it runs
 ACCOUNTS = {"capital": "owner_capital", "inventory_at_cost": "btc_position_cost"}
 COMMITS = ["pathA-v1=42920ba", "pathA-v1.1=5306f62", "pathA-v1.2=34028a6", "pathA-p5-r1=2ae53c7",   # frozen/<version> heads
            "futures-r7=39488df", "pathA-p5-r2=a6e1c33", "pathA-r10a=bd98dd8", "futures-r11=bd98dd8"]
@@ -114,7 +115,7 @@ COMMITS = ["pathA-v1=42920ba", "pathA-v1.1=5306f62", "pathA-v1.2=34028a6", "path
 
 def _version_and_portfolio(v: str, commit: str, label: str, start_equity) -> list[str]:
     return [f"insert into trading.strategy_versions (label, code_commit, frozen_ref) values ({q(v)}, {q(commit)}, "
-            f"{q('frozen/' + v)}) on conflict (label) do nothing;",
+            f"{q('frozen/' + BASE_OF.get(v, v))}) on conflict (label) do nothing;",
             "insert into trading.portfolios (label, owner_id, mode, currency, initial_equity, active_version_id) "
             f"select {q(label)}, w.owner_id, 'SHADOW', 'USDT', {q(d(start_equity))}, "
             f"(select id from trading.strategy_versions where label = {q(v)}) from trading.workspace_settings w "
@@ -240,16 +241,25 @@ def main() -> None:
         v = s.get("rules_version") or s["experiment_id"]
         if v not in commits:
             raise SystemExit(f"no frozen commit known for {v}: pass --commit {v}=<sha>")
+        commit = commits[v]
+        marker = p.with_name("continued_from.json")
+        if marker.exists():
+            # a continued version: same frozen code and commit, its own portfolios named after the folder
+            cont = json.loads(marker.read_text())
+            if cont["base_book"] != v or cont["book"] != p.parent.name:
+                raise SystemExit(f"{marker} does not match {p}")
+            BASE_OF[cont["book"]] = v
+            s = {**s, **{k: cont["book"] for k in ("rules_version", "experiment_id") if k in s}}
         if s.get("format") == "trend_perp_book.v1":
-            lines += trend_perp_book_sql(s, commits[v])
+            lines += trend_perp_book_sql(s, commit)
         elif s.get("format") == "paired_book.v1":
-            lines += paired_book_sql(s, commits[v])
+            lines += paired_book_sql(s, commit)
         elif s.get("format") == "proposal_book.v1":
-            lines += proposal_book_sql(s, commits[v])
+            lines += proposal_book_sql(s, commit)
         elif s.get("format") == "rebalance_book.v1":
-            lines += rebalance_book_sql(s, commits[v])
+            lines += rebalance_book_sql(s, commit)
         else:
-            lines += book_sql(s, commits[v])
+            lines += book_sql(s, commit)
     lines.append("commit;")
     print("\n".join(lines))
 
