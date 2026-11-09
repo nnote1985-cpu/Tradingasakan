@@ -266,6 +266,7 @@ export type WorkerExecution = {
   counts: Record<string, number>;
   last_error: string | null;
   conformance: { book: string; cycle: string | null; cycles_done: number; note: string } | null;
+  r10a?: { book: string; allocation: string; note: string } | null;   // the daily bot this account runs (R10a or AI r2)
   guardian?: {
     profile: string;
     books: { book: string; allocation: string; equity: string | null; hwm?: string; drawdown?: string; day_open?: string }[];
@@ -323,11 +324,20 @@ export type WorkerActivity = { available: boolean; orders: WorkerOrder[]; trades
 export type StrategyDecision = {
   day: string; book: string; action: "OPEN" | "REBALANCE" | "HOLD" | "NO_DECISION"; weight: string | null; previous_weight: string | null;
   notes: string; attempts: number; outcome: string | null; decided_at: string | null; executed_at: string | null;
+  ai?: AiProposal | null;
+};
+// The r2 proposal stored beside an AI book's decision (runtime/ai_r2.py); R10a's weight is kept for comparison only.
+export type AiProposal = {
+  accepted: boolean; target_weight: string | null; reason_code: string | null; error_category: string | null; reason: string | null;
+  cost_usd: string | null; code_weight: string | null; model_id: string | null; latency_ms: number | null;
 };
 export type RiskEvent = { at: string; book: string | null; kind: string; detail: string; epoch: number; equity: string | null; hwm: string | null };
 export type OperatorRequestRow = {
   id: number; kind: "HALT" | "RESUME"; actor: string; reason: string; requested_at: string; handled_at: string | null; outcome: string | null;
 };
-export type WorkerControl = { available: boolean; decisions: StrategyDecision[]; risk_events: RiskEvent[]; requests: OperatorRequestRow[] };
+export type WorkerControl = {
+  available: boolean; decisions: StrategyDecision[]; risk_events: RiskEvent[]; requests: OperatorRequestRow[];
+  ai_month?: { book: string; calls: number; cost_usd: string }[];
+};
 
 export type WorkersResponse = { available: boolean; workers: WorkerStatus[] };

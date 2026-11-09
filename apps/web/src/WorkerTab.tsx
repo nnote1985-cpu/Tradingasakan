@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import {
-  type ApiError, apiGet, apiPost, type WorkerActivity, type WorkerControl, type WorkerPnl, type WorkerExecution, type WorkerStatus,
+  type AiProposal, type ApiError, apiGet, apiPost, type WorkerActivity, type WorkerControl, type WorkerPnl, type WorkerExecution, type WorkerStatus,
   type WorkersResponse,
 } from "./api";
 import { workerIssues } from "./Operations";
@@ -245,6 +245,25 @@ function pct(w: string | null): string {
   return w === null ? "–" : `${Math.round(Number(w) * 100)}%`;
 }
 
+const AI_CAP_USD = 5;   // runtime/ai_r2.py MONTHLY_CAP_USD
+const AI_ERROR_TH: Record<string, string> = { TIMEOUT: "ไม่ตอบทันเวลา", BUDGET_CAP: "งบเดือนนี้หมด", REFUSAL: "AI ปฏิเสธ" };
+
+function AiLine({ a }: { a: AiProposal }) {
+  const cost = a.cost_usd !== null ? ` · ${Number(a.cost_usd).toFixed(4)} USD` : "";
+  const took = a.latency_ms !== null ? ` · ${(a.latency_ms / 1000).toFixed(1)} วินาที` : "";
+  const code = a.code_weight !== null ? ` · R10a ${pct(a.code_weight)}` : "";
+  if (!a.accepted) {
+    const err = a.error_category ?? "–";
+    return <div className="text-[var(--loss)]">AI ไม่ได้คำตอบที่ใช้ได้ ({AI_ERROR_TH[err] ?? err}) จึงคงเป้าเดิม{code}{cost}{took}</div>;
+  }
+  return (
+    <div>
+      <span className="text-[var(--text-primary)]">AI เสนอ {pct(a.target_weight)}</span> ({a.reason_code}){code}{cost}{took}
+      {a.reason && <div className="text-[var(--text-secondary)]">{a.reason}</div>}
+    </div>
+  );
+}
+
 function HaltControl({ account, safety }: { account: string; safety: string | null }) {
   const cache = useQueryClient();
   const [reason, setReason] = useState("");
@@ -294,6 +313,7 @@ function Control({ account, safety }: { account: string; safety: string | null }
   if (q.isError) return <p role="alert" className="mt-3 text-sm text-[var(--loss)]">{q.error.message ?? "โหลดการตัดสินใจของบอทไม่สำเร็จ"}</p>;
   if (!q.data.available) return null;
   const { decisions, risk_events, requests } = q.data;
+  const aiMonth = q.data.ai_month ?? [];
   return (
     <div className="mt-4 space-y-4">
       <section data-testid="worker-halt">
@@ -309,7 +329,12 @@ function Control({ account, safety }: { account: string; safety: string | null }
       </section>
       <section>
         <h3 className="mb-1 text-sm font-semibold">การตัดสินใจรายวันของบอท</h3>
-        {decisions.length === 0 ? <p className="text-sm text-[var(--text-muted)]">ยังไม่มี (บอทตัดสินใจวันละครั้งหลัง 00:10 UTC)</p> : (
+        {aiMonth.map((m) => (
+          <p key={m.book} data-testid="worker-ai-month" className="mb-1 text-sm text-[var(--text-secondary)]">
+            ค่า AI เดือนนี้ ({m.book}) {Number(m.cost_usd).toFixed(4)} จาก {AI_CAP_USD} USD · ถาม {m.calls} ครั้ง
+          </p>
+        ))}
+        {decisions.length === 0 ? <p className="text-sm text-[var(--text-muted)]">ยังไม่มี (บอทตัดสินใจวันละครั้งหลังข้อมูลของวันก่อนออกครบ)</p> : (
           <div className="overflow-x-auto">
             <table data-testid="worker-decisions" className={TABLE}>
               <thead><tr><th>วัน (ปิดแท่ง)</th><th>บอท</th><th>ตัดสินใจ</th><th>เป้าถือ BTC</th><th>ผล</th><th>เหตุผล</th></tr></thead>
@@ -321,7 +346,7 @@ function Control({ account, safety }: { account: string; safety: string | null }
                     <td className="whitespace-nowrap">{ACTION_TH[d.action] ?? d.action}</td>
                     <td className="whitespace-nowrap">{d.previous_weight !== null && d.previous_weight !== d.weight ? `${pct(d.previous_weight)} → ` : ""}{pct(d.weight)}</td>
                     <td>{d.outcome ?? (d.action === "HOLD" || d.action === "NO_DECISION" ? "ไม่ต้องเทรด" : `รอส่ง (ลองแล้ว ${d.attempts})`)}</td>
-                    <td className="text-[var(--text-secondary)]">{d.notes}</td>
+                    <td className="text-[var(--text-secondary)]">{d.ai ? <AiLine a={d.ai} /> : d.notes}</td>
                   </tr>
                 ))}
               </tbody>
@@ -352,7 +377,9 @@ function WorkerCard({ w }: { w: WorkerStatus }) {
     <article data-testid="worker-card" className="rounded-xl border border-[var(--border)] bg-[var(--surface-1)] p-4">
       <div className="flex flex-wrap items-baseline gap-2">
         <h2 className="font-semibold">Worker บน {w.host}</h2>
-        <span className="text-sm text-[var(--text-muted)]">บัญชี {w.account} · {w.mode ?? "–"}</span>
+        <span className="text-sm text-[var(--text-muted)]">
+          บัญชี {w.account} · {w.mode ?? "–"}{w.execution?.r10a && ` · บอท ${w.execution.r10a.book} (${Number(w.execution.r10a.allocation).toLocaleString()} USDT)`}
+        </span>
         <span className={`ml-auto rounded px-2 py-0.5 text-xs ${w.silent ? "bg-[var(--loss)] text-white" : "bg-[var(--warn-bg)] text-[var(--warn-fg)]"}`}>
           {w.silent ? "ไม่ตอบ" : "ทำงานอยู่"}
         </span>
