@@ -183,12 +183,12 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
 
     @app.get("/api/v1/workers/{account}/control")
     async def worker_control(account: str, p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
-        """R10a decisions, Guardian events and HALT/RESUME requests (P5)."""
+        """Bot decisions (R10a or AI r2), Guardian events, HALT/RESUME requests and AI spend (P5, P6)."""
         try:
-            decisions, events, requests = await worker_store.control_rows(account, CONTROL_LIMIT)
+            rows = await worker_store.control_rows(account, CONTROL_LIMIT)
         except WorkersUnavailable:
-            return {"available": False, "decisions": [], "risk_events": [], "requests": []}
-        return {"available": True, **control_items(decisions, events, requests)}
+            return {"available": False, "decisions": [], "risk_events": [], "requests": [], "ai_month": []}
+        return {"available": True, **control_items(*rows)}
 
     @app.post("/api/v1/workers/{account}/requests")
     async def worker_request(account: str, body: OperatorRequest, request: Request,

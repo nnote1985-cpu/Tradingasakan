@@ -97,9 +97,28 @@ MARK_SQL = "select body -> 'feeds' ->> 'quote_bid' from trading.worker_heartbeat
 
 
 DECISIONS_SQL = """
-select day, book, action, trim_scale(weight)::text, trim_scale(previous_weight)::text, notes, attempts, outcome, decided_at, executed_at
+select day, book, action, trim_scale(weight)::text, trim_scale(previous_weight)::text, notes, attempts, outcome, decided_at, executed_at,
+       case when inputs ? 'proposal' then jsonb_build_object(
+         'accepted', inputs -> 'proposal' -> 'outcome' -> 'accepted',
+         'target_weight', inputs -> 'proposal' -> 'outcome' ->> 'target_weight',
+         'reason_code', inputs -> 'proposal' -> 'outcome' ->> 'reason_code',
+         'error_category', inputs -> 'proposal' -> 'outcome' ->> 'error_category',
+         'reason', inputs -> 'proposal' -> 'response' ->> 'reason',
+         'cost_usd', inputs -> 'proposal' ->> 'cost_usd',
+         'code_weight', inputs ->> 'code_weight',
+         'model_id', inputs -> 'proposal' -> 'attempt' ->> 'model_id',
+         'request_at', inputs -> 'proposal' -> 'attempt' ->> 'request_at',
+         'response_at', inputs -> 'proposal' -> 'attempt' ->> 'response_at') end
 from trading.exec_strategy_decisions where account = %s
 order by day desc, book limit %s
+"""
+
+# AI spend this UTC month, as ExecStore.ai_spend sums it for the code cap (runtime/ai_r2.py MONTHLY_CAP_USD)
+AI_MONTH_SQL = """
+select book, count(*), trim_scale(coalesce(sum((inputs -> 'proposal' ->> 'cost_usd')::numeric), 0))::text
+from trading.exec_strategy_decisions
+where account = %s and inputs ? 'proposal' and day >= date_trunc('month', now() at time zone 'utc')::date
+group by book order by book
 """
 
 RISK_EVENTS_SQL = """
@@ -185,8 +204,10 @@ class PgWorkerStore:
     async def control_rows(self, account: str, limit: int) -> tuple[list[tuple[Any, ...]], ...]:
         try:
             async with self.pool.connection() as conn:
-                return tuple([list(await (await conn.execute(sql, (account, limit))).fetchall())
-                              for sql in (DECISIONS_SQL, RISK_EVENTS_SQL, REQUESTS_SQL)])
+                rows = [list(await (await conn.execute(sql, (account, limit))).fetchall())
+                        for sql in (DECISIONS_SQL, RISK_EVENTS_SQL, REQUESTS_SQL)]
+                rows.append(list(await (await conn.execute(AI_MONTH_SQL, (account,))).fetchall()))
+                return tuple(rows)
         except pg_errors.UndefinedTable as e:
             raise Unavailable from e
 
@@ -285,11 +306,25 @@ def pnl_items(balances: list[tuple[Any, ...]], books: list[tuple[Any, ...]], mar
             "balances": rows, "equity_change_usdt": _txt(change, 4), "books": out_books}
 
 
-def control_items(decisions: list[tuple[Any, ...]], events: list[tuple[Any, ...]], requests: list[tuple[Any, ...]]) -> dict[str, Any]:
-    """R10a daily decisions, Guardian risk events and operator requests, newest first."""
+def _ai(p: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The AI proposal stored beside a tn-r2-v1 decision (runtime/ai_r2.py), with its latency in ms when it answered."""
+    if not p:
+        return None
+    latency = None
+    if p.get("request_at") and p.get("response_at"):
+        latency = round((datetime.fromisoformat(p["response_at"]) - datetime.fromisoformat(p["request_at"])).total_seconds() * 1000)
+    keys = ("accepted", "target_weight", "reason_code", "error_category", "reason", "cost_usd", "code_weight", "model_id")
+    return {k: p.get(k) for k in keys} | {"accepted": bool(p.get("accepted")), "latency_ms": latency}
+
+
+def control_items(decisions: list[tuple[Any, ...]], events: list[tuple[Any, ...]], requests: list[tuple[Any, ...]],
+                  ai_month: list[tuple[Any, ...]] | None = None) -> dict[str, Any]:
+    """Daily bot decisions (with the AI proposal for an AI book), Guardian risk events, operator requests and this month's AI spend."""
     return {
         "decisions": [{"day": str(d[0]), "book": d[1], "action": d[2], "weight": d[3], "previous_weight": d[4], "notes": d[5],
-                       "attempts": d[6], "outcome": d[7], "decided_at": _iso(d[8]), "executed_at": _iso(d[9])} for d in decisions],
+                       "attempts": d[6], "outcome": d[7], "decided_at": _iso(d[8]), "executed_at": _iso(d[9]),
+                       "ai": _ai(d[10] if len(d) > 10 else None)} for d in decisions],
+        "ai_month": [{"book": b, "calls": n, "cost_usd": cost} for b, n, cost in ai_month or []],
         "risk_events": [{"at": _iso(e[0]), "book": e[1], "kind": e[2], "detail": e[3], "epoch": e[4], "equity": e[5], "hwm": e[6]}
                         for e in events],
         "requests": [{"id": r[0], "kind": r[1], "actor": r[2], "reason": r[3], "requested_at": _iso(r[4]), "handled_at": _iso(r[5]),

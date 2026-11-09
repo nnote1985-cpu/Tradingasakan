@@ -143,3 +143,28 @@ test("a HALTED account offers RESUME instead", async () => {
   show();
   expect(await screen.findByRole("button", { name: "RESUME" })).toBeTruthy();
 });
+
+test("the AI account shows its book, each day's AI answer beside R10a, and this month's spend", async () => {
+  cleanup();
+  const ai = { accepted: true, target_weight: "0.5", reason_code: "MIXED_CONTEXT", error_category: null, reason: "แนวโน้มขึ้นแต่ funding สูง",
+               cost_usd: "0.0151", code_weight: "1.0", model_id: "claude-opus-5-5", latency_ms: 4250 };
+  control.current = {
+    available: true,
+    decisions: [
+      { day: "2026-11-10", book: "tn-r2-v1", action: "HOLD", weight: "0.5", previous_weight: "0.5", notes: "", attempts: 0, outcome: null,
+        decided_at: now, executed_at: null,
+        ai: { ...ai, accepted: false, target_weight: null, reason_code: null, reason: null, error_category: "TIMEOUT", cost_usd: "0", latency_ms: null } },
+      { day: "2026-11-09", book: "tn-r2-v1", action: "OPEN", weight: "0.5", previous_weight: null, notes: "AI MIXED_CONTEXT", attempts: 1,
+        outcome: "BUY 0.012 BTC, FILLED", decided_at: now, executed_at: now, ai },
+    ],
+    risk_events: [], requests: [], ai_month: [{ book: "tn-r2-v1", calls: 2, cost_usd: "0.0151" }],
+  };
+  response.current = { available: true, workers: [worker({ account: "AI", safety: "RUNNING",
+    execution: { ...execution, r10a: { book: "tn-r2-v1", allocation: "2000", note: "" } } })] };
+  show();
+  const table = (await screen.findByTestId("worker-decisions")).textContent ?? "";
+  expect(table).toMatch(/2026-11-09.*AI เสนอ 50%.*MIXED_CONTEXT.*R10a 100%.*0\.0151 USD.*4\.3 วินาที.*funding สูง/);
+  expect(table).toMatch(/2026-11-10.*ไม่ตอบทันเวลา.*คงเป้าเดิม/);
+  expect(screen.getByTestId("worker-ai-month").textContent).toMatch(/0\.0151 จาก 5 USD · ถาม 2 ครั้ง/);
+  expect(screen.getByText(/บัญชี AI .*บอท tn-r2-v1 \(2,000 USDT\)/)).toBeTruthy();
+});

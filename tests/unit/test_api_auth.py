@@ -335,9 +335,14 @@ def test_halt_and_resume_from_the_web_need_an_operator_and_land_in_the_request_q
             self.added: list[tuple[str, str, str, str]] = []
 
         async def control_rows(self, account, limit):
-            return ([(date(2026, 10, 18), "tn-r10a-code-v1", "OPEN", "1", None, "close 82,078", 1, "BUY 0.02411 BTC, FILLED", at, at)],
+            ai = {"accepted": True, "target_weight": "0.5", "reason_code": "MIXED_CONTEXT", "error_category": None, "reason": "mixed",
+                  "cost_usd": "0.0151", "code_weight": "1.0", "model_id": "claude-opus-5-5",
+                  "request_at": "2026-11-10T08:30:00+00:00", "response_at": "2026-11-10T08:30:04.250000+00:00"}
+            return ([(date(2026, 10, 18), "tn-r10a-code-v1", "OPEN", "1", None, "close 82,078", 1, "BUY 0.02411 BTC, FILLED", at, at),
+                     (date(2026, 11, 9), "tn-r2-v1", "OPEN", "0.5", None, "AI MIXED_CONTEXT: mixed", 1, None, at, None, ai)],
                     [(at, "tn-r10a-code-v1", "DRAWDOWN_ALERT", "ลง 18.7%", 1, "1631.03", "2005.33")],
-                    [(7, "HALT", "web:x", "drill", at, None, None)])
+                    [(7, "HALT", "web:x", "drill", at, None, None)],
+                    [("tn-r2-v1", 1, "0.0151")])
 
         async def add_request(self, account, kind, actor, reason):
             self.added.append((account, kind, actor, reason))
@@ -361,3 +366,7 @@ def test_halt_and_resume_from_the_web_need_an_operator_and_land_in_the_request_q
     assert gone.post("/api/v1/workers/DEFAULT/requests", json=halt, headers={"Authorization": f"Bearer {_token(operator)}"}).status_code == 503
     assert _get(gone, "/api/v1/workers/DEFAULT/control", _token(operator)).json()["available"] is False
     assert D("1") == D(body["decisions"][0]["weight"])
+    assert body["decisions"][0]["ai"] is None
+    ai = body["decisions"][1]["ai"]
+    assert ai["accepted"] and ai["target_weight"] == "0.5" and ai["code_weight"] == "1.0" and ai["latency_ms"] == 4250
+    assert "request_at" not in ai and body["ai_month"] == [{"book": "tn-r2-v1", "calls": 1, "cost_usd": "0.0151"}]
