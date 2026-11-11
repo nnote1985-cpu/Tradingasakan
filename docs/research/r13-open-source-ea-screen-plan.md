@@ -91,3 +91,47 @@ below 0.5. If none passes, the result is "no finalist" and nothing goes to C2.
 
 Every EA is run once with these rules. No parameter, timeframe or filter is changed after seeing
 results; a changed rule would be a new, separately declared trial.
+
+## Result (run 2026-11-11, `research/spike/run_r13.py`; outputs in `/mnt/project-files/r13-ea-screen/`)
+
+One run of 64 (8 EAs × spot/perp × native/full × base/×2 costs). A second run after a lint-only
+change gave a byte-identical `report.json`. The same code reproduces R10a in this window
+(+244.8% / Sharpe 0.998 / DD 26.0%, as in R10). The 1m file hash matches `results-register.md`.
+
+Primary book (BTC spot, long/flat, EA native 1% risk, fee 0.10% + 2 bps, stops 5 bps),
+2022-05-01 → 2026-01-01, ranked by Sharpe:
+
+| Rank | EA | Net | Sharpe | Max DD | Trades | Win | PF | In market | Net 2022/23/24/25 | Costs ×2 net | Corr R10a |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | E1 Donchian_Breakout (H4) | +34.0% | 1.35 | 4.4% | 65 | 46% | 2.56 | 31% | −2.4 / +31.5 / +3.2 / +1.1 | +29.5% | 0.52 |
+| 2 | E2 SuperTrend_EMA | +9.0% | 0.26 | 12.8% | 158 | 33% | 1.12 | 15% | +1.1 / +1.7 / +17.5 / −9.7 | −10.9% | 0.30 |
+| 3 | E8 Smart_Swing_Bias (H4) | +5.5% | 0.24 | 7.4% | 82 | 44% | 1.11 | 11% | 0.0 / −2.3 / +7.4 / +0.6 | −9.2% | 0.29 |
+| 4 | E5 Volatility_Squeeze | −15.8% | −0.95 | 17.0% | 71 | 35% | 0.63 | 3% | all 4 years < 0 | −28.9% | 0.12 |
+| 5 | E7 Hidden_Divergence | −46.8% | −1.84 | 47.5% | 326 | 32% | 0.65 | 14% | 0.0 / −27.6 / +4.8 / −29.9 | −75.5% | 0.36 |
+| 6 | E6 Bollinger_MeanReversion | −48.0% | −1.85 | 49.8% | 171 | 21% | 0.48 | 9% | all 4 years < 0 | −64.5% | 0.12 |
+| 7 | E4 TrendPullback | −83.3% | −3.60 | 83.4% | 718 | 33% | 0.52 | 15% | all 4 years < 0 | −97.2% | 0.27 |
+| 8 | E3 ADX_TrendStrength | −88.2% | −3.60 | 88.2% | 1,137 | 27% | 0.64 | 15% | all 4 years < 0 | −99.0% | 0.34 |
+| – | R10a (spot, daily) | +244.8% | 1.00 | 26.0% | 48 | | | | −12.5 / +89.1 / +97.5 / +5.5 | +235.3% | 1 |
+| – | BTC buy & hold | +132.6% | 0.46 | 60.3% | 1 | | | 100% | −56.1 / +155.9 / +121.1 / −6.4 | | |
+
+Same exposure as R10a (full 1× per trade): E1 +163.5% / Sharpe 0.99 / DD 23.6%; E8 +24.6% / 0.45 /
+18.7%; all others negative. Perp long/short (native): E1 +28.1% / 0.92 / 9.1% (corr R10a 0.27);
+all others ≤ +2.5%; R11 in this window +215.4% / 0.70 / 39.4%.
+
+Criteria (spot, native, base costs): **E1 passes 1, 2 and 3** (net > 0, Sharpe 1.35 > B&H 0.46 and
+≥ R10a 0.998; costs ×2 still +29.5%; 65 trades; 3 of 4 years positive). Correlation with R10a is
+0.52, just above the 0.5 line. **Every other EA fails criterion 1 or 2.**
+
+Reading:
+
+- The H1 EAs with tight stops (E3, E4, E6, E7) trade 170–1,140 times; at 0.10% + 2 bps per side
+  the round trip costs about a third of the risk unit, so they lose in every year. On perp fees
+  (0.05%) they still lose. These EAs were written for forex CFD spreads, not BTC spot fees.
+- E1's profit is concentrated in 2023 (+31.5% of +34.0%); 2024 and 2025 are near flat. Every exit
+  is a trailing stop: the EA's trailing modify removes the 2.5R target (ported as written).
+- E1 is the best of 8 tried, so its dev Sharpe is optimistic (selection over 8 trials). With full
+  exposure it is close to R10a, not clearly better; its value would be as a second trend book with
+  a different clock (H4 breakout, ~31% time in market).
+
+**Finalist: E1 Donchian_Breakout (spot, native sizing) only.** No second EA qualifies. C2 is not
+used; testing E1 on C2 needs Note's separate OK.
