@@ -59,3 +59,18 @@ them. After merge, branch `frozen/spot-e1-v1` is created and the wiring is hande
 ## Not in this PR
 
 No forward run, no daily-task change, no Supabase writes, nothing live.
+
+## Results (added after the code; no rule above was changed)
+
+- `trading.strategies.argus_e1` (rule + `replay`), `scripts/paper_trade_e1.py`, `tests/unit/test_e1_book.py`.
+- Tests, 7 pass: on synthetic minute data (3 seeds) the replay gives the same closed trades and daily
+  equity as `ea_ports.simulate(E1Donchian, spot, native)`; replay through day N+1 keeps day N's trades;
+  120 vs 240 days of warm-up give the same trades; a −30% gap through the stop HALTs the book and no
+  trade follows; `complete_through` stops at the first incomplete day.
+- Checked once on the 2022–2025 dev data (not in CI): all 65 R13 trades identical and daily equity
+  equal to the last bit; with HALT on, the book never HALTs on dev (max DD 4.4%); 120 vs 365 days of
+  warm-up give identical trades from 2023-01-01, 2024-03-01 and 2025-02-01.
+- Smoke runs against live data with throwaway state (2026-11-12 01:30 UTC): a first run writes start =
+  2026-11-12; a state with start 2026-11-02 replays to 2026-11-10 (11-11 not yet published), no trade
+  (BTC −5.9% over those days, no breakout), and a second run reproduces it with no problem.
+- Full suite 679 passed before the type fixes; ruff and mypy clean.
