@@ -73,4 +73,4 @@ No forward run, no daily-task change, no Supabase writes, nothing live.
 - Smoke runs against live data with throwaway state (2026-11-12 01:30 UTC): a first run writes start =
   2026-11-12; a state with start 2026-11-02 replays to 2026-11-10 (11-11 not yet published), no trade
   (BTC −5.9% over those days, no breakout), and a second run reproduces it with no problem.
-- Full suite 679 passed before the type fixes; ruff and mypy clean.
+- Full suite 679 passed; ruff and mypy clean.
