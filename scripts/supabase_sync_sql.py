@@ -61,6 +61,9 @@ def main() -> None:
     lines = ["begin;"]
     for p in sorted(Path(args.root).glob("*/state.json")):
         state = json.loads(p.read_text())
+        if state.get("rules_version") == "spot-e1-v1":     # trades-only replay state: trading schema only
+            print("-- spot-e1-v1 is not mirrored to paper.*", file=sys.stderr)
+            continue
         if state.get("format"):     # pathA-v1.2 and later: mirrored to the trading schema only
             print(f"-- {state.get('rules_version') or state.get('experiment_id')} ({state['format']}) is not mirrored to paper.*", file=sys.stderr)
             continue
