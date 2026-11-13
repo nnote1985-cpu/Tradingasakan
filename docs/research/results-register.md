@@ -189,3 +189,11 @@ Vol sizing helped only the high-vol 2024 drawdown; the low-vol sideways drawdown
 drop within a day 16.6% / 18.3%; liquidation never close at 1x. The 25% `spot.v1` HALT would trip in mid-2023 on both
 (R7 +103% → +50–54%, R11 +221% → +41–53%); hourly checking holds it near 25%, daily let R11 reach 32.6%. Stop grid
 5–25% from entry: only 25% (never fires) is harmless. No candidate; C2 unspent.
+
+## R13 open-source EA screen (2026-11-11, docs/research/r13-open-source-ea-screen-plan.md) — dev data only
+
+8 MQL5 EAs from logiccrafterdz/argus (MIT) ported to closed-bar Python, 2022-05-01 → 2026-01-01, BTC spot long/flat, 1% risk
+per trade, fee 0.10% + 2 bps, SL/TP on 1m bars. Only **E1 Donchian_Breakout (H4)** passes: +34.0% / Sharpe 1.35 / DD 4.4%
+(65 trades, costs ×2 +29.5%, profit mostly 2023; full 1× exposure +163.5% / 0.99 / 23.6%). E2 +9.0% / 0.26, E8 +5.5% / 0.24;
+E3–E7 lose (−16% to −88%), mostly from fees on H1 tight-stop trading. R10a in the same run +244.8% / 1.00 / 26.0%.
+Finalist E1 only; C2 unspent.
