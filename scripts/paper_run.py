@@ -18,6 +18,12 @@ appended to runs.jsonl beside state.json. Each line carries the previous line's
 hash, so an edited or removed line breaks the chain. The last line printed is SQL
 that writes the line hash into trading.audit_events, whose server-side timestamp is
 an independent record that the line existed at that time.
+
+With --continuation <id> it runs the same frozen code as a continued version named
+<book>-<id> (docs/data-patches.md): the state is the one scripts/continue_book.py copied into
+paper-trading/<book>-<id>/, and the data patch named in its continued_from.json fills archive
+bars that data.binance.vision never published. A patch row is used only where the archive has
+no row; every patched file is logged with its archive sha256, the patched sha256 and the rows added.
 """
 
 from __future__ import annotations
@@ -29,8 +35,13 @@ import json
 import runpy
 import subprocess
 import sys
+import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
+
+ARCHIVE = "https://data.binance.vision/data"
+PATCH_DIR = Path(__file__).resolve().parent.parent / "configs" / "data-patches"
+ROOT = Path("/mnt/project-files/paper-trading")
 
 
 def sha256(b: bytes) -> str:
@@ -62,6 +73,57 @@ def verify_chain(log: Path) -> list[str]:
     return problems
 
 
+def load_patch(patch_id: str, patch_dir: Path = PATCH_DIR) -> dict:
+    """The patch file and the sha256 of its exact bytes."""
+    raw = (patch_dir / f"{patch_id}.json").read_bytes()
+    return {**json.loads(raw), "sha256": sha256(raw)}
+
+
+def _zip_csv(name: str, text: str) -> bytes:
+    """A deterministic zip (fixed timestamp), so the same rows always give the same sha256."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr(zipfile.ZipInfo(name, date_time=(2000, 1, 1, 0, 0, 0)), text)
+    return buf.getvalue()
+
+
+def apply_patch(url: str, blob: bytes | None, patch: dict) -> tuple[bytes | None, dict | None]:
+    """Add the patch's rows to an archive kline file that lacks them.
+
+    Only the monthly file of a patched day's month and the patched day's daily file are touched,
+    and only rows whose open_time the file does not already have are added: an archive row
+    always wins, so the patch becomes a no-op if Binance ever publishes the day.
+    """
+    sym = patch["symbol"]
+    for interval, rows in patch["rows"].items():
+        stem = f"{ARCHIVE}/{patch['market']}/%s/{patch['kind']}/{sym}/{interval}/{sym}-{interval}-"
+        for day in patch["days"]:
+            if url == (stem % "monthly") + f"{day[:7]}.zip":
+                want = [r for r in rows if datetime.fromtimestamp(int(r[0]) / 1000, UTC).date().isoformat()[:7] == day[:7]]
+            elif url == (stem % "daily") + f"{day}.zip":
+                want = [r for r in rows if datetime.fromtimestamp(int(r[0]) / 1000, UTC).date().isoformat() == day]
+            else:
+                continue
+            if blob is not None:
+                with zipfile.ZipFile(io.BytesIO(blob)) as z:
+                    name = z.namelist()[0]
+                    text = z.read(name).decode()
+            else:
+                name, text = url.rsplit("/", 1)[1].replace(".zip", ".csv"), ",".join(patch["columns"]) + "\n"
+            lines = [ln for ln in text.splitlines() if ln.strip()]
+            header = [ln for ln in lines if not ln[0].isdigit()]
+            data = [ln for ln in lines if ln[0].isdigit()]
+            have = {ln.split(",", 1)[0] for ln in data}
+            added = [r for r in want if r[0] not in have]
+            info = {"patch": patch["id"], "patch_sha256": patch["sha256"],
+                    "archive_sha256": None if blob is None else sha256(blob), "rows_added": len(added)}
+            if not added:
+                return blob, info
+            data = sorted(data + [",".join(r) for r in added], key=lambda ln: int(ln.split(",", 1)[0]))
+            return _zip_csv(name, "\n".join(header + data) + "\n"), info
+    return blob, None
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
@@ -71,6 +133,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--book", choices=("pathA-v1.1", "pathA-v1.2", "pathA-p5-r1", "pathA-p5-r2", "futures-r7",
                                        "pathA-r10a", "futures-r11"), default="pathA-v1.1",
                     help="which frozen book to run; pathA-v1.1 is the default and runs exactly as before")
+    ap.add_argument("--continuation", help="run the continued version <book>-<id> made by scripts/continue_book.py")
+    ap.add_argument("--root", default=str(ROOT), help="folder holding the books")
     known, _ = ap.parse_known_args(argv)
     if known.book == "pathA-v1.2":
         from trading.shadow.rebalance_book import RULES_VERSION
@@ -95,13 +159,29 @@ def main(argv: list[str] | None = None) -> int:
         script = "scripts/paper_trade.py"
     if RULES_VERSION != known.book:
         raise SystemExit(f"this worktree's code is {RULES_VERSION}, not {known.book}: run it from frozen/{known.book}")
-    ap.add_argument("--state", default=f"/mnt/project-files/paper-trading/{RULES_VERSION}/state.json",
+    name = f"{RULES_VERSION}-{known.continuation}" if known.continuation else RULES_VERSION
+    ap.add_argument("--state", default=str(Path(known.root) / name / "state.json"),
                     help="book state (a copy for a dry run); runs.jsonl is written beside it")
     args = ap.parse_args(argv)
     state = Path(args.state)
     log = state.with_name("runs.jsonl")
+    patch, extra = None, {}
+    if known.continuation:
+        marker = state.with_name("continued_from.json")
+        if not marker.exists():
+            raise SystemExit(f"{marker} is missing: make {name} with scripts/continue_book.py first")
+        cont = json.loads(marker.read_text())
+        if cont.get("book") != name or cont.get("base_book") != RULES_VERSION:
+            raise SystemExit(f"{marker} is for {cont.get('book')} from {cont.get('base_book')}, not {name}")
+        patch = load_patch(cont["data_patch"]["id"])
+        if patch["sha256"] != cont["data_patch"]["sha256"]:
+            raise SystemExit(f"data patch {patch['id']} changed since {name} was made: a changed patch is a new version")
+        extra = {"base_book": RULES_VERSION, "data_patch": {"id": patch["id"], "sha256": patch["sha256"]}}
+    elif (state.parent / "superseded_by.json").exists():
+        raise SystemExit(f"{name} was continued as {json.loads((state.parent / 'superseded_by.json').read_text())['book']}: "
+                         "run that version instead")
     chain_problems = verify_chain(log)
-    rec: dict = {"record_version": 1, "book": RULES_VERSION, "started_at": now(),
+    rec: dict = {"record_version": 1, "book": name, **extra, "started_at": now(),
                  "code_commit": subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip(),
                  "state_sha256_before": sha256(state.read_bytes()) if state.exists() else None, "fetched": []}
 
@@ -109,8 +189,12 @@ def main(argv: list[str] | None = None) -> int:
 
     def recording(url: str) -> bytes | None:
         blob = original(url)
+        info = None
+        if patch is not None:
+            blob, info = apply_patch(url, blob, patch)
         if blob is not None:
-            rec["fetched"].append({"url": url, "received_at": now(), "sha256": sha256(blob)})
+            rec["fetched"].append({"url": url, "received_at": now(), "sha256": sha256(blob),
+                                   **({"patched": info} if info else {})})
         return blob
 
     live_data._get_verified = recording  # type: ignore[assignment]
@@ -158,7 +242,7 @@ def main(argv: list[str] | None = None) -> int:
         fh.write(json.dumps(rec, sort_keys=True, ensure_ascii=False) + "\n")
     print()
     print("insert into trading.audit_events (action, target, reason, before_hash, after_hash) values "
-          f"('paper_run', '{RULES_VERSION}', 'runs.jsonl line', "
+          f"('paper_run', '{name}', 'runs.jsonl line', "
           f"{('null' if rec['prev_hash'] is None else repr(rec['prev_hash']))}, '{rec['line_hash']}');")
     if rec.get("simulator_valid") is False:
         print("SIMULATOR INVALID for this run: " + json.dumps(rec["checks"], ensure_ascii=False), file=sys.stderr)
