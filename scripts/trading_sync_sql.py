@@ -109,7 +109,8 @@ def book_sql(state: dict, commit: str) -> list[str]:
 RISK_AND_AGENT_TABLES = False      # set by --risk-and-agent-tables
 ACCOUNTS = {"capital": "owner_capital", "inventory_at_cost": "btc_position_cost"}
 COMMITS = ["pathA-v1=42920ba", "pathA-v1.1=5306f62", "pathA-v1.2=34028a6", "pathA-p5-r1=2ae53c7",   # frozen/<version> heads
-           "futures-r7=39488df", "pathA-p5-r2=a6e1c33", "pathA-r10a=bd98dd8", "futures-r11=bd98dd8"]
+           "futures-r7=39488df", "pathA-p5-r2=a6e1c33", "pathA-r10a=bd98dd8", "futures-r11=bd98dd8",
+           "spot-e1-v1=f1b9247"]
 
 
 def _version_and_portfolio(v: str, commit: str, label: str, start_equity) -> list[str]:
@@ -222,6 +223,59 @@ def proposal_book_sql(state: dict, commit: str) -> list[str]:
             + _spot_book_sql(v, commit, state["ai"], f"{v}/ai", None))
 
 
+E1_FEE = Decimal("0.0010")           # argus_e1.Costs.fee
+
+
+def e1_book_sql(state: dict, commit: str, book_dir: Path) -> list[str]:
+    """spot-e1-v1 (docs/e1-paper-book-plan.md): its state keeps the replayed trades, not a ledger, so
+    fills are rebuilt from the trades with the book's own cost rule (argus_e1.replay: the entry
+    spends `notional`, fee `notional * fee` is taken from the BTC bought; the exit receives
+    `qty * exit_px * (1 - fee)`). The state has no daily marks: equity snapshots come from the daily
+    run reports the job saves as <book>/daily/<data_through>.json (the script's JSON output)."""
+    v = state["rules_version"]
+    label, bh = f"{v}/paper", f"{v}/buy_and_hold"
+    out: list[str] = []
+    for lab in (label, bh):
+        out += _version_and_portfolio(v, commit, lab, 10_000)
+        out += _entry(f"{lab}:funding", lab, f"{state['start']}T00:00:00+00:00", "starting cash",
+                      [("cash", Decimal(10_000)), ("owner_capital", Decimal(-10_000))])
+    positions = list(state["trades"]) + ([state["open_position"]] if state.get("open_position") else [])
+    for t in positions:
+        notional = Decimal(str(t["notional"])).quantize(Q18)
+        fee_in = (notional * E1_FEE).quantize(Q18)
+        cost = notional - fee_in
+        qty = Decimal(str(t["notional"])) * (1 - E1_FEE) / Decimal(str(t["entry_px"]))
+        out += _entry(f"{label}:fill:{t['entry_time']}:open", label, t["entry_time"],
+                      f"BUY {qty:.12f} BTC @ {t['entry_px']}", [("cash", -notional), ("btc_position_cost", cost), ("fees", fee_in)])
+        if "exit_time" in t:
+            gross = (qty * Decimal(str(t["exit_px"]))).quantize(Q18)
+            fee_out = (gross * E1_FEE).quantize(Q18)
+            out += _entry(f"{label}:fill:{t['exit_time']}:close", label, t["exit_time"],
+                          f"SELL {qty:.12f} BTC @ {t['exit_px']} ({t['reason']})",
+                          [("cash", gross - fee_out), ("fees", fee_out), ("btc_position_cost", -cost),
+                           ("realized_pnl", -(gross - cost))])
+    for f in sorted((book_dir / "daily").glob("*.json")):
+        r = json.loads(f.read_text())
+        if r.get("problems") or not r.get("data_through"):
+            continue
+        at = f"{r['data_through']}T23:59:59.999+00:00"
+        eq, bh_eq = d(r["equity"]), d(r["buy_and_hold"])
+        for lab, val, exposure in ((label, eq, d(eq * Decimal(str(r["weight_held"])))), (bh, bh_eq, None)):
+            out.append("insert into trading.equity_snapshots (portfolio_id, at, trading_equity, economic_equity, mark_price, exposure) "
+                       f"select id, {q(at)}, {q(val)}, {q(val)}, null, {q(exposure)} from trading.portfolios "
+                       f"where label = {q(lab)} on conflict do nothing;")
+    if RISK_AND_AGENT_TABLES:
+        for e in state["events"]:
+            if e["kind"] not in ("alert", "halt"):
+                continue
+            reason = e.get("alert") or f"drawdown 25% (peak {e.get('peak')})"
+            out.append("insert into trading.risk_events (portfolio_id, source_event_key, kind, at, reason, trading_equity, high_water_mark) "
+                       f"select id, {q(label + ':' + e['kind'] + ':' + e['time'])}, {q(e['kind'])}, {q(e['time'])}, {q(reason)}, "
+                       f"{q(None if e.get('equity') is None else d(e['equity']))}, {q(None if e.get('peak') is None else d(e['peak']))} "
+                       f"from trading.portfolios where label = {q(label)} on conflict (source_event_key) do nothing;")
+    return out
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default=str(ROOT))
@@ -240,7 +294,9 @@ def main() -> None:
         v = s.get("rules_version") or s["experiment_id"]
         if v not in commits:
             raise SystemExit(f"no frozen commit known for {v}: pass --commit {v}=<sha>")
-        if s.get("format") == "trend_perp_book.v1":
+        if v == "spot-e1-v1":
+            lines += e1_book_sql(s, commits[v], p.parent)
+        elif s.get("format") == "trend_perp_book.v1":
             lines += trend_perp_book_sql(s, commits[v])
         elif s.get("format") == "paired_book.v1":
             lines += paired_book_sql(s, commits[v])

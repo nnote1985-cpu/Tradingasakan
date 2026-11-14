@@ -74,3 +74,14 @@ No forward run, no daily-task change, no Supabase writes, nothing live.
   2026-11-12; a state with start 2026-11-02 replays to 2026-11-10 (11-11 not yet published), no trade
   (BTC −5.9% over those days, no breakout), and a second run reproduces it with no problem.
 - Full suite 679 passed; ruff and mypy clean.
+
+## Daily job (added after merge, by the thread that owns the daily job)
+
+The book runs once a day in the daily task, from its frozen worktree, wrapped by main's
+`scripts/e1_run_record.py`: before the run it notes the sha256 of `state.json`; after it, it saves
+the run's JSON summary as `spot-e1-v1/daily/<data_through>.json` (skipped when the run has no
+`data_through` or reports problems) and prints the `trading.audit_events` insert (before and after
+hash). `scripts/trading_sync_sql.py` mirrors the book as `spot-e1-v1/paper` and
+`spot-e1-v1/buy_and_hold`: fills are rebuilt from the replayed trades with the book's own cost rule
+and must sum to the book's cash; the saved summaries become the daily equity snapshots (the state
+keeps no daily marks). `scripts/supabase_sync_sql.py` skips the book. Neither touches `state.json`.
