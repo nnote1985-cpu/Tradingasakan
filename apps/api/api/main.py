@@ -18,7 +18,9 @@ from api.ai import ai_settings, scorecard
 from api.assets import ASSETS, AssetCache
 from api.auth import AuthError, Principal, RoleStore, TokenVerifier, authenticate
 from api.backtests import load_backtests
-from api.charts import BadRequest, ChartService, Loading, PgBarStore
+from api.charts import BadRequest, ChartService, Loading, PgBarStore, utc
+from api.overlays import NoOverlays, OverlayStore, PgOverlayStore, overlay_items
+from api.overlays import Unavailable as OverlaysUnavailable
 from api.portfolios import NoPortfolios, PortfolioStore, Unavailable, decision_items, equity_series, overview_items, risk_items
 from api.profile_drafts import DraftConflict, DraftStore, DraftsUnavailable, NoDrafts, PgDraftStore, SaveDraft
 from api.strategies import catalog_view, profiles_view
@@ -38,12 +40,13 @@ class OperatorRequest(BaseModel):
 def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
                portfolios: PortfolioStore | None = None, assets: AssetCache | None = None,
                workers: WorkerStore | None = None, drafts: DraftStore | None = None,
-               charts: ChartService | None = None) -> FastAPI:
+               charts: ChartService | None = None, overlays: OverlayStore | None = None) -> FastAPI:
     store: PortfolioStore = portfolios or NoPortfolios()
     worker_store: WorkerStore = workers or NoWorkers()
     market = assets or AssetCache()
     draft_store: DraftStore = drafts or NoDrafts()
     chart = charts or ChartService()
+    overlay_store: OverlayStore = overlays or NoOverlays()
     app = FastAPI(title="asakantrading API", version="0.1.0")
     if settings.allowed_origins:
         app.add_middleware(CORSMiddleware, allow_origins=list(settings.allowed_origins),
@@ -192,6 +195,21 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
                                p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
         return await chart.indicators(symbol, venue, timeframe, start, end, set)
 
+    @app.get("/api/v1/bots/{account}/{book}/overlays")
+    async def bot_overlays(account: str, book: str, start: datetime | None = Query(None, alias="from"),
+                           end: datetime | None = Query(None, alias="to"),
+                           p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        now = chart.now()
+        a = utc(start or datetime(2026, 1, 1)).to_pydatetime()
+        b = utc(end or now).to_pydatetime()
+        if a >= b:
+            raise BadRequest("from must be before to")
+        try:
+            fills, decisions, events = await overlay_store.rows(account, book, a, b)
+        except OverlaysUnavailable:
+            return {"available": False, "mode": "TESTNET", "fills": [], "decisions": [], "halts": [], "alerts": []}
+        return {"available": True, "account": account, "book": book, **overlay_items(fills, decisions, events, a)}
+
     @app.get("/api/v1/workers")
     async def worker_status(p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
         try:
@@ -245,7 +263,8 @@ def app_from_env() -> FastAPI:   # uvicorn --factory api.main:app_from_env
         raise RuntimeError("SUPABASE_URL and DATABASE_URL are required")
     pool = AsyncConnectionPool(s.database_url, open=False, timeout=5)
     app = create_app(s, SupabaseJwtVerifier(s.supabase_url), PgRoleStore(pool), PgPortfolioStore(pool),
-                     workers=PgWorkerStore(pool), drafts=PgDraftStore(pool), charts=ChartService(PgBarStore(pool)))
+                     workers=PgWorkerStore(pool), drafts=PgDraftStore(pool), charts=ChartService(PgBarStore(pool)),
+                     overlays=PgOverlayStore(pool))
     app.router.on_startup.append(pool.open)
     app.router.on_shutdown.append(pool.close)
     return app
