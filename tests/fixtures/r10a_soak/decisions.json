@@ -1,0 +1,1055 @@
+[
+ {
+  "day": "2026-10-18",
+  "rules_version": "tn-r10a-code-v1",
+  "weight": 1,
+  "previous_weight": null,
+  "action": "OPEN",
+  "notes": "close 82,078.00, SMA100 74,206.79: in above 75,690.92, out below 72,722.65; holding; funding x1; funding 7/7 days are premium-index estimates",
+  "inputs": {
+   "band": 0.02,
+   "sma100": 74206.785,
+   "band_state": 1,
+   "close_perp": 82078,
+   "funding_hot": false,
+   "funding_policy": "funding_policy.v1",
+   "funding_window": [
+    {
+     "day": "2026-10-12",
+     "source": "proxy",
+     "funding": 2.2402499999999988e-05
+    },
+    {
+     "day": "2026-10-13",
+     "source": "proxy",
+     "funding": 0.00015651500000000003
+    },
+    {
+     "day": "2026-10-14",
+     "source": "proxy",
+     "funding": -9.842750000000006e-05
+    },
+    {
+     "day": "2026-10-15",
+     "source": "proxy",
+     "funding": 8.889500000000002e-05
+    },
+    {
+     "day": "2026-10-16",
+     "source": "proxy",
+     "funding": 0.00013303250000000006
+    },
+    {
+     "day": "2026-10-17",
+     "source": "proxy",
+     "funding": 0.00020077624999999998
+    },
+    {
+     "day": "2026-10-18",
+     "source": "proxy",
+     "funding": 0.00027841375
+    }
+   ],
+   "funding_7d_per_day": 0.0001116582142857143,
+   "funding_proxy_days": 7,
+   "suggested_btc_weight": 1
+  },
+  "inputs_sha256": "c1a2c47332300f9704c9e373c3624fff3159bd67bbc91a15c2c0035da9d8d945",
+  "outcome": "BUY 0.02411 BTC, FILLED"
+ },
+ {
+  "day": "2026-10-19",
+  "rules_version": "tn-r10a-code-v1",
+  "weight": 1,
+  "previous_weight": 1,
+  "action": "HOLD",
+  "notes": "close 81,903.30, SMA100 74,387.99: in above 75,875.75, out below 72,900.23; holding; funding x1; funding 7/7 days are premium-index estimates",
+  "inputs": {
+   "band": 0.02,
+   "sma100": 74387.988,
+   "band_state": 1,
+   "close_perp": 81903.3,
+   "funding_hot": false,
+   "funding_policy": "funding_policy.v1",
+   "funding_window": [
+    {
+     "day": "2026-10-13",
+     "source": "proxy",
+     "funding": 0.00015651500000000003
+    },
+    {
+     "day": "2026-10-14",
+     "source": "proxy",
+     "funding": -9.842750000000006e-05
+    },
+    {
+     "day": "2026-10-15",
+     "source": "proxy",
+     "funding": 8.889500000000002e-05
+    },
+    {
+     "day": "2026-10-16",
+     "source": "proxy",
+     "funding": 0.00013303250000000006
+    },
+    {
+     "day": "2026-10-17",
+     "source": "proxy",
+     "funding": 0.00020077624999999998
+    },
+    {
+     "day": "2026-10-18",
+     "source": "proxy",
+     "funding": 0.00027841375
+    },
+    {
+     "day": "2026-10-19",
+     "source": "proxy",
+     "funding": 0.00023144625000000004
+    }
+   ],
+   "funding_7d_per_day": 0.00014152160714285715,
+   "funding_proxy_days": 7,
+   "suggested_btc_weight": 1
+  },
+  "inputs_sha256": "5cdd6d34a8cb5b25e3630d1be2aabeaad13200698158148566984ac0ca9967f4",
+  "outcome": "superseded by 2026-10-29"
+ },
+ {
+  "day": "2026-10-29",
+  "rules_version": "tn-r10a-code-v1",
+  "weight": null,
+  "previous_weight": 1,
+  "action": "NO_DECISION",
+  "notes": "ราคาย้อนหลัง 100 วันไม่ครบ, funding 7 วันไม่ครบ",
+  "inputs": {
+   "band": 0.02,
+   "sma100": null,
+   "band_state": null,
+   "close_perp": 77962.6,
+   "funding_hot": null,
+   "funding_policy": "funding_policy.v1",
+   "funding_window": [
+    {
+     "day": "2026-10-23",
+     "source": "proxy",
+     "funding": 0.00024085250000000007
+    },
+    {
+     "day": "2026-10-24",
+     "source": "proxy",
+     "funding": 0.00015930375
+    },
+    {
+     "day": "2026-10-25",
+     "source": "proxy",
+     "funding": 0.00022133000000000005
+    },
+    {
+     "day": "2026-10-26",
+     "source": "proxy",
+     "funding": 0.00024452625000000004
+    },
+    {
+     "day": "2026-10-27",
+     "source": "proxy",
+     "funding": 0.0003
+    },
+    {
+     "day": "2026-10-28",
+     "source": "proxy",
+     "funding": 1.0792499999999982e-05
+    },
+    {
+     "day": "2026-10-29",
+     "source": "missing",
+     "funding": null
+    }
+   ],
+   "funding_7d_per_day": null,
+   "funding_proxy_days": 6,
+   "suggested_btc_weight": null
+  },
+  "inputs_sha256": "8e9636c65d281f451703a2c358e74e322391c0247533036b70eb9eceacf26b2a",
+  "outcome": "superseded by 2026-10-30"
+ },
+ {
+  "day": "2026-10-30",
+  "rules_version": "tn-r10a-code-v1",
+  "weight": null,
+  "previous_weight": 1,
+  "action": "NO_DECISION",
+  "notes": "ราคาย้อนหลัง 100 วันไม่ครบ, funding 7 วันไม่ครบ",
+  "inputs": {
+   "band": 0.02,
+   "sma100": null,
+   "band_state": null,
+   "close_perp": 77312.6,
+   "funding_hot": null,
+   "funding_policy": "funding_policy.v1",
+   "funding_window": [
+    {
+     "day": "2026-10-24",
+     "source": "proxy",
+     "funding": 0.00015930375
+    },
+    {
+     "day": "2026-10-25",
+     "source": "proxy",
+     "funding": 0.00022133000000000005
+    },
+    {
+     "day": "2026-10-26",
+     "source": "proxy",
+     "funding": 0.00024452625000000004
+    },
+    {
+     "day": "2026-10-27",
+     "source": "proxy",
+     "funding": 0.0003
+    },
+    {
+     "day": "2026-10-28",
+     "source": "proxy",
+     "funding": 1.0792499999999982e-05
+    },
+    {
+     "day": "2026-10-29",
+     "source": "missing",
+     "funding": null
+    },
+    {
+     "day": "2026-10-30",
+     "source": "proxy",
+     "funding": 0.0001209475
+    }
+   ],
+   "funding_7d_per_day": null,
+   "funding_proxy_days": 6,
+   "suggested_btc_weight": null
+  },
+  "inputs_sha256": "f65379c295e55f712b3a0324fa165c6d51e0c3cd94e99f1b84fd9eaeb5c5e98f",
+  "outcome": "superseded by 2026-10-31"
+ },
+ {
+  "day": "2026-10-31",
+  "rules_version": "tn-r10a-code-v1",
+  "weight": null,
+  "previous_weight": 1,
+  "action": "NO_DECISION",
+  "notes": "ราคาย้อนหลัง 100 วันไม่ครบ",
+  "inputs": {
+   "band": 0.02,
+   "sma100": null,
+   "band_state": null,
+   "close_perp": 77522.6,
+   "funding_hot": false,
+   "funding_policy": "funding_policy.v1",
+   "funding_window": [
+    {
+     "day": "2026-10-25",
+     "source": "actual",
+     "funding": 0.00023441
+    },
+    {
+     "day": "2026-10-26",
+     "source": "actual",
+     "funding": 0.00019658000000000002
+    },
+    {
+     "day": "2026-10-27",
+     "source": "actual",
+     "funding": 0.00028696
+    },
+    {
+     "day": "2026-10-28",
+     "source": "actual",
+     "funding": 0.00021246999999999998
+    },
+    {
+     "day": "2026-10-29",
+     "source": "actual",
+     "funding": 0.00021522000000000002
+    },
+    {
+     "day": "2026-10-30",
+     "source": "actual",
+     "funding": 0.00017925
+    },
+    {
+     "day": "2026-10-31",
+     "source": "actual",
+     "funding": 0.00030000000000000003
+    }
+   ],
+   "funding_7d_per_day": 0.00023212714285714289,
+   "funding_proxy_days": 0,
+   "suggested_btc_weight": null
+  },
+  "inputs_sha256": "af3b742ac5eae369ef479614503b8430c0bb017f6e270dddf8efdf5fe6651d70",
+  "outcome": "superseded by 2026-11-01"
+ },
+ {
+  "day": "2026-11-01",
+  "rules_version": "tn-r10a-code-v1",
+  "weight": null,
+  "previous_weight": 1,
+  "action": "NO_DECISION",
+  "notes": "ราคาย้อนหลัง 100 วันไม่ครบ",
+  "inputs": {
+   "band": 0.02,
+   "sma100": null,
+   "band_state": null,
+   "close_perp": 78313,
+   "funding_hot": false,
+   "funding_policy": "funding_policy.v1",
+   "funding_window": [
+    {
+     "day": "2026-10-26",
+     "source": "actual",
+     "funding": 0.00019658000000000002
+    },
+    {
+     "day": "2026-10-27",
+     "source": "actual",
+     "funding": 0.00028696
+    },
+    {
+     "day": "2026-10-28",
+     "source": "actual",
+     "funding": 0.00021246999999999998
+    },
+    {
+     "day": "2026-10-29",
+     "source": "actual",
+     "funding": 0.00021522000000000002
+    },
+    {
+     "day": "2026-10-30",
+     "source": "actual",
+     "funding": 0.00017925
+    },
+    {
+     "day": "2026-10-31",
+     "source": "actual",
+     "funding": 0.00030000000000000003
+    },
+    {
+     "day": "2026-11-01",
+     "source": "proxy",
+     "funding": 0.0003
+    }
+   ],
+   "funding_7d_per_day": 0.00024149714285714283,
+   "funding_proxy_days": 1,
+   "suggested_btc_weight": null
+  },
+  "inputs_sha256": "cff1e9406aaa8e2be7d62b79ad721a0541c9f7346ca345cc58a5622c56e7a425",
+  "outcome": "superseded by 2026-11-02"
+ },
+ {
+  "day": "2026-11-02",
+  "rules_version": "tn-r10a-code-v1",
+  "weight": null,
+  "previous_weight": 1,
+  "action": "NO_DECISION",
+  "notes": "ราคาย้อนหลัง 100 วันไม่ครบ",
+  "inputs": {
+   "band": 0.02,
+   "sma100": null,
+   "band_state": null,
+   "close_perp": 76791.3,
+   "funding_hot": false,
+   "funding_policy": "funding_policy.v1",
+   "funding_window": [
+    {
+     "day": "2026-10-27",
+     "source": "actual",
+     "funding": 0.00028696
+    },
+    {
+     "day": "2026-10-28",
+     "source": "actual",
+     "funding": 0.00021246999999999998
+    },
+    {
+     "day": "2026-10-29",
+     "source": "actual",
+     "funding": 0.00021522000000000002
+    },
+    {
+     "day": "2026-10-30",
+     "source": "actual",
+     "funding": 0.00017925
+    },
+    {
+     "day": "2026-10-31",
+     "source": "actual",
+     "funding": 0.00030000000000000003
+    },
+    {
+     "day": "2026-11-01",
+     "source": "proxy",
+     "funding": 0.0003
+    },
+    {
+     "day": "2026-11-02",
+     "source": "proxy",
+     "funding": 0.00025977000000000004
+    }
+   ],
+   "funding_7d_per_day": 0.0002505242857142857,
+   "funding_proxy_days": 2,
+   "suggested_btc_weight": null
+  },
+  "inputs_sha256": "59480f65eb630ef3fb61873244fff21ba25755c9ceaea41fe312f516a5cbb26f",
+  "outcome": "superseded by 2026-11-03"
+ },
+ {
+  "day": "2026-11-03",
+  "rules_version": "tn-r10a-code-v1",
+  "weight": null,
+  "previous_weight": 1,
+  "action": "NO_DECISION",
+  "notes": "ราคาย้อนหลัง 100 วันไม่ครบ",
+  "inputs": {
+   "band": 0.02,
+   "sma100": null,
+   "band_state": null,
+   "close_perp": 77441.7,
+   "funding_hot": false,
+   "funding_policy": "funding_policy.v1",
+   "funding_window": [
+    {
+     "day": "2026-10-28",
+     "source": "actual",
+     "funding": 0.00021246999999999998
+    },
+    {
+     "day": "2026-10-29",
+     "source": "actual",
+     "funding": 0.00021522000000000002
+    },
+    {
+     "day": "2026-10-30",
+     "source": "actual",
+     "funding": 0.00017925
+    },
+    {
+     "day": "2026-10-31",
+     "source": "actual",
+     "funding": 0.00030000000000000003
+    },
+    {
+     "day": "2026-11-01",
+     "source": "proxy",
+     "funding": 0.0003
+    },
+    {
+     "day": "2026-11-02",
+     "source": "proxy",
+     "funding": 0.00025977000000000004
+    },
+    {
+     "day": "2026-11-03",
+     "source": "proxy",
+     "funding": 0.00030000000000000003
+    }
+   ],
+   "funding_7d_per_day": 0.00025238714285714286,
+   "funding_proxy_days": 3,
+   "suggested_btc_weight": null
+  },
+  "inputs_sha256": "a573fcf99946c943188866776ab65e76fc81c342d05ebc7aa5aed9442a3663d5",
+  "outcome": "superseded by 2026-11-04"
+ },
+ {
+  "day": "2026-11-04",
+  "rules_version": "tn-r10a-code-v1",
+  "weight": null,
+  "previous_weight": 1,
+  "action": "NO_DECISION",
+  "notes": "ราคาย้อนหลัง 100 วันไม่ครบ",
+  "inputs": {
+   "band": 0.02,
+   "sma100": null,
+   "band_state": null,
+   "close_perp": 80466.5,
+   "funding_hot": false,
+   "funding_policy": "funding_policy.v1",
+   "funding_window": [
+    {
+     "day": "2026-10-29",
+     "source": "actual",
+     "funding": 0.00021522000000000002
+    },
+    {
+     "day": "2026-10-30",
+     "source": "actual",
+     "funding": 0.00017925
+    },
+    {
+     "day": "2026-10-31",
+     "source": "actual",
+     "funding": 0.00030000000000000003
+    },
+    {
+     "day": "2026-11-01",
+     "source": "proxy",
+     "funding": 0.0003
+    },
+    {
+     "day": "2026-11-02",
+     "source": "proxy",
+     "funding": 0.00025977000000000004
+    },
+    {
+     "day": "2026-11-03",
+     "source": "proxy",
+     "funding": 0.00030000000000000003
+    },
+    {
+     "day": "2026-11-04",
+     "source": "proxy",
+     "funding": 0.00025372124999999997
+    }
+   ],
+   "funding_7d_per_day": 0.0002582801785714286,
+   "funding_proxy_days": 4,
+   "suggested_btc_weight": null
+  },
+  "inputs_sha256": "778ce654cf80e958982173437e63c6acda44a7149958d68f3c9161078be5a8fb",
+  "outcome": "superseded by 2026-11-05"
+ },
+ {
+  "day": "2026-11-05",
+  "rules_version": "tn-r10a-code-v1",
+  "weight": null,
+  "previous_weight": 1,
+  "action": "NO_DECISION",
+  "notes": "ราคาย้อนหลัง 100 วันไม่ครบ",
+  "inputs": {
+   "band": 0.02,
+   "sma100": null,
+   "band_state": null,
+   "close_perp": 76050.1,
+   "funding_hot": false,
+   "funding_policy": "funding_policy.v1",
+   "funding_window": [
+    {
+     "day": "2026-10-30",
+     "source": "actual",
+     "funding": 0.00017925
+    },
+    {
+     "day": "2026-10-31",
+     "source": "actual",
+     "funding": 0.00030000000000000003
+    },
+    {
+     "day": "2026-11-01",
+     "source": "proxy",
+     "funding": 0.0003
+    },
+    {
+     "day": "2026-11-02",
+     "source": "proxy",
+     "funding": 0.00025977000000000004
+    },
+    {
+     "day": "2026-11-03",
+     "source": "proxy",
+     "funding": 0.00030000000000000003
+    },
+    {
+     "day": "2026-11-04",
+     "source": "proxy",
+     "funding": 0.00025372124999999997
+    },
+    {
+     "day": "2026-11-05",
+     "source": "proxy",
+     "funding": 0.00022227125
+    }
+   ],
+   "funding_7d_per_day": 0.00025928750000000003,
+   "funding_proxy_days": 5,
+   "suggested_btc_weight": null
+  },
+  "inputs_sha256": "6f87f47f19476fffcd22930c046447e12139d8ec201164711ee35a8d83cdfb26",
+  "outcome": "superseded by 2026-11-06"
+ },
+ {
+  "day": "2026-11-06",
+  "rules_version": "tn-r10a-code-v1",
+  "weight": null,
+  "previous_weight": 1,
+  "action": "NO_DECISION",
+  "notes": "ราคาย้อนหลัง 100 วันไม่ครบ",
+  "inputs": {
+   "band": 0.02,
+   "sma100": null,
+   "band_state": null,
+   "close_perp": 75810.1,
+   "funding_hot": false,
+   "funding_policy": "funding_policy.v1",
+   "funding_window": [
+    {
+     "day": "2026-10-31",
+     "source": "actual",
+     "funding": 0.00030000000000000003
+    },
+    {
+     "day": "2026-11-01",
+     "source": "proxy",
+     "funding": 0.0003
+    },
+    {
+     "day": "2026-11-02",
+     "source": "proxy",
+     "funding": 0.00025977000000000004
+    },
+    {
+     "day": "2026-11-03",
+     "source": "proxy",
+     "funding": 0.00030000000000000003
+    },
+    {
+     "day": "2026-11-04",
+     "source": "proxy",
+     "funding": 0.00025372124999999997
+    },
+    {
+     "day": "2026-11-05",
+     "source": "proxy",
+     "funding": 0.00022227125
+    },
+    {
+     "day": "2026-11-06",
+     "source": "proxy",
+     "funding": 0.00024675125
+    }
+   ],
+   "funding_7d_per_day": 0.0002689305357142857,
+   "funding_proxy_days": 6,
+   "suggested_btc_weight": null
+  },
+  "inputs_sha256": "8cfe19aca33891986497a88367f858786d551972cb7f8b5e3ac7408a28eb3b44",
+  "outcome": "superseded by 2026-11-07"
+ },
+ {
+  "day": "2026-11-07",
+  "rules_version": "tn-r10a-code-v1",
+  "weight": null,
+  "previous_weight": 1,
+  "action": "NO_DECISION",
+  "notes": "ราคาย้อนหลัง 100 วันไม่ครบ",
+  "inputs": {
+   "band": 0.02,
+   "sma100": null,
+   "band_state": null,
+   "close_perp": 75836,
+   "funding_hot": false,
+   "funding_policy": "funding_policy.v1",
+   "funding_window": [
+    {
+     "day": "2026-11-01",
+     "source": "proxy",
+     "funding": 0.0003
+    },
+    {
+     "day": "2026-11-02",
+     "source": "proxy",
+     "funding": 0.00025977000000000004
+    },
+    {
+     "day": "2026-11-03",
+     "source": "proxy",
+     "funding": 0.00030000000000000003
+    },
+    {
+     "day": "2026-11-04",
+     "source": "proxy",
+     "funding": 0.00025372124999999997
+    },
+    {
+     "day": "2026-11-05",
+     "source": "proxy",
+     "funding": 0.00022227125
+    },
+    {
+     "day": "2026-11-06",
+     "source": "proxy",
+     "funding": 0.00024675125
+    },
+    {
+     "day": "2026-11-07",
+     "source": "proxy",
+     "funding": 0.00014577749999999994
+    }
+   ],
+   "funding_7d_per_day": 0.00024689875,
+   "funding_proxy_days": 7,
+   "suggested_btc_weight": null
+  },
+  "inputs_sha256": "d881404ece268bc6f2ed3332ed733566f06ac700ffc195f5e5bebf315f1955bc",
+  "outcome": "superseded by 2026-11-08"
+ },
+ {
+  "day": "2026-11-08",
+  "rules_version": "tn-r10a-code-v1.1",
+  "weight": 0,
+  "previous_weight": 1,
+  "action": "REBALANCE",
+  "notes": "close 74,823.50, SMA100 77,310.32: in above 78,856.53, out below 75,764.12; out; funding x1; funding 7/7 days are premium-index estimates",
+  "inputs": {
+   "band": 0.02,
+   "sma100": 77310.323,
+   "band_state": 0,
+   "close_perp": 74823.5,
+   "funding_hot": false,
+   "funding_policy": "funding_policy.v1",
+   "funding_window": [
+    {
+     "day": "2026-11-02",
+     "source": "proxy",
+     "funding": 0.00025977000000000004
+    },
+    {
+     "day": "2026-11-03",
+     "source": "proxy",
+     "funding": 0.00030000000000000003
+    },
+    {
+     "day": "2026-11-04",
+     "source": "proxy",
+     "funding": 0.00025372124999999997
+    },
+    {
+     "day": "2026-11-05",
+     "source": "proxy",
+     "funding": 0.00022227125
+    },
+    {
+     "day": "2026-11-06",
+     "source": "proxy",
+     "funding": 0.00024675125
+    },
+    {
+     "day": "2026-11-07",
+     "source": "proxy",
+     "funding": 0.00014577749999999994
+    },
+    {
+     "day": "2026-11-08",
+     "source": "proxy",
+     "funding": 0.00019536125000000005
+    }
+   ],
+   "rest_filled_days": [
+    "2026-10-28"
+   ],
+   "funding_7d_per_day": 0.00023195035714285717,
+   "funding_proxy_days": 7,
+   "suggested_btc_weight": 0
+  },
+  "inputs_sha256": "01bb977c982087d7cbc4c64f908e6a7ff4a0b28bacd35b2dd150f9d9aaaca5e6",
+  "outcome": "already at the target (the difference is below the exchange minimum)"
+ },
+ {
+  "day": "2026-11-09",
+  "rules_version": "tn-r10a-code-v1.1",
+  "weight": 0,
+  "previous_weight": 0,
+  "action": "HOLD",
+  "notes": "close 75,327.00, SMA100 77,435.67: in above 78,984.38, out below 75,886.96; out; funding x1; funding 7/7 days are premium-index estimates",
+  "inputs": {
+   "band": 0.02,
+   "sma100": 77435.67,
+   "band_state": 0,
+   "close_perp": 75327,
+   "funding_hot": false,
+   "funding_policy": "funding_policy.v1",
+   "funding_window": [
+    {
+     "day": "2026-11-03",
+     "source": "proxy",
+     "funding": 0.00030000000000000003
+    },
+    {
+     "day": "2026-11-04",
+     "source": "proxy",
+     "funding": 0.00025372124999999997
+    },
+    {
+     "day": "2026-11-05",
+     "source": "proxy",
+     "funding": 0.00022227125
+    },
+    {
+     "day": "2026-11-06",
+     "source": "proxy",
+     "funding": 0.00024675125
+    },
+    {
+     "day": "2026-11-07",
+     "source": "proxy",
+     "funding": 0.00014577749999999994
+    },
+    {
+     "day": "2026-11-08",
+     "source": "proxy",
+     "funding": 0.00019536125000000005
+    },
+    {
+     "day": "2026-11-09",
+     "source": "proxy",
+     "funding": 0.0003000000000000001
+    }
+   ],
+   "rest_filled_days": [
+    "2026-10-28"
+   ],
+   "funding_7d_per_day": 0.0002376975,
+   "funding_proxy_days": 7,
+   "suggested_btc_weight": 0
+  },
+  "inputs_sha256": "795fb00ee46fd1e7f58a5862d7ace8773e6e0ae317b65da3ae4a7b209c89fa66",
+  "outcome": "superseded by 2026-11-10"
+ },
+ {
+  "day": "2026-11-10",
+  "rules_version": "tn-r10a-code-v1.1",
+  "weight": 0,
+  "previous_weight": 0,
+  "action": "HOLD",
+  "notes": "close 73,762.90, SMA100 77,537.80: in above 79,088.55, out below 75,987.04; out; funding x1; funding 7/7 days are premium-index estimates",
+  "inputs": {
+   "band": 0.02,
+   "sma100": 77537.799,
+   "band_state": 0,
+   "close_perp": 73762.9,
+   "funding_hot": false,
+   "funding_policy": "funding_policy.v1",
+   "funding_window": [
+    {
+     "day": "2026-11-04",
+     "source": "proxy",
+     "funding": 0.00025372124999999997
+    },
+    {
+     "day": "2026-11-05",
+     "source": "proxy",
+     "funding": 0.00022227125
+    },
+    {
+     "day": "2026-11-06",
+     "source": "proxy",
+     "funding": 0.00024675125
+    },
+    {
+     "day": "2026-11-07",
+     "source": "proxy",
+     "funding": 0.00014577749999999994
+    },
+    {
+     "day": "2026-11-08",
+     "source": "proxy",
+     "funding": 0.00019536125000000005
+    },
+    {
+     "day": "2026-11-09",
+     "source": "proxy",
+     "funding": 0.0003000000000000001
+    },
+    {
+     "day": "2026-11-10",
+     "source": "proxy",
+     "funding": 0.00027061
+    }
+   ],
+   "rest_filled_days": [
+    "2026-10-28"
+   ],
+   "funding_7d_per_day": 0.0002334989285714286,
+   "funding_proxy_days": 7,
+   "suggested_btc_weight": 0
+  },
+  "inputs_sha256": "eafda22d87260d43386d3cf50986d7d87df5975b4462ce1dac3ff461ac43ef23",
+  "outcome": "superseded by 2026-11-11"
+ },
+ {
+  "day": "2026-11-11",
+  "rules_version": "tn-r10a-code-v1.1",
+  "weight": 0,
+  "previous_weight": 0,
+  "action": "HOLD",
+  "notes": "close 73,980.00, SMA100 77,642.63: in above 79,195.48, out below 76,089.77; out; funding x1; funding 7/7 days are premium-index estimates",
+  "inputs": {
+   "band": 0.02,
+   "sma100": 77642.62700000001,
+   "band_state": 0,
+   "close_perp": 73980,
+   "funding_hot": false,
+   "funding_policy": "funding_policy.v1",
+   "funding_window": [
+    {
+     "day": "2026-11-05",
+     "source": "proxy",
+     "funding": 0.00022227125
+    },
+    {
+     "day": "2026-11-06",
+     "source": "proxy",
+     "funding": 0.00024675125
+    },
+    {
+     "day": "2026-11-07",
+     "source": "proxy",
+     "funding": 0.00014577749999999994
+    },
+    {
+     "day": "2026-11-08",
+     "source": "proxy",
+     "funding": 0.00019536125000000005
+    },
+    {
+     "day": "2026-11-09",
+     "source": "proxy",
+     "funding": 0.0003000000000000001
+    },
+    {
+     "day": "2026-11-10",
+     "source": "proxy",
+     "funding": 0.00027061
+    },
+    {
+     "day": "2026-11-11",
+     "source": "proxy",
+     "funding": 0.00018398375000000002
+    }
+   ],
+   "funding_7d_per_day": 0.0002235364285714286,
+   "funding_proxy_days": 7,
+   "suggested_btc_weight": 0
+  },
+  "inputs_sha256": "6631dc960fc8351b09cabc48e6a99aab1e777be4aa4f0fd29db814e3999bc2b8",
+  "outcome": "superseded by 2026-11-12"
+ },
+ {
+  "day": "2026-11-12",
+  "rules_version": "tn-r10a-code-v1.1",
+  "weight": 0,
+  "previous_weight": 0,
+  "action": "HOLD",
+  "notes": "close 71,423.30, SMA100 77,716.10: in above 79,270.43, out below 76,161.78; out; funding x1; funding 7/7 days are premium-index estimates",
+  "inputs": {
+   "band": 0.02,
+   "sma100": 77716.105,
+   "band_state": 0,
+   "close_perp": 71423.3,
+   "funding_hot": false,
+   "funding_policy": "funding_policy.v1",
+   "funding_window": [
+    {
+     "day": "2026-11-06",
+     "source": "proxy",
+     "funding": 0.00024675125
+    },
+    {
+     "day": "2026-11-07",
+     "source": "proxy",
+     "funding": 0.00014577749999999994
+    },
+    {
+     "day": "2026-11-08",
+     "source": "proxy",
+     "funding": 0.00019536125000000005
+    },
+    {
+     "day": "2026-11-09",
+     "source": "proxy",
+     "funding": 0.0003000000000000001
+    },
+    {
+     "day": "2026-11-10",
+     "source": "proxy",
+     "funding": 0.00027061
+    },
+    {
+     "day": "2026-11-11",
+     "source": "proxy",
+     "funding": 0.00018398375000000002
+    },
+    {
+     "day": "2026-11-12",
+     "source": "proxy",
+     "funding": 0.0002342187500000001
+    }
+   ],
+   "funding_7d_per_day": 0.0002252432142857143,
+   "funding_proxy_days": 7,
+   "suggested_btc_weight": 0
+  },
+  "inputs_sha256": "6f43f58f908b04c3d0d9090b57d5389a3c6ad6dc8cc34169fa5faa50293caed2",
+  "outcome": "superseded by 2026-11-13"
+ },
+ {
+  "day": "2026-11-13",
+  "rules_version": "tn-r10a-code-v1.1",
+  "weight": 0,
+  "previous_weight": 0,
+  "action": "HOLD",
+  "notes": "close 68,279.80, SMA100 77,752.56: in above 79,307.62, out below 76,197.51; out; funding x1; funding 7/7 days are premium-index estimates",
+  "inputs": {
+   "band": 0.02,
+   "sma100": 77752.564,
+   "band_state": 0,
+   "close_perp": 68279.8,
+   "funding_hot": false,
+   "funding_policy": "funding_policy.v1",
+   "funding_window": [
+    {
+     "day": "2026-11-07",
+     "source": "proxy",
+     "funding": 0.00014577749999999994
+    },
+    {
+     "day": "2026-11-08",
+     "source": "proxy",
+     "funding": 0.00019536125000000005
+    },
+    {
+     "day": "2026-11-09",
+     "source": "proxy",
+     "funding": 0.0003000000000000001
+    },
+    {
+     "day": "2026-11-10",
+     "source": "proxy",
+     "funding": 0.00027061
+    },
+    {
+     "day": "2026-11-11",
+     "source": "proxy",
+     "funding": 0.00018398375000000002
+    },
+    {
+     "day": "2026-11-12",
+     "source": "proxy",
+     "funding": 0.0002342187500000001
+    },
+    {
+     "day": "2026-11-13",
+     "source": "proxy",
+     "funding": 9.373250000000008e-05
+    }
+   ],
+   "funding_7d_per_day": 0.0002033833928571429,
+   "funding_proxy_days": 7,
+   "suggested_btc_weight": 0
+  },
+  "inputs_sha256": "eddf9be037b0fc49a020abb004265171f21596d788823fabf84a4b04eb27c1e6",
+  "outcome": null
+ }
+]
