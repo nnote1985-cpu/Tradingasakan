@@ -5,9 +5,10 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 from typing import Any, Literal
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from psycopg_pool import PoolTimeout
@@ -17,6 +18,7 @@ from api.ai import ai_settings, scorecard
 from api.assets import ASSETS, AssetCache
 from api.auth import AuthError, Principal, RoleStore, TokenVerifier, authenticate
 from api.backtests import load_backtests
+from api.charts import BadRequest, ChartService, Loading, PgBarStore
 from api.portfolios import NoPortfolios, PortfolioStore, Unavailable, decision_items, equity_series, overview_items, risk_items
 from api.profile_drafts import DraftConflict, DraftStore, DraftsUnavailable, NoDrafts, PgDraftStore, SaveDraft
 from api.strategies import catalog_view, profiles_view
@@ -35,11 +37,13 @@ class OperatorRequest(BaseModel):
 
 def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
                portfolios: PortfolioStore | None = None, assets: AssetCache | None = None,
-               workers: WorkerStore | None = None, drafts: DraftStore | None = None) -> FastAPI:
+               workers: WorkerStore | None = None, drafts: DraftStore | None = None,
+               charts: ChartService | None = None) -> FastAPI:
     store: PortfolioStore = portfolios or NoPortfolios()
     worker_store: WorkerStore = workers or NoWorkers()
     market = assets or AssetCache()
     draft_store: DraftStore = drafts or NoDrafts()
+    chart = charts or ChartService()
     app = FastAPI(title="asakantrading API", version="0.1.0")
     if settings.allowed_origins:
         app.add_middleware(CORSMiddleware, allow_origins=list(settings.allowed_origins),
@@ -164,6 +168,30 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
         except Unavailable:
             return {"available": False, "items": [], "counts": {}, "cost_usd": "0", "limit": 0}
 
+    @app.exception_handler(BadRequest)
+    async def bad_request(request: Request, exc: BadRequest) -> JSONResponse:
+        return JSONResponse(status_code=422, content={
+            "code": "bad_request", "request_id": getattr(request.state, "request_id", None),
+            "retryable": False, "message": str(exc)})
+
+    @app.exception_handler(Loading)
+    async def chart_loading(request: Request, exc: Loading) -> JSONResponse:
+        return JSONResponse(status_code=503, headers={"Retry-After": "3"}, content={
+            "code": "chart_loading", "request_id": getattr(request.state, "request_id", None),
+            "retryable": True, "message": "กำลังดาวน์โหลดแท่งย้อนหลังจาก archive ลองใหม่ในไม่กี่วินาที"})
+
+    @app.get("/api/v1/charts/{symbol}/bars")
+    async def chart_bars(symbol: str, venue: str = "spot", timeframe: str = "1d", start: datetime | None = Query(None, alias="from"),
+                         end: datetime | None = Query(None, alias="to"),
+                         p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        return await chart.bars(symbol, venue, timeframe, start, end)
+
+    @app.get("/api/v1/charts/{symbol}/indicators")
+    async def chart_indicators(symbol: str, venue: str = "spot", timeframe: str = "1d", set: str = "basic",
+                               start: datetime | None = Query(None, alias="from"), end: datetime | None = Query(None, alias="to"),
+                               p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        return await chart.indicators(symbol, venue, timeframe, start, end, set)
+
     @app.get("/api/v1/workers")
     async def worker_status(p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
         try:
@@ -217,7 +245,7 @@ def app_from_env() -> FastAPI:   # uvicorn --factory api.main:app_from_env
         raise RuntimeError("SUPABASE_URL and DATABASE_URL are required")
     pool = AsyncConnectionPool(s.database_url, open=False, timeout=5)
     app = create_app(s, SupabaseJwtVerifier(s.supabase_url), PgRoleStore(pool), PgPortfolioStore(pool),
-                     workers=PgWorkerStore(pool), drafts=PgDraftStore(pool))
+                     workers=PgWorkerStore(pool), drafts=PgDraftStore(pool), charts=ChartService(PgBarStore(pool)))
     app.router.on_startup.append(pool.open)
     app.router.on_shutdown.append(pool.close)
     return app
