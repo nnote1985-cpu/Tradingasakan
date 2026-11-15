@@ -289,7 +289,7 @@ class ArchiveCache:
             return pd.DataFrame(columns=COLUMNS, dtype=float)
         df = pd.concat(frames).sort_index()
         df = df[~df.index.duplicated(keep="first")]
-        return df[(df.index >= _utc(start)) & (df.index < _utc(end))][COLUMNS]
+        return df[(df.index >= utc(start)) & (df.index < utc(end))][COLUMNS]
 
 
 class Loading(RuntimeError):
@@ -306,7 +306,7 @@ class Window:
     load_from: pd.Timestamp   # first bar loaded (warm-up)
 
 
-def _utc(x: datetime) -> pd.Timestamp:
+def utc(x: datetime) -> pd.Timestamp:
     t = pd.Timestamp(x)
     return t.tz_localize("UTC") if t.tzinfo is None else t.tz_convert("UTC")
 
@@ -315,9 +315,9 @@ def window(timeframe: str, start: datetime | None, end: datetime | None, now: da
     if timeframe not in STEP:
         raise BadRequest(f"unknown timeframe {timeframe!r}; allowed: {sorted(STEP)}")
     step = STEP[timeframe]
-    current = _utc(now).floor(step)
-    e = min(_utc(end).floor(step), current) if end else current
-    s = _utc(start).ceil(step) if start else e - DEFAULT_BARS * step
+    current = utc(now).floor(step)
+    e = min(utc(end).floor(step), current) if end else current
+    s = utc(start).ceil(step) if start else e - DEFAULT_BARS * step
     if s >= e:
         raise BadRequest("from must be before to")
     if (e - s) / step > MAX_BARS:
