@@ -161,7 +161,9 @@ def test_reject_then_new_revision(rig):
     bot = save(c).json()["bot_id"]
     act(c, bot, 1, "submit")
     assert act(c, bot, 1, "reject").json()["status"] == "draft"
-    save(c, cfg(allocation={"asset": "USDT", "amount": "1500"}), bot_id=bot, expected=1)
+    r = save(c, cfg(allocation={"asset": "USDT", "amount": "1500"}), bot_id=bot, expected=1)
+    assert r.status_code == 422 and r.json()["code"] == "allocation_fixed"     # a new bot, not a revision
+    save(c, cfg(name="renamed"), bot_id=bot, expected=1)
     assert act(c, bot, 1, "approve").json()["code"] == "not_latest"
     act(c, bot, 2, "submit")
     assert act(c, bot, 2, "approve").json()["approved"]["revision"] == 2

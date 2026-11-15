@@ -300,6 +300,14 @@ class PgBotStore:
                     raise refused("bot_id", "retired", "บอทนี้ปลดแล้ว บันทึก revision ใหม่ไม่ได้")
                 if revs and revs[-1]["account"] != c.account:
                     raise refused("account", "account_fixed", f"บอทนี้ผูกกับบัญชี {revs[-1]['account']} สร้างบอทใหม่ถ้าจะใช้บัญชีอื่น", 422)
+                if revs:
+                    first = revs[0]["config"]
+                    if body["allocation"] != first["allocation"]:
+                        raise refused("allocation.amount", "allocation_fixed",
+                                      "เงินของบอทคงที่ทุก revision (Guardian วัด drawdown จากยอดนี้) สร้างบอทใหม่ถ้าจะเปลี่ยนเงิน", 422)
+                    if body["strategy"] != first["strategy"]:
+                        raise refused("strategy.template", "strategy_fixed",
+                                      "กลยุทธ์คงที่ทุก revision สร้างบอทใหม่ถ้าจะเปลี่ยนกลยุทธ์", 422)
                 if not revs and (why := await self._occupied(conn, c.account, bot_id, await self._beats(conn))):
                     raise refused("account", "account_in_use", why)
                 if c.source_draft is not None and await (await conn.execute(
