@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import CandleChart from "../src/charts/CandleChart";
 import { ChartPanel } from "../src/charts/ChartPanel";
-import { type ApiBar, type BarsResponse, haltBars, lookup, markers, type OverlaysResponse, planUpdate } from "../src/charts/model";
+import { type ApiBar, type BarsResponse, haltBars, lookup, markers, type OverlaysResponse, planUpdate, runLines, runMarkers, type RunResponse, runWindow } from "../src/charts/model";
 
 // --- a recording stand-in for lightweight-charts -------------------------------------------------
 const calls: { series: string; op: string; arg?: unknown }[] = [];
@@ -22,6 +22,7 @@ vi.mock("lightweight-charts", () => {
       return {
         addSeries: (kind: string) => series(`${kind}${n++}`), removeSeries: () => {}, priceScale: () => ({ applyOptions: () => {} }),
         subscribeClick: () => {}, subscribeCrosshairMove: () => {}, applyOptions: () => {}, remove: () => {},
+        timeScale: () => ({ fitContent: () => calls.push({ series: "time", op: "fitContent" }) }),
       };
     },
     createSeriesMarkers: () => ({ setMarkers: (m: unknown) => calls.push({ series: "markers", op: "setMarkers", arg: m }) }),
@@ -90,7 +91,7 @@ test("clicking a marker finds its fill and the decision behind it", () => {
 // --- the chart component (C1) --------------------------------------------------------------------
 test("a refresh updates the last bar without reloading the chart", () => {
   const base = [bar(0, "100"), bar(D, "101")];
-  const props = { indicators: null, hidden: new Set<string>(), overlays: null, timeframe: "1d" as const, onMarker: () => {}, onHover: () => {} };
+  const props = { indicators: null, hidden: new Set<string>(), marks: [], halts: [], extra: [], timeframe: "1d" as const, onMarker: () => {}, onHover: () => {} };
   const r = render(<CandleChart bars={resp(base, bar(2 * D, "102"))} {...props} />);
   expect(calls.filter((c) => c.series === "Candlestick0").map((c) => c.op)).toEqual(["setData"]);
   calls.length = 0;
@@ -101,9 +102,11 @@ test("a refresh updates the last bar without reloading the chart", () => {
 
 // --- the panel (C5) -------------------------------------------------------------------------------
 let api: Record<string, unknown> = {};
+const asked: string[] = [];
 vi.mock("../src/api", () => ({
   supabase: null,
   apiGet: async (path: string) => {
+    asked.push(path);
     const k = Object.keys(api).find((p) => path.startsWith(p));
     if (!k) throw { code: "not_found", message: "no" };
     return api[k];
@@ -135,4 +138,31 @@ test("overlays without a mode are not drawn", async () => {
   await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
   expect(screen.queryByTestId("mode-badge")).toBeNull();
   expect(screen.queryByText(/▲ ซื้อ/)).toBeNull();
+});
+
+const RUN: RunResponse = {
+  kind: "backtest", id: "R7", label: "Long/short", mode: "BACKTEST", venue: "perp", range: ["2022-04-12", "2026-01-01"], note: null,
+  events: [{ t: 1649721600, side: "SELL", action: "open", price: "39497.70", qty: "0.25", text: "เปิด short" },
+    { t: 1650412800, side: "BUY", action: "close", price: "41481.19", qty: "0.25", text: "ปิด -508.09" }],
+  equity: [{ t: 1649721600, v: "9850.05" }], benchmark: [{ t: 1649721600, v: "10128.35" }], drawdown: [{ t: 1649721600, v: "0.014995" }],
+};
+
+test("a run gives arrows, equity / benchmark / drawdown lines and its own date window", () => {
+  expect(runMarkers(RUN, COLORS).map((m) => [m.shape, m.text])).toEqual([["arrowDown", "เปิด short"], ["arrowUp", "ปิด -508.09"]]);
+  expect(runLines(RUN).map((l) => [l.key, l.panel])).toEqual([["run_equity", "equity"], ["run_benchmark", "equity"], ["run_drawdown", "drawdown"]]);
+  expect(runLines(RUN)[2].values[0].v).toBe("-0.014995");
+  expect(runWindow(RUN)).toBe("&from=2022-04-12T00:00:00Z&to=2026-01-02T00:00:00.000Z");
+});
+
+test("choosing a backtest labels the chart BACKTEST and loads the run's daily perp bars", async () => {
+  asked.length = 0;
+  api = { "/api/v1/charts/runs/backtest/R7": RUN, "/api/v1/charts/runs": { items: [{ kind: "backtest", id: "R7", label: "R7 · Long/short", mode: "BACKTEST", venue: "perp", range: RUN.range }] },
+    "/api/v1/charts/BTCUSDT/bars": resp([bar(1649721600, "100")]), "/api/v1/charts/BTCUSDT/indicators": { set: "basic", series: [] } };
+  show();
+  const select = await screen.findByLabelText("แสดง");
+  await waitFor(() => expect(screen.getByText("R7 · Long/short")).toBeTruthy());
+  fireEvent.change(select, { target: { value: "run:backtest/R7" } });
+  await waitFor(() => expect(screen.getByTestId("mode-badge").textContent).toBe("BACKTEST"));
+  expect(asked.some((p) => p.startsWith("/api/v1/charts/BTCUSDT/bars?venue=perp&timeframe=1d&from=2022-04-12"))).toBe(true);
+  expect(screen.getByTestId("run-summary").textContent).toContain("2 จุดซื้อขาย");
 });
