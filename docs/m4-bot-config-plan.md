@@ -53,6 +53,8 @@ Code baseline: main cf32c96
 - **hash** = sha256 ของ JSON ที่ normalize แล้ว (`sort_keys`, ตัวเลขเงินเป็น string, params เติมค่า default ของ template)
   วิธีเดียวกับ `bot_profile_drafts`; API, DB trigger และ worker คำนวณด้วยฟังก์ชันเดียวกัน (`trading/bots/config.py`)
 - **book** ของบอท = `bot-<8 ตัวแรกของ bot_id>` คงที่ทุก revision (ตำแหน่งและการตัดสินใจเดิมต่อเนื่อง)
+- **account, allocation และ strategy คงที่ทุก revision:** Guardian วัด drawdown จาก allocation ถ้าเปลี่ยนเงินกลางทาง
+  equity จะกระโดดและอาจ HALT ผิด ๆ; เปลี่ยนสามอย่างนี้ = สร้างบอทใหม่ (book ใหม่) ส่วน revision เปลี่ยนได้แค่ชื่อ หมายเหตุ และ mode
 - `futures` ต้องเป็น null สำหรับ Spot; สำหรับ Perp (เก็บโครงไว้ แต่ approve ไม่ได้จนกว่าจะมี template Perp):
   `leverage` = 1 เท่านั้น, `margin_mode` = `isolated` เท่านั้น, `stop_percent` ต้องน้อยกว่าระยะ liquidation ที่ 1x
 - template ที่รันได้อยู่ใน registry `trading/bots/templates.py`: id, version, ตลาด, symbol, timeframe ที่รองรับ,
