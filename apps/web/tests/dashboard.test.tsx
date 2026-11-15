@@ -250,7 +250,7 @@ test("settings separates read-only profiles from the strategy library", async ()
   const { container } = render(<QueryClientProvider client={new QueryClient()}><Dashboard /></QueryClientProvider>);
   const view = within(container);
   expect(view.getByRole("tab", { name: "ตั้งค่า" }).getAttribute("aria-selected")).toBe("true");
-  expect(view.getByText(/ยังไม่เชื่อม worker, Backtest หรือการส่งคำสั่งเทรด/)).toBeTruthy();
+  expect(view.getByText(/ยังไม่เชื่อม worker หรือการส่งคำสั่ง/)).toBeTruthy();
   const card = await view.findByTestId("bot-profile");
   expect(card.textContent).toContain("#1, #7");
   expect(card.textContent).toContain("(หลัก)");

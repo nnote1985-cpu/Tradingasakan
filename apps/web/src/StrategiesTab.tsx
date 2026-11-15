@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { type ApiError, apiGet, type BotProfile, type LibraryStrategy } from "./api";
+import { BotsPanel } from "./bots/BotsPanel";
 import { DraftProfiles } from "./DraftProfiles";
 
 const FAMILY_TH: Record<string, string> = { trend: "ตามเทรนด์", momentum: "โมเมนตัม", mean_reversion: "สวนกลับ" };
@@ -93,16 +94,17 @@ function Library() {
   );
 }
 
-export function StrategiesTab({ view, onSelect }: { view: "profiles" | "library"; onSelect: (view: "profiles" | "library") => void }) {
+export function StrategiesTab({ view, onSelect }: { view: "profiles" | "library" | "bots"; onSelect: (view: "profiles" | "library" | "bots") => void }) {
   return (
     <div className="space-y-6">
-      <div className="notice">ตั้งค่าและบันทึก Draft Profile ได้ · ยังไม่เชื่อม worker, Backtest หรือการส่งคำสั่งเทรด สถานะ profile ไม่ได้ยืนยันว่าบอตกำลังใช้ชุดนี้</div>
+      <div className="notice">{view === "bots" ? "บอทบน Testnet เท่านั้น · บันทึกแล้วต้องส่งอนุมัติและ approve ก่อน worker จะใช้ · LIVE ปิดอยู่" : "Draft Profile เป็นสูตรสำหรับวิจัย ยังไม่เชื่อม worker หรือการส่งคำสั่ง · บอทที่รันได้ตั้งในหมวด “บอท”"}</div>
       <div className="flex flex-wrap gap-2" role="group" aria-label="หมวดการตั้งค่า">
+        <button type="button" className={`filter-button ${view === "bots" ? "filter-active" : ""}`} aria-pressed={view === "bots"} onClick={() => onSelect("bots")}>บอท</button>
         <button type="button" className={`filter-button ${view === "profiles" ? "filter-active" : ""}`} aria-pressed={view === "profiles"} onClick={() => onSelect("profiles")}>Bot profiles</button>
         <button type="button" className={`filter-button ${view === "library" ? "filter-active" : ""}`} aria-pressed={view === "library"} onClick={() => onSelect("library")}>คลังกลยุทธ์</button>
       </div>
       <p className="text-sm text-[var(--text-secondary)]">คลังกลยุทธ์ → จัดเป็น Bot profile → ผูกกับบอต ส่วนผล Backtest และการทดลองอยู่ใน <a className="underline" href="#research">งานวิจัย</a></p>
-      {view === "profiles" ? <><DraftProfiles /><details className="panel"><summary className="cursor-pointer font-medium">ดู preset รุ่นเดิมและชุดสัญญาณที่ใช้เป็นต้นแบบ</summary><div className="mt-4"><Profiles /></div></details></> : <><Library /><section className="panel"><h2 className="font-semibold">กฎ Stop-loss สำหรับร่าง</h2><p className="mt-2 text-sm">ATR จากราคาเข้า · Trailing ATR · เปอร์เซ็นต์จากราคาเข้า</p><p className="mt-2 text-sm text-[var(--text-secondary)]">เลือกและตั้งค่าได้ใน Bot profiles พร้อม Risk / Trade และ Max Exposure กฎเหล่านี้ยังเป็นข้อกำหนดของร่าง ไม่มี engine ประเมินหรือส่งคำสั่ง</p></section></>}
+      {view === "bots" ? <BotsPanel /> : view === "profiles" ? <><DraftProfiles /><details className="panel"><summary className="cursor-pointer font-medium">ดู preset รุ่นเดิมและชุดสัญญาณที่ใช้เป็นต้นแบบ</summary><div className="mt-4"><Profiles /></div></details></> : <><Library /><section className="panel"><h2 className="font-semibold">กฎ Stop-loss สำหรับร่าง</h2><p className="mt-2 text-sm">ATR จากราคาเข้า · Trailing ATR · เปอร์เซ็นต์จากราคาเข้า</p><p className="mt-2 text-sm text-[var(--text-secondary)]">เลือกและตั้งค่าได้ใน Bot profiles พร้อม Risk / Trade และ Max Exposure กฎเหล่านี้ยังเป็นข้อกำหนดของร่าง ไม่มี engine ประเมินหรือส่งคำสั่ง</p></section></>}
     </div>
   );
 }
