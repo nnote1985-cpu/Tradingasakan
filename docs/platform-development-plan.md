@@ -4,7 +4,7 @@
 **วันที่:** 15 พฤศจิกายน 2026
 **Code baseline ที่ตรวจ:** main f1b9247 (v0.2 ตรวจซ้ำที่ 3643d93)
 **สถานะ:** แผนเท่านั้น ยังไม่มีโค้ด ไม่ได้สร้าง key ไม่ได้ส่งคำสั่ง และไม่ได้เปลี่ยน worker ที่รันอยู่
-**แผนย่อยของแต่ละ milestone:** M3 → [m3-strategy-core-plan.md](m3-strategy-core-plan.md)
+**แผนย่อยของแต่ละ milestone:** M3 → [m3-strategy-core-plan.md](m3-strategy-core-plan.md) · M4 → [m4-bot-config-plan.md](m4-bot-config-plan.md)
 
 เอกสารนี้ต่อจาก [testnet-development-plan.md](testnet-development-plan.md) (P0–P6 ทำแล้ว)
 และรวมงานที่เหลือ 4 เรื่องไว้ในแผนเดียว: Spot, Futures, กราฟเทคนิคอล และ Frontend
