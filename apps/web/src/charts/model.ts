@@ -12,7 +12,7 @@ export type BarsResponse = {
   forming: (ApiBar & { closed: false; minutes: number }) | null;
   gaps: { from: string; to: string }[]; sources: { from: string; to: string; source: "db" | "archive" }[]; as_of: string;
 };
-export type IndicatorSeries = { key: string; label: string; panel: "price" | "lower"; formula: string; values: { t: number; v: string | null }[] };
+export type IndicatorSeries = { key: string; label: string; panel: "price" | "lower" | "equity" | "drawdown"; formula: string; values: { t: number; v: string | null }[] };
 export type IndicatorsResponse = { set: IndicatorSet; series: IndicatorSeries[] };
 
 export type Fill = { t: number; at: string; side: "BUY" | "SELL"; qty: string; price: string; fee: string | null; fee_asset: string | null;
@@ -115,3 +115,32 @@ export function lookup(id: string, o: OverlaysResponse | null | undefined): { fi
 /** Line colours by position in the set, shared by the chart and the legend chips. */
 export const PALETTE = ["#2a78d6", "#eb6834", "#7a5bd0", "#1f9d8a", "#c2410c", "#64748b", "#b45309", "#0e7490"];
 export const lineColor = (i: number) => PALETTE[i % PALETTE.length];
+
+export type RunEvent = { t: number; side: "BUY" | "SELL"; action: "open" | "close" | "rebalance"; price: string | null; qty: string | null; text: string };
+export type RunItem = { kind: "backtest" | "shadow"; id: string; label: string; mode: ChartMode; venue: Venue; range: [string, string] | null };
+export type RunResponse = RunItem & { note: string | null; events: RunEvent[]; equity: { t: number; v: string }[];
+  benchmark: { t: number; v: string }[]; drawdown: { t: number; v: string }[] };
+
+/** Backtest / shadow trades: ▲ buy below the bar, ▼ sell above it. */
+export function runMarkers(r: RunResponse | null | undefined, c: MarkerColors): Marker[] {
+  if (!r) return [];
+  const quiet = r.events.length > 30;   // a long run: shapes only, the labels would cover the bars
+  return r.events.map((e, i) => ({ id: `run:${i}`, time: e.t, position: e.side === "BUY" ? "belowBar" : "aboveBar",
+    shape: e.side === "BUY" ? "arrowUp" : "arrowDown", color: e.side === "BUY" ? c.buy : c.sell, text: quiet ? "" : e.text }));
+}
+
+/** Equity (with buy-and-hold when the run has one) and drawdown as lower-panel lines. */
+export function runLines(r: RunResponse | null | undefined): IndicatorSeries[] {
+  if (!r) return [];
+  const out: IndicatorSeries[] = [{ key: "run_equity", label: "มูลค่าพอร์ต", panel: "equity", formula: "equity", values: r.equity }];
+  if (r.benchmark.length) out.push({ key: "run_benchmark", label: "ถือ BTC เฉย ๆ", panel: "equity", formula: "buy and hold", values: r.benchmark });
+  out.push({ key: "run_drawdown", label: "Drawdown", panel: "drawdown", formula: "1 - equity / peak", values: r.drawdown.map((p) => ({ t: p.t, v: p.v === null ? null : String(-Number(p.v)) })) });
+  return out;
+}
+
+/** Bars to request for a run: its whole range (daily). */
+export function runWindow(r: RunItem): string {
+  if (!r.range) return "";
+  const to = new Date(Date.parse(`${r.range[1]}T00:00:00Z`) + 86400_000).toISOString();
+  return `&from=${r.range[0]}T00:00:00Z&to=${to}`;
+}

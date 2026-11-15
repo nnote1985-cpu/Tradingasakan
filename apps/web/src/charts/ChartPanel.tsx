@@ -1,10 +1,11 @@
 // Chart page: controls, data, the lazy chart, the marker details and a table view (plan §4.3).
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { lazy, Suspense, useMemo, useState } from "react";
 import { type ApiError, apiGet } from "../api";
 import { ModeBadge } from "../ModeBadge";
 import {
-  type BarsResponse, type IndicatorSet, type IndicatorsResponse, lineColor, lookup, type OverlaysResponse, type Timeframe, type Venue,
+  allBars, type BarsResponse, haltBars, type IndicatorSet, type IndicatorsResponse, lineColor, lookup, markers, type OverlaysResponse,
+  type RunItem, runLines, runMarkers, type RunResponse, runWindow, type Timeframe, type Venue,
 } from "./model";
 
 const CandleChart = lazy(() => import("./CandleChart"));
@@ -16,10 +17,10 @@ const SETS: { key: IndicatorSet; label: string }[] = [
   { key: "basic", label: "พื้นฐาน (EMA, Donchian, ATR)" }, { key: "r10a", label: "R10a (SMA100 ±2%)" }, { key: "e1", label: "E1 (EMA, Donchian 20, ADX)" },
 ];
 export const BOOKS = [
-  { key: "", label: "ไม่แสดงบอท" },
   { key: "DEFAULT/tn-r10a-code-v1", label: "R10a บน Testnet (DEFAULT)" },
   { key: "AI/tn-r2-v1", label: "AI r2 บน Testnet (AI)" },
 ];
+const COLORS = { buy: "#1d7f3f", sell: "#c53b3a", decision: "#2a78d6", none: "#6f6e69" };
 
 function retry(n: number, e: ApiError) {
   return e?.code === "chart_loading" && n < 20;
@@ -30,21 +31,29 @@ const on = "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900";
 
 export function ChartPanel({ initialBook = "" }: { initialBook?: string }) {
   const [tf, setTf] = useState<Timeframe>("1d");
-  const [venue, setVenue] = useState<Venue>("spot");
+  const [marketVenue, setVenue] = useState<Venue>("spot");
   const [set, setSet] = useState<IndicatorSet>("basic");
-  const [book, setBook] = useState(initialBook);
+  // what is drawn over the bars: nothing, a Testnet bot ("bot:ACCOUNT/BOOK") or one run ("run:KIND/ID"); never two
+  const [source, setSource] = useState(initialBook ? `bot:${initialBook}` : "");
+  const book = source.startsWith("bot:") ? source.slice(4) : "";
+  const runKey = source.startsWith("run:") ? source.slice(4) : "";
+  const runs = useQuery<{ items: RunItem[] }, ApiError>({ queryKey: ["chart-runs"], queryFn: () => apiGet("/api/v1/charts/runs"), staleTime: 300_000 });
+  const runItem = runs.data?.items.find((r) => `${r.kind}/${r.id}` === runKey) ?? null;
+  const run = useQuery<RunResponse, ApiError>({ queryKey: ["chart-run", runKey], queryFn: () => apiGet(`/api/v1/charts/runs/${runKey}`), enabled: runKey !== "" });
+  const venue: Venue = runItem?.venue ?? marketVenue;
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [picked, setPicked] = useState<string | null>(null);
   const [hover, setHover] = useState<Record<string, number | null> | null>(null);
   const [table, setTable] = useState(false);
-  const q = `venue=${venue}&timeframe=${tf}`;
+  const timeframe: Timeframe = runItem ? "1d" : tf;          // runs are daily
+  const q = `venue=${venue}&timeframe=${timeframe}${runItem ? runWindow(runItem) : ""}`;
   const bars = useQuery<BarsResponse, ApiError>({
-    queryKey: ["chart-bars", venue, tf], queryFn: () => apiGet(`/api/v1/charts/${SYMBOL}/bars?${q}`),
-    refetchInterval: POLL_MS, placeholderData: keepPreviousData, retry, retryDelay: 3_000,
+    queryKey: ["chart-bars", q], queryFn: () => apiGet(`/api/v1/charts/${SYMBOL}/bars?${q}`),
+    refetchInterval: runItem ? false : POLL_MS, retry, retryDelay: 3_000,
   });
   const ind = useQuery<IndicatorsResponse, ApiError>({
-    queryKey: ["chart-ind", venue, tf, set], queryFn: () => apiGet(`/api/v1/charts/${SYMBOL}/indicators?${q}&set=${set}`),
-    refetchInterval: POLL_MS * 4, placeholderData: keepPreviousData, retry, retryDelay: 3_000,
+    queryKey: ["chart-ind", q, set], queryFn: () => apiGet(`/api/v1/charts/${SYMBOL}/indicators?${q}&set=${set}`),
+    refetchInterval: POLL_MS * 4, retry, retryDelay: 3_000,
   });
   const ov = useQuery<OverlaysResponse, ApiError>({
     queryKey: ["chart-overlays", book], queryFn: () => apiGet(`/api/v1/bots/${book}/overlays`),
@@ -52,33 +61,47 @@ export function ChartPanel({ initialBook = "" }: { initialBook?: string }) {
   });
   // overlays are drawn only with their mode label (plan §5.4 C5)
   const overlays = book && ov.data?.mode ? ov.data : null;
+  const runData = runKey && run.data?.mode ? run.data : null;
+  const mode = overlays?.mode ?? runData?.mode ?? null;
+  const marks = useMemo(() => [...markers(overlays, timeframe, COLORS), ...runMarkers(runData, COLORS)].sort((a, b) => a.time - b.time),
+    [overlays, runData, timeframe]);
+  const halts = useMemo(() => (bars.data ? haltBars(overlays, allBars(bars.data), timeframe, Date.now() / 1000) : []), [overlays, bars.data, timeframe]);
+  const extra = useMemo(() => runLines(runData), [runData]);
   const detail = picked ? lookup(picked, overlays) : null;
-  const labels = useMemo(() => new Map((ind.data?.series ?? []).map((s) => [s.key, s.label])), [ind.data]);
+  const labels = useMemo(() => new Map([...(ind.data?.series ?? []), ...runLines(run.data)].map((s) => [s.key, s.label])), [ind.data, run.data]);
   const toggle = (key: string) => setHidden((h) => { const n = new Set(h); if (n.has(key)) n.delete(key); else n.add(key); return n; });
 
   return (
     <section className="panel space-y-3" aria-label="กราฟแท่งเทียน BTCUSDT">
       <div className="flex flex-wrap items-center gap-2">
-        {overlays ? <ModeBadge mode={overlays.mode} /> : <span data-testid="market-label" className="rounded bg-[var(--surface-0)] px-2 py-0.5 text-sm">ราคาตลาด Mainnet</span>}
+        {mode ? <ModeBadge mode={mode} /> : <span data-testid="market-label" className="rounded bg-[var(--surface-0)] px-2 py-0.5 text-sm">ราคาตลาด Mainnet</span>}
         <h2 className="font-semibold">{SYMBOL} {venue === "spot" ? "Spot" : "Perpetual"}</h2>
         <div role="group" aria-label="ช่วงเวลาแท่ง" className="flex gap-1">
-          {TIMEFRAMES.map((t) => <button key={t} type="button" aria-pressed={tf === t} className={`${btn} ${tf === t ? on : ""}`} onClick={() => setTf(t)}>{t}</button>)}
+          {TIMEFRAMES.map((t) => <button key={t} type="button" aria-pressed={timeframe === t} disabled={!!runItem && t !== "1d"}
+            className={`${btn} ${timeframe === t ? on : ""} disabled:opacity-40`} onClick={() => setTf(t)}>{t}</button>)}
         </div>
       </div>
       <div className="flex flex-wrap gap-2 text-sm">
-        <label className="flex items-center gap-1">ตลาด
-          <select className={btn} value={venue} onChange={(e) => setVenue(e.target.value as Venue)}>
+        <label className="flex min-w-0 max-w-full items-center gap-1">ตลาด
+          <select className={`${btn} min-w-0 max-w-full`} value={venue} disabled={!!runItem} onChange={(e) => setVenue(e.target.value as Venue)}>
             <option value="spot">Spot</option><option value="perp">Perpetual (สัญญาณ R10a)</option>
           </select>
         </label>
-        <label className="flex items-center gap-1">อินดิเคเตอร์
-          <select className={btn} value={set} onChange={(e) => { setSet(e.target.value as IndicatorSet); setHidden(new Set()); }}>
+        <label className="flex min-w-0 max-w-full items-center gap-1">อินดิเคเตอร์
+          <select className={`${btn} min-w-0 max-w-full`} value={set} onChange={(e) => { setSet(e.target.value as IndicatorSet); setHidden(new Set()); }}>
             {SETS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
           </select>
         </label>
-        <label className="flex items-center gap-1">บอท
-          <select className={btn} value={book} onChange={(e) => { setBook(e.target.value); setPicked(null); }}>
-            {BOOKS.map((b) => <option key={b.key} value={b.key}>{b.label}</option>)}
+        <label className="flex min-w-0 max-w-full items-center gap-1">แสดง
+          <select className={`${btn} min-w-0 max-w-full`} value={source} onChange={(e) => { setSource(e.target.value); setPicked(null); }}>
+            <option value="">ราคาอย่างเดียว</option>
+            <optgroup label="บอทบน Testnet">{BOOKS.map((b) => <option key={b.key} value={`bot:${b.key}`}>{b.label}</option>)}</optgroup>
+            {(runs.data?.items ?? []).some((r) => r.kind === "backtest") && (
+              <optgroup label="Backtest">{runs.data!.items.filter((r) => r.kind === "backtest").map((r) => <option key={r.id} value={`run:backtest/${r.id}`}>{r.label}</option>)}</optgroup>
+            )}
+            {(runs.data?.items ?? []).some((r) => r.kind === "shadow") && (
+              <optgroup label="พอร์ตจำลอง (Shadow)">{runs.data!.items.filter((r) => r.kind === "shadow").map((r) => <option key={r.id} value={`run:shadow/${r.id}`}>{r.label}</option>)}</optgroup>
+            )}
           </select>
         </label>
       </div>
@@ -100,7 +123,7 @@ export function ChartPanel({ initialBook = "" }: { initialBook?: string }) {
         : bars.isError ? <p role="alert" className="text-sm text-[var(--loss)]">{bars.error.code === "chart_loading" ? "กำลังดาวน์โหลดแท่งย้อนหลังจาก archive…" : bars.error.message}</p>
           : (
             <Suspense fallback={<p>กำลังโหลดกราฟ…</p>}>
-              <CandleChart bars={bars.data} indicators={ind.data ?? null} hidden={hidden} overlays={overlays} timeframe={tf}
+              <CandleChart bars={bars.data} indicators={ind.data ?? null} hidden={hidden} marks={marks} halts={halts} extra={extra} timeframe={timeframe} fit={!!runItem}
                 onMarker={setPicked} onHover={setHover} />
             </Suspense>
           )}
@@ -109,6 +132,12 @@ export function ChartPanel({ initialBook = "" }: { initialBook?: string }) {
       )}
       {detail && <MarkerDetail detail={detail} onClose={() => setPicked(null)} />}
       {overlays && <Events o={overlays} onPick={setPicked} />}
+      {runData && (
+        <p data-testid="run-summary" className="text-sm text-[var(--text-secondary)]">
+          {runData.mode === "BACKTEST" ? "ผลย้อนหลังจาก simulator" : "พอร์ตจำลองด้วยเงินสมมติ"} · {runData.range?.join(" → ")} · {runData.events.length} จุดซื้อขาย
+          {runData.note ? ` · ${runData.note}` : ""}
+        </p>
+      )}
       <button type="button" className="text-sm text-[var(--text-secondary)] underline" aria-expanded={table} onClick={() => setTable((t) => !t)}>
         {table ? "ซ่อนตาราง" : "ดูเป็นตาราง"}
       </button>

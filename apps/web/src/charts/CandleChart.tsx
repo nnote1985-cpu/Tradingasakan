@@ -6,7 +6,7 @@ import {
 } from "lightweight-charts";
 import { useEffect, useRef, useState } from "react";
 import {
-  allBars, type ApiBar, lineColor, type BarsResponse, haltBars, type IndicatorsResponse, lineData, markers, type OverlaysResponse,
+  allBars, type ApiBar, lineColor, type BarsResponse, type IndicatorSeries, type IndicatorsResponse, lineData, type Marker,
   planUpdate, type Timeframe, toCandle, toVolume,
 } from "./model";
 
@@ -14,8 +14,11 @@ export type CandleChartProps = {
   bars: BarsResponse;
   indicators: IndicatorsResponse | null;
   hidden: Set<string>;
-  overlays: OverlaysResponse | null;
+  marks: Marker[];
+  halts: number[];                       // bar open times inside a HALT period
+  extra: IndicatorSeries[];              // run equity / drawdown, drawn in the lower panel
   timeframe: Timeframe;
+  fit?: boolean;                         // show the whole data set (a run) instead of the latest bars
   onMarker: (id: string) => void;
   onHover: (values: Record<string, number | null> | null) => void;
 };
@@ -34,13 +37,14 @@ function colors() {
 }
 
 const ts = (t: number) => t as UTCTimestamp;
+const ORDER = ["price", "lower", "equity", "drawdown"] as const;
 
 function candle(b: ApiBar): CandlestickData<Time> {
   const c = toCandle(b);
   return { ...c, time: ts(c.time) };
 }
 
-export default function CandleChart({ bars, indicators, hidden, overlays, timeframe, onMarker, onHover }: CandleChartProps) {
+export default function CandleChart({ bars, indicators, hidden, marks: markList, halts, extra, timeframe, fit = false, onMarker, onHover }: CandleChartProps) {
   const box = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
   const price = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -49,6 +53,7 @@ export default function CandleChart({ bars, indicators, hidden, overlays, timefr
   const marks = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const lines = useRef<Map<string, ISeriesApi<"Line">>>(new Map());
   const shown = useRef<ApiBar[] | null>(null);
+  const panes = useRef("");
   const handlers = useRef({ onMarker, onHover });
   handlers.current = { onMarker, onHover };
   const [ready, setReady] = useState(false);
@@ -114,19 +119,25 @@ export default function CandleChart({ bars, indicators, hidden, overlays, timefr
     if (plan.kind === "set") {
       price.current.setData(next.map(candle));
       volume.current.setData(next.map(vol));
+      if (fit) chart.current?.timeScale().fitContent();
     } else {
       for (const b of plan.bars) { price.current.update(candle(b)); volume.current.update(vol(b)); }
     }
     shown.current = next;
-  }, [bars, ready]);
+  }, [bars, fit, ready]);
 
   // indicator lines: price panel on the candles, lower panel in pane 1
   useEffect(() => {
     const ch = chart.current;
     if (!ready || !ch) return;
-    const want = new Map((indicators?.series ?? []).filter((s) => !hidden.has(s.key)).map((s) => [s.key, s]));
+    const all = [...(indicators?.series ?? []), ...extra];
+    const want = new Map(all.filter((s) => !hidden.has(s.key)).map((s) => [s.key, s]));
+    // panes in a fixed order, numbered only for the panels in use; a change of layout redraws every line
+    const used = ORDER.filter((p) => p === "price" || [...want.values()].some((s) => s.panel === p));
+    const layout = used.join(",");
+    if (layout !== panes.current) { lines.current.forEach((s) => ch.removeSeries(s)); lines.current.clear(); panes.current = layout; }
     lines.current.forEach((s, key) => { if (!want.has(key)) { ch.removeSeries(s); lines.current.delete(key); } });
-    (indicators?.series ?? []).forEach((s, i) => {
+    all.forEach((s, i) => {
       if (!want.has(s.key)) return;
       let line = lines.current.get(s.key);
       if (!line) {
@@ -135,22 +146,20 @@ export default function CandleChart({ bars, indicators, hidden, overlays, timefr
           lineStyle: s.key.endsWith("_upper") || s.key.endsWith("_lower") ? 2 : 0,
           lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false,
           lineType: s.key === "band_state" ? 1 : 0,
-        }, s.panel === "lower" ? 1 : 0);
+        }, used.indexOf(s.panel));
         lines.current.set(s.key, line);
       }
       line.setData(lineData(s).map((p) => ({ ...p, time: ts(p.time) })));
     });
-  }, [indicators, hidden, ready]);
+  }, [indicators, extra, hidden, ready]);
 
-  // overlays: markers and the HALT band
+  // markers and the HALT band
   useEffect(() => {
     if (!ready || !marks.current || !halt.current) return;
     const c = colors();
-    const m = markers(overlays, timeframe, { buy: c.gain, sell: c.loss, decision: "#2a78d6", none: c.muted });
-    marks.current.setMarkers(m.map((x) => ({ ...x, time: ts(x.time) })) as SeriesMarker<Time>[]);
-    const now = Date.now() / 1000;
-    halt.current.setData(haltBars(overlays, allBars(bars), timeframe, now).map((t) => ({ time: ts(t), value: 1, color: `${c.warn}99` })));
-  }, [overlays, bars, timeframe, ready]);
+    marks.current.setMarkers(markList.map((x) => ({ ...x, time: ts(x.time) })) as SeriesMarker<Time>[]);
+    halt.current.setData(halts.map((t) => ({ time: ts(t), value: 1, color: `${c.warn}99` })));
+  }, [markList, halts, ready]);
 
   return <div ref={box} data-testid="candle-chart" className="h-[360px] w-full sm:h-[480px]" />;
 }

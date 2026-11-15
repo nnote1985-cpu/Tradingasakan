@@ -23,6 +23,7 @@ from api.overlays import NoOverlays, OverlayStore, PgOverlayStore, overlay_items
 from api.overlays import Unavailable as OverlaysUnavailable
 from api.portfolios import NoPortfolios, PortfolioStore, Unavailable, decision_items, equity_series, overview_items, risk_items
 from api.profile_drafts import DraftConflict, DraftStore, DraftsUnavailable, NoDrafts, PgDraftStore, SaveDraft
+from api.runs import backtest_run, run_list, shadow_run
 from api.strategies import catalog_view, profiles_view
 from api.workers import ACTIVITY_LIMIT, CONTROL_LIMIT, NoWorkers, PgWorkerStore, WorkerStore, activity_items, control_items, pnl_items, worker_items
 from api.workers import Unavailable as WorkersUnavailable
@@ -209,6 +210,24 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
         except OverlaysUnavailable:
             return {"available": False, "mode": "TESTNET", "fills": [], "decisions": [], "halts": [], "alerts": []}
         return {"available": True, "account": account, "book": book, **overlay_items(fills, decisions, events, a)}
+
+    @app.get("/api/v1/charts/runs")
+    async def chart_runs(p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        return {"items": run_list(load_backtests(), overview_items(await store.overview_rows()))}
+
+    @app.get("/api/v1/charts/runs/{kind}/{run_id:path}")
+    async def chart_run(kind: str, run_id: str, p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        if kind == "backtest":
+            found = [b for b in load_backtests() if b["id"] == run_id]
+            if not found:
+                raise AuthError("not_found", "ไม่พบผล backtest นี้", status=404)
+            return backtest_run(found[0])
+        if kind == "shadow":
+            row = await store.portfolio(run_id)
+            if row is None or row[1] != "SHADOW":
+                raise AuthError("not_found", "ไม่พบพอร์ต Shadow นี้", status=404)
+            return shadow_run(row, await store.equity_rows(run_id))
+        raise BadRequest(f"unknown run kind {kind!r}; allowed: backtest, shadow")
 
     @app.get("/api/v1/workers")
     async def worker_status(p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
