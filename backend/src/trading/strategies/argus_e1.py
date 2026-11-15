@@ -15,6 +15,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from trading.features.indicators import adx_mt5, donchian, ema_mt5
+
 RULES_VERSION = "spot-e1-v1"
 POINT = 0.01                  # 2-digit BTCUSD symbol (R13 port rules)
 RISK = 0.01                   # 1% of equity from entry to stop
@@ -30,27 +32,12 @@ class Costs:
 
 
 def ema(x: np.ndarray, n: int) -> np.ndarray:
-    return pd.Series(x).ewm(alpha=2.0 / (n + 1), adjust=False).mean().to_numpy(copy=True)
+    return ema_mt5(x, n)
 
 
 def adx(h: np.ndarray, lo: np.ndarray, c: np.ndarray, n: int) -> np.ndarray:
-    """MT5 iADX main line (EMA smoothing), as in the R13 port."""
-    ph, pl, pc = np.r_[np.nan, h[:-1]], np.r_[np.nan, lo[:-1]], np.r_[np.nan, c[:-1]]
-    pdm, ndm = h - ph, pl - lo
-    pdm, ndm = np.where(pdm < 0, 0.0, pdm), np.where(ndm < 0, 0.0, ndm)
-    keep_p, keep_n = pdm > ndm, ndm > pdm
-    pdm, ndm = np.where(keep_p, pdm, 0.0), np.where(keep_n, ndm, 0.0)
-    tr = np.fmax(h, pc) - np.fmin(lo, pc)
-    with np.errstate(invalid="ignore", divide="ignore"):
-        p_raw = np.where(tr > 0, 100.0 * pdm / tr, 0.0)
-        n_raw = np.where(tr > 0, 100.0 * ndm / tr, 0.0)
-    p_raw[0] = n_raw[0] = 0.0
-    pdi, mdi = ema(p_raw, n), ema(n_raw, n)
-    with np.errstate(invalid="ignore", divide="ignore"):
-        dx = np.where(pdi + mdi > 0, 100.0 * np.abs(pdi - mdi) / (pdi + mdi), 0.0)
-    out = ema(dx, n)
-    out[: 2 * n] = np.nan
-    return out
+    """MT5 iADX main line (EMA smoothing), as in the R13 port; see :func:`trading.features.indicators.adx_mt5`."""
+    return adx_mt5(h, lo, c, n)
 
 
 def h4_bars(h1: pd.DataFrame) -> pd.DataFrame:
@@ -68,8 +55,7 @@ class E1Signals:
         self.o, self.h, self.l, self.c = (h4[k].to_numpy(float) for k in ("open", "high", "low", "close"))
         self.e50, self.e200 = ema(self.c, 50), ema(self.c, 200)
         self.adx = adx(self.h, self.l, self.c, 14)
-        self.hi20 = pd.Series(self.h).rolling(20, min_periods=20).max().to_numpy()
-        self.lo20 = pd.Series(self.l).rolling(20, min_periods=20).min().to_numpy()
+        self.hi20, self.lo20 = donchian(self.h, self.l, 20)
 
     def trail(self, b: int, sl: float) -> float | None:
         new = self.lo20[b]
