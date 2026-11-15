@@ -6,6 +6,7 @@ import { AssetTab } from "../src/AssetTab";
 
 let asset: AssetStatus;
 vi.mock("../src/api", () => ({ supabase: null, apiGet: async () => asset }));
+vi.mock("../src/charts/ChartPanel", () => ({ ChartPanel: () => null }));   // tested in charts.test.tsx
 
 class FakeSocket {
   static last: FakeSocket | null = null;

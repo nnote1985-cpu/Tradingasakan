@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { type ApiError, apiGet, type AssetStatus, type PortfolioRow, type Timeframe, type TrendState } from "./api";
 import { armOf } from "./books";
 import { money, pct } from "./format";
+import { ChartPanel } from "./charts/ChartPanel";
 import { useLiveTicker } from "./liveTicker";
 
 const SYMBOL = "BTCUSDT";   // the only asset the books trade; the API lists more once they are added
@@ -102,6 +103,7 @@ export function AssetTab({ rows }: { rows: PortfolioRow[] }) {
           <LivePrice stream={a?.live_stream ?? "btcusdt@miniTicker"} />
         </div>
       </div>
+      <ChartPanel />
       <p className="text-sm text-[var(--text-secondary)]">
         ข้อมูลไว้ติดตามตลาด ไม่ใช่สัญญาณซื้อขาย บอททุกตัวยังตัดสินใจจากราคาปิดรายวันตามกติกาของตัวเอง ตัวเลขด้านล่างคำนวณจากแท่งที่ปิดแล้วของ BTCUSDT perpetual ใน data.binance.vision ซึ่งช้ากว่าเวลาจริงประมาณหนึ่งวัน
       </p>
