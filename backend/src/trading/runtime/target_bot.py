@@ -45,6 +45,7 @@ TRADING = (SafetyState.RUNNING, SafetyState.SOFT_PAUSED, SafetyState.REDUCING)
 ZERO = Decimal(0)
 ACTION_TH = {"OPEN": "เปิดพอร์ต", "REBALANCE": "ปรับสัดส่วน", "HOLD": "เป้าเท่าเดิม ไม่เทรด", "NO_DECISION": "ข้อมูลไม่พอ คงสถานะเดิม"}
 OUTCOME_BELOW_MIN = "already at the target (the difference is below the exchange minimum)"
+OUTCOME_SHADOW = "shadow: no order sent (SHADOW mode)"
 
 
 def _split(symbol: str) -> tuple[str, str]:
@@ -63,6 +64,7 @@ class TargetBot:
     label: str                              # name in alerts
     tag: str                                # decision_id prefix, alert keys, log lines
     fetch: Callable[[date], TargetDecision | None] | None = None   # default: strategy.load + strategy.decide
+    send_orders: bool = True                # False = SHADOW (M4): record decisions, never send an order
     pool: ThreadPoolExecutor = field(default_factory=lambda: ThreadPoolExecutor(max_workers=1, thread_name_prefix="target"))
     _future: Future[TargetDecision | None] | None = None
     _future_day: date | None = None
@@ -136,6 +138,8 @@ class TargetBot:
             action = "OPEN"
         elif w != previous:
             action = "REBALANCE"
+        elif not self.send_orders:
+            action = "HOLD"                                         # SHADOW holds nothing, so the position is never "off"
         else:
             if q is None or rules is None:
                 self._pending = d                                   # needs a price to compare the position with
@@ -156,6 +160,9 @@ class TargetBot:
     # --- executing ---------------------------------------------------------------------------
 
     def _execute(self, ex: Executor, token: int, row: dict[str, Any]) -> None:
+        if not self.send_orders:
+            self.store.finish_decision(token, ex.now(), self.book, row["day"], OUTCOME_SHADOW)
+            return
         if ex.safety.state not in TRADING or ex.rules is None:
             return
         if any(o.intent.book == self.book and not o.is_terminal for o in ex.orders.values()) or \

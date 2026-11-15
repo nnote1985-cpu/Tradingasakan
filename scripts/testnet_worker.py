@@ -35,6 +35,10 @@ Environment (all on the Host only; none of them belong in the repo or in chat):
     WORKER_R10A=on                          run the tn-r10a-code-v1 strategy (P5; default off). Not with WORKER_CONFORMANCE=on
     WORKER_AI_R2=on                         run the tn-r2-v1 AI proposer instead (P6; default off; its own account).
                                             Needs TN_ANTHROPIC_KEY; not with WORKER_R10A=on or WORKER_CONFORMANCE=on
+    WORKER_BOT=on                           run the bot approved on the web for WORKER_ACCOUNT (M4; default off). Uses only
+                                            an approved revision whose hash the worker recomputes; refuses to start (and
+                                            alerts) when there is none, more than one, or the hash does not match.
+                                            Not with WORKER_R10A, WORKER_AI_R2 or WORKER_CONFORMANCE
 """
 
 from __future__ import annotations
@@ -53,7 +57,7 @@ from typing import Any
 from trading.config import load_settings
 from trading.ingest.bars import BarStore
 from trading.ingest.service import IngestService
-from trading.runtime.alerts import AlertQueue, TelegramSink
+from trading.runtime.alerts import AlertQueue, Severity, TelegramSink
 from trading.runtime.credentials import CredentialError, load_testnet_credentials
 from trading.runtime.deadman import DeadMan
 from trading.runtime.worker import LeaseLost, TestnetRest, Worker, WorkerConfig, WorkerRefused
@@ -77,6 +81,42 @@ def account_paths(account: str) -> tuple[Path, Path]:
     if account == "DEFAULT":
         return VAR, ROOT / "var" / "ingest" / "bars"
     return ROOT / "var" / f"worker-{account}", ROOT / "var" / f"ingest-{account}" / "bars"
+
+
+REFUSAL_REPEAT = 6 * 3600     # the process manager restarts a refused worker every 30 s: alert once per reason per 6 h
+
+
+def refusal_alert(alerts: AlertQueue, var: Path, code: str, text: str) -> None:
+    """A CRITICAL alert for a refused bot config, at most once per reason per 6 hours across restarts."""
+    import json
+
+    mark = var / "bot-refused.json"
+    try:
+        last = json.loads(mark.read_text())
+    except (OSError, ValueError):
+        last = {}
+    now = time.time()
+    if last.get("code") == code and now - float(last.get("at", 0)) < REFUSAL_REPEAT:
+        return
+    alerts.push(Severity.CRITICAL, "bot-config", f"worker ไม่เริ่มบอท: {text}")
+    alerts.flush()
+    mark.write_text(json.dumps({"code": code, "at": now}))
+
+
+def configured_bot(store: Any, account: str, alerts: AlertQueue, var: Path) -> Any:
+    """The approved bot of ``account`` (WORKER_BOT=on), or WorkerRefused after an alert."""
+    from trading.bots.loader import BotLoadRefused, load_for_account
+    from trading.runtime.configured_bot import ConfiguredBot
+
+    try:
+        rev = load_for_account(store.conn, account)
+        bot = ConfiguredBot.build(store, rev)
+    except BotLoadRefused as e:
+        refusal_alert(alerts, var, e.code, e.message_th)
+        raise WorkerRefused(f"WORKER_BOT=on: {e}") from e
+    _log(f"bot {rev.config.name}: {rev.bot_id}@{rev.revision} hash {rev.hash[:12]} mode {rev.config.mode} "
+         f"approved by {rev.approved_by} at {rev.approved_at.isoformat()}")
+    return bot
 
 
 def build(env: dict[str, str] | None = None) -> tuple[Worker, Any]:
@@ -108,6 +148,9 @@ def build(env: dict[str, str] | None = None) -> tuple[Worker, Any]:
     rest = TestnetRest(creds)
     feeds = None if env.get("WORKER_FEEDS", "on").strip().lower() == "off" else IngestService(BarStore(bars), rest)
     executor = None
+    bot_on = env.get("WORKER_BOT", "off").strip().lower() == "on"
+    if bot_on and not (settings.testnet_execution_enabled and store is not None):
+        raise WorkerRefused("WORKER_BOT=on needs TESTNET_EXECUTION_ENABLED=true and DATABASE_URL")
     if settings.testnet_execution_enabled and store is not None:
         from trading.execution.binance_spot import BinanceSpotTestnet
         from trading.ingest.service import SYMBOL
@@ -134,13 +177,18 @@ def build(env: dict[str, str] | None = None) -> tuple[Worker, Any]:
                 raise WorkerRefused(f"WORKER_AI_R2=on needs {KEY_ENV} in the environment")
             graph = load_proposer_graph()
             r10a = AiR2Bot(store, provider=AnthropicProvider(graph.role("proposer").model_id, env[KEY_ENV].strip()), graph=graph)
+        if bot_on:
+            if r10a or conformance:
+                # One account runs one strategy: the bot from the web replaces the env-started ones (m4-bot-config-plan.md §3.5).
+                raise WorkerRefused("WORKER_BOT=on with WORKER_R10A, WORKER_AI_R2 or WORKER_CONFORMANCE: turn the others off")
+            r10a = configured_bot(store, account, alerts, var)
         if conformance and r10a:
             # One Spot account runs one strategy; conformance stops before the P5 soak (§5.4).
             raise WorkerRefused("WORKER_CONFORMANCE=on and WORKER_R10A=on: turn conformance off (setx WORKER_CONFORMANCE off) "
                                 "before the R10a soak")
         # Guardian always runs (operator HALT/RESUME) and marks every book that may trade.
         guardian = Guardian(store, ([GuardedBook(CONFORMANCE_BOOK, CONFORMANCE_BUDGET)] if conformance else [])
-                            + ([GuardedBook(r10a.book, R10A_ALLOCATION)] if r10a else []))
+                            + ([GuardedBook(r10a.book, r10a.allocation if bot_on else R10A_ALLOCATION)] if r10a else []))
 
         def quote() -> Any:
             return None if feeds is None else feeds.quotes.fresh_for_entry(SYMBOL, int(time.time() * 1000))

@@ -500,4 +500,6 @@ class Executor:
             "conformance": None if self.conformance is None else self.conformance.body(),
             "guardian": None if self.guardian is None else self.guardian.body(),
             "r10a": None if self.r10a is None else self.r10a.body(),
+            # M4: a bot configured from the web reports bot_id@revision and hash; env-started bots add nothing
+            **({"bot": bot} if (bot := getattr(self.r10a, "identity", None)) else {}),
         }
