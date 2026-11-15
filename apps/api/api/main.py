@@ -18,6 +18,7 @@ from api.ai import ai_settings, scorecard
 from api.assets import ASSETS, AssetCache
 from api.auth import AuthError, Principal, RoleStore, TokenVerifier, authenticate
 from api.backtests import load_backtests
+from api.bots import BotEvent, BotNotFound, BotRefused, BotStore, BotsUnavailable, NoBots, PgBotStore, SaveBot, template_list
 from api.charts import BadRequest, ChartService, Loading, PgBarStore, utc
 from api.overlays import NoOverlays, OverlayStore, PgOverlayStore, overlay_items
 from api.overlays import Unavailable as OverlaysUnavailable
@@ -41,13 +42,15 @@ class OperatorRequest(BaseModel):
 def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
                portfolios: PortfolioStore | None = None, assets: AssetCache | None = None,
                workers: WorkerStore | None = None, drafts: DraftStore | None = None,
-               charts: ChartService | None = None, overlays: OverlayStore | None = None) -> FastAPI:
+               charts: ChartService | None = None, overlays: OverlayStore | None = None,
+               bots: BotStore | None = None) -> FastAPI:
     store: PortfolioStore = portfolios or NoPortfolios()
     worker_store: WorkerStore = workers or NoWorkers()
     market = assets or AssetCache()
     draft_store: DraftStore = drafts or NoDrafts()
     chart = charts or ChartService()
     overlay_store: OverlayStore = overlays or NoOverlays()
+    bot_store: BotStore = bots or NoBots()
     app = FastAPI(title="asakantrading API", version="0.1.0")
     if settings.allowed_origins:
         app.add_middleware(CORSMiddleware, allow_origins=list(settings.allowed_origins),
@@ -229,6 +232,57 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
             return shadow_run(row, await store.equity_rows(run_id))
         raise BadRequest(f"unknown run kind {kind!r}; allowed: backtest, shadow")
 
+    @app.exception_handler(BotsUnavailable)
+    async def bots_unavailable(request: Request, exc: BotsUnavailable) -> JSONResponse:
+        return JSONResponse(status_code=503, content={
+            "code": "bots_unavailable", "request_id": getattr(request.state, "request_id", None), "retryable": True,
+            "message": "ยังไม่มีตารางบอทในฐานข้อมูล หรือยังไม่ได้ตั้ง DATABASE_URL ของ Backend"})
+
+    @app.exception_handler(BotRefused)
+    async def bot_refused(request: Request, exc: BotRefused) -> JSONResponse:
+        return JSONResponse(status_code=exc.status, content={
+            "code": exc.errors[0].code if exc.errors else "refused", "request_id": getattr(request.state, "request_id", None),
+            "retryable": False, "message": exc.errors[0].message_th if exc.errors else "ไม่ผ่านการตรวจ",
+            "errors": [e.as_dict() for e in exc.errors]})
+
+    @app.exception_handler(BotNotFound)
+    async def bot_not_found(request: Request, exc: BotNotFound) -> JSONResponse:
+        return JSONResponse(status_code=404, content={
+            "code": "not_found", "request_id": getattr(request.state, "request_id", None), "retryable": False,
+            "message": "ไม่พบบอทหรือ revision นี้"})
+
+    @app.get("/api/v1/bot-templates")
+    async def bot_templates(p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        """Strategy templates a bot can run (trading/bots/templates.py), with param and allocation bounds."""
+        return {"templates": template_list()}
+
+    @app.get("/api/v1/bot-accounts")
+    async def bot_accounts(p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        """Testnet accounts a worker has reported, their last USDT free, and whether a new bot may use them."""
+        return {"accounts": await bot_store.accounts()}
+
+    @app.get("/api/v1/bots")
+    async def list_bots(p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        return {"bots": await bot_store.list_bots(), "can_edit": p.at_least(OperatorRole.OPERATOR)}
+
+    @app.get("/api/v1/bots/{bot_id}")
+    async def get_bot(bot_id: uuid.UUID, p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        return {**await bot_store.get_bot(bot_id), "can_edit": p.at_least(OperatorRole.OPERATOR)}
+
+    @app.post("/api/v1/bots")
+    async def save_bot(body: SaveBot, p: Principal = Depends(require(OperatorRole.OPERATOR))) -> dict[str, Any]:
+        """Append a revision (never runs it: a revision needs submit and approve, and a worker with WORKER_BOT=on)."""
+        return await bot_store.save(body, p.user_id)
+
+    @app.post("/api/v1/bots/{bot_id}/revisions/{revision}/{action}")
+    async def bot_action(bot_id: uuid.UUID, revision: int, action: Literal["submit", "approve", "reject"], body: BotEvent,
+                         p: Principal = Depends(require(OperatorRole.OPERATOR))) -> dict[str, Any]:
+        return await bot_store.act(bot_id, revision, action, p.user_id, body.note)
+
+    @app.post("/api/v1/bots/{bot_id}/retire")
+    async def retire_bot(bot_id: uuid.UUID, body: BotEvent, p: Principal = Depends(require(OperatorRole.OPERATOR))) -> dict[str, Any]:
+        return await bot_store.act(bot_id, None, "retire", p.user_id, body.note)
+
     @app.get("/api/v1/workers")
     async def worker_status(p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
         try:
@@ -283,7 +337,7 @@ def app_from_env() -> FastAPI:   # uvicorn --factory api.main:app_from_env
     pool = AsyncConnectionPool(s.database_url, open=False, timeout=5)
     app = create_app(s, SupabaseJwtVerifier(s.supabase_url), PgRoleStore(pool), PgPortfolioStore(pool),
                      workers=PgWorkerStore(pool), drafts=PgDraftStore(pool), charts=ChartService(PgBarStore(pool)),
-                     overlays=PgOverlayStore(pool))
+                     overlays=PgOverlayStore(pool), bots=PgBotStore(pool))
     app.router.on_startup.append(pool.open)
     app.router.on_shutdown.append(pool.close)
     return app
