@@ -5,6 +5,7 @@ import {
   type WorkersResponse,
 } from "./api";
 import { workerIssues } from "./Operations";
+import { useLiveInterval } from "./live/LiveProvider";
 
 // Status of the Testnet worker (testnet-development-plan.md §9). The worker writes this to Supabase about every 10 s.
 // The only command from this page is HALT/RESUME: a row in trading.exec_operator_requests that Guardian carries out (P5).
@@ -170,7 +171,7 @@ function Activity({ account }: { account: string }) {
   const q = useQuery<WorkerActivity, ApiError>({
     queryKey: ["worker-activity", account],
     queryFn: () => apiGet<WorkerActivity>(`/api/v1/workers/${encodeURIComponent(account)}/activity`),
-    refetchInterval: 15_000,
+    refetchInterval: useLiveInterval(15_000),
   });
   if (q.isPending) return <p className="mt-3 text-sm">กำลังโหลดคำสั่งและเทรด…</p>;
   if (q.isError) return <p role="alert" className="mt-3 text-sm text-[var(--loss)]">{q.error.message ?? "โหลดคำสั่งและเทรดไม่สำเร็จ"}</p>;
@@ -307,7 +308,7 @@ function Control({ account, safety }: { account: string; safety: string | null }
   const q = useQuery<WorkerControl, ApiError>({
     queryKey: ["worker-control", account],
     queryFn: () => apiGet<WorkerControl>(`/api/v1/workers/${encodeURIComponent(account)}/control`),
-    refetchInterval: 15_000,
+    refetchInterval: useLiveInterval(15_000),
   });
   if (q.isPending) return <p className="mt-3 text-sm">กำลังโหลดการตัดสินใจของบอท…</p>;
   if (q.isError) return <p role="alert" className="mt-3 text-sm text-[var(--loss)]">{q.error.message ?? "โหลดการตัดสินใจของบอทไม่สำเร็จ"}</p>;
@@ -435,7 +436,7 @@ function WorkerCard({ w }: { w: WorkerStatus }) {
 }
 
 export function WorkerTab() {
-  const q = useQuery<WorkersResponse, ApiError>({ queryKey: ["workers"], queryFn: () => apiGet<WorkersResponse>("/api/v1/workers"), refetchInterval: 10_000 });
+  const q = useQuery<WorkersResponse, ApiError>({ queryKey: ["workers"], queryFn: () => apiGet<WorkersResponse>("/api/v1/workers"), refetchInterval: useLiveInterval(10_000) });
   if (q.isPending) return <p>กำลังโหลด…</p>;
   if (q.isError) return <p role="alert" className="text-sm text-[var(--loss)]">{q.error.message ?? "โหลดสถานะ worker ไม่สำเร็จ"}</p>;
   return (

@@ -211,3 +211,16 @@ button:disabled { cursor: wait; opacity: .6; }
 .status-bad { color: #fff; background: var(--loss); }
 .dialog-backdrop { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgb(0 0 0 / 0.45); }
 .dialog-panel { width: 100%; max-width: 480px; padding: 20px; border: 1px solid var(--border); border-radius: 14px; color: var(--text-primary); background: var(--surface-1); }
+
+/* M1 status bar (m1-realtime-plan.md §3.2) */
+.live-bar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 8px 32px; font-size: 13px; border-bottom: 1px solid var(--border); background: var(--surface-1); color: var(--text-secondary); }
+.live-chip { font-weight: 600; }
+.live-live { color: var(--gain); }
+.live-stale, .live-warn { color: var(--warn-fg); }
+.live-stale { background: var(--warn-bg); border-radius: 999px; padding: 2px 8px; }
+.live-muted { color: var(--text-muted); }
+.live-quote { font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) {
+  .live-bar { padding: 8px 16px; }
+  .live-extra { display: none; }
+}
