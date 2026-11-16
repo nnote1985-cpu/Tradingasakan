@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiGet, type ApiError, type WorkerActivity, type WorkerStatus, type WorkersResponse } from "./api";
 import { money } from "./format";
+import { useLiveInterval } from "./live/LiveProvider";
 
 export function useWorkers() {
-  return useQuery<WorkersResponse, ApiError>({ queryKey: ["workers"], queryFn: () => apiGet("/api/v1/workers"), refetchInterval: 10_000 });
+  return useQuery<WorkersResponse, ApiError>({ queryKey: ["workers"], queryFn: () => apiGet("/api/v1/workers"), refetchInterval: useLiveInterval(10_000) });
 }
 
 export function relativeTime(iso: string | null) {
@@ -35,7 +36,7 @@ function Stat({ label, value, note }: { label: string; value: string; note: stri
 }
 
 function AccountSnapshot({ w }: { w: WorkerStatus }) {
-  const q = useQuery<WorkerActivity, ApiError>({ queryKey: ["worker-activity", w.account], queryFn: () => apiGet(`/api/v1/workers/${encodeURIComponent(w.account)}/activity`), refetchInterval: 15_000 });
+  const q = useQuery<WorkerActivity, ApiError>({ queryKey: ["worker-activity", w.account], queryFn: () => apiGet(`/api/v1/workers/${encodeURIComponent(w.account)}/activity`), refetchInterval: useLiveInterval(15_000) });
   const p = q.data?.pnl;
   const btc = p?.balances.find((b) => b.asset === "BTC")?.now;
   const usdt = p?.balances.find((b) => b.asset === "USDT")?.now;

@@ -13,6 +13,8 @@ import { ShadowBanner } from "./ShadowBanner";
 import { StrategiesTab } from "./StrategiesTab";
 import { NotOpen, sectionOf, TabBar, useHashTab, type ViewKey } from "./tabs";
 import { WorkerTab } from "./WorkerTab";
+import { LiveProvider } from "./live/LiveProvider";
+import { StatusBar } from "./live/StatusBar";
 
 type Health = { status: string; mode: string; live_enabled: boolean };
 
@@ -94,6 +96,7 @@ export function Dashboard() {
         </div>
       </aside>
       <div className="dashboard-workspace">
+      <StatusBar />
       <header className="dashboard-header">
         <div><h1 className="text-2xl font-semibold sm:text-3xl">{titles[section][0]}</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">{titles[section][1]}</p></div>
       </header>
@@ -126,7 +129,7 @@ export function App() {
   return (
     <div className="app-shell">
       {health.data && <ShadowBanner mode={health.data.mode} liveEnabled={health.data.live_enabled} />}
-      <main className={`app-main ${signedIn ? "app-main-dashboard" : "mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-9"}`}>{signedIn === null ? null : signedIn ? <Dashboard /> : <SignIn />}</main>
+      <main className={`app-main ${signedIn ? "app-main-dashboard" : "mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-9"}`}>{signedIn === null ? null : signedIn ? <LiveProvider><Dashboard /></LiveProvider> : <SignIn />}</main>
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { BookGroupCard } from "./BookGroupCard";
 import { accountEquity, btcValue, difference, isStrategyBook, pnlTotals, sumAmounts, uniqueAccounts } from "./dashboardMetrics";
 import { money, pct } from "./format";
 import { BotCard, relativeTime, useWorkers, workerIssues } from "./Operations";
+import { useLiveInterval } from "./live/LiveProvider";
 
 type Mode = "LIVE" | "TESTNET" | "SHADOW";
 const MODES: { key: Mode; label: string; caption: string }[] = [
@@ -36,7 +37,8 @@ function Empty({ children }: { children: ReactNode }) {
 
 function AccountPerformance({ workers }: { workers: WorkerStatus[] }) {
   const [expanded, setExpanded] = useState<string | null>(null);
-  const requests = useQueries({ queries: workers.map((w) => ({ queryKey: ["worker-activity", w.account], queryFn: () => apiGet<WorkerActivity>(`/api/v1/workers/${encodeURIComponent(w.account)}/activity`), refetchInterval: 15_000, retry: false })) });
+  const activityEvery = useLiveInterval(15_000);
+  const requests = useQueries({ queries: workers.map((w) => ({ queryKey: ["worker-activity", w.account], queryFn: () => apiGet<WorkerActivity>(`/api/v1/workers/${encodeURIComponent(w.account)}/activity`), refetchInterval: activityEvery, retry: false })) });
   const accounts = workers.map((w, i) => ({ w, query: requests[i], pnl: requests[i].isError || !requests[i].data?.available ? null : requests[i].data?.pnl }));
   const books = accounts.flatMap(({ w, pnl }) => (pnl?.books ?? []).filter((b) => isStrategyBook(b.book)).map((b) => ({ ...b, w })));
   const ready = accounts.every(({ pnl }) => pnl != null);
