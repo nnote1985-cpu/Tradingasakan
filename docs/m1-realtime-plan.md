@@ -58,7 +58,7 @@ query ฐานข้อมูลทุก 1 วินาทีเมื่อ�
 | --- | --- | --- |
 | `hello` | cursor ทั้งหมด + `server_time` | refetch ทุก query ของแท็บที่เปิดอยู่ (รวมตอนต่อใหม่) |
 | `heartbeat` | ต่อบัญชี: `updated_at`, `quote_bid`, `quote_ask`, `quote_age_ms`, `safety`, `mode`, `silent` | อัปเดตแถบสถานะทันที + invalidate `["workers"]` |
-| `changed` | `{account, kinds: ["orders","trades",...]}` | invalidate query ของบัญชีนั้น (`activity`, `control`) |
+| `changed` | `{account, kinds: ["orders","trades",...], cursors}` (cursor มีเวลาล่าสุด ใช้วัดความหน่วง §5.2) | invalidate query ของบัญชีนั้น (`activity`, `control`) |
 | `ping` | `server_time` ทุก 15 วินาที | ใช้ตรวจว่าสายยังอยู่ |
 
 ค่า `heartbeat` ใช้ฟังก์ชันเดิมใน `api/workers.py` (`worker_items`) ตัดเหลือคอลัมน์ที่แถบสถานะใช้ ไม่เขียน serializer ซ้ำ
