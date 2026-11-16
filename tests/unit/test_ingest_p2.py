@@ -384,6 +384,10 @@ def test_problems_wait_for_startup_grace_then_report_silence(tmp_path):
     assert keys == {"quotes", "klines"}
     svc.quotes.accept(Quote("BTCUSDT", D(1), D(1), D(2), D(1), 1, now[0]))
     assert {k for _, k, _ in svc.problems()} == {"klines"}
+    now[0] += 30_000                               # Testnet's bookTicker often pauses 10-20 s: no alert for that
+    assert {k for _, k, _ in svc.problems()} == {"klines"}
+    now[0] += 31_000
+    assert {k for _, k, _ in svc.problems()} == {"quotes", "klines"}
     alive[0] = False
     assert [(sev, k) for sev, k, _ in svc.problems()] == [(Severity.CRITICAL, "feeds")]
 

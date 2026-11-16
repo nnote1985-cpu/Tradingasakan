@@ -33,7 +33,7 @@ from typing import Any
 
 from trading.ingest.account import AccountState, Verdict
 from trading.ingest.bars import INTERVAL_MS, Bar, BarSeries, BarStore, Outcome, bar_from_rest, bar_from_stream
-from trading.ingest.quotes import SILENT_AFTER_MS, QuoteBook, quote_from_stream
+from trading.ingest.quotes import QuoteBook, quote_from_stream
 from trading.ingest.streams import Connect, StreamLoop
 from trading.runtime import endpoints
 from trading.runtime.alerts import Severity
@@ -46,6 +46,9 @@ WARMUP_MS = {"1m": 2 * 86_400_000, "1d": 150 * 86_400_000}     # SMA100 needs 10
 RECONCILE_EVERY_S = 30
 KLINE_SILENT_AFTER_MS = 180_000
 STARTUP_GRACE_MS = 30_000
+# Testnet's bookTicker often goes quiet for 10-20 s on all connections at once. Entries already wait for a quote
+# no older than 5 s (quotes.ENTRY_MAX_AGE_MS), so a short gap needs no message; only a gap this long is alerted.
+QUOTE_ALERT_AFTER_MS = 60_000
 Event = tuple[Severity, str, str]
 
 
@@ -296,10 +299,10 @@ class IngestService:
         if not h["alive"]:
             return [(Severity.CRITICAL, "feeds", "ตัวรับข้อมูลราคาหยุดทำงาน ต้อง restart worker: ดับเบิลคลิก scripts\\windows\\update-worker.cmd")]
         age = h["quote_age_ms"]
-        if age is None or age > SILENT_AFTER_MS:
+        if age is None or age > QUOTE_ALERT_AFTER_MS:
             seen = "ยังไม่เคยได้รับ" if age is None else f"{age / 1000:.0f} วินาที"
-            out.append((Severity.WARNING, "quotes", f"ราคาจาก Testnet ขาดหายไป ({seen}) หยุดส่งคำสั่งซื้อไว้ก่อน "
-                        "จะทำงานต่อเองเมื่อราคากลับมา ถ้าเด้งบ่อยแปลว่าเน็ตหรือ Testnet ไม่เสถียร"))
+            out.append((Severity.WARNING, "quotes", f"ราคาจาก Testnet ขาดหายไปนาน ({seen}) หยุดส่งคำสั่งซื้อไว้ก่อน "
+                        "จะทำงานต่อเองเมื่อราคากลับมา ถ้ายังเงียบเกิน 5 นาทีให้ดูว่า VM ต่อเน็ตได้หรือไม่"))
         k = h["streams"]["klines"]["silent_ms"]
         if k is None or k > KLINE_SILENT_AFTER_MS:
             out.append((Severity.WARNING, "klines", "ข้อมูลแท่งราคา Mainnet เงียบไป จะดึงย้อนหลังให้เองเมื่อต่อได้"))
