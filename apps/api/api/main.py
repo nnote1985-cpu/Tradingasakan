@@ -10,7 +10,7 @@ from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from psycopg_pool import PoolTimeout
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -26,6 +26,7 @@ from api.portfolios import NoPortfolios, PortfolioStore, Unavailable, decision_i
 from api.profile_drafts import DraftConflict, DraftStore, DraftsUnavailable, NoDrafts, PgDraftStore, SaveDraft
 from api.runs import backtest_run, run_list, shadow_run
 from api.strategies import catalog_view, profiles_view
+from api.stream import MAX_AGE, PING_EVERY, ChangeWatcher, CursorSource, NoCursors, PgCursorSource, event_stream
 from api.workers import ACTIVITY_LIMIT, CONTROL_LIMIT, NoWorkers, PgWorkerStore, WorkerStore, activity_items, control_items, pnl_items, worker_items
 from api.workers import Unavailable as WorkersUnavailable
 from trading.config import Settings
@@ -43,7 +44,8 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
                portfolios: PortfolioStore | None = None, assets: AssetCache | None = None,
                workers: WorkerStore | None = None, drafts: DraftStore | None = None,
                charts: ChartService | None = None, overlays: OverlayStore | None = None,
-               bots: BotStore | None = None) -> FastAPI:
+               bots: BotStore | None = None, cursors: CursorSource | None = None,
+               stream_max_age: float = MAX_AGE, stream_ping_every: float = PING_EVERY) -> FastAPI:
     store: PortfolioStore = portfolios or NoPortfolios()
     worker_store: WorkerStore = workers or NoWorkers()
     market = assets or AssetCache()
@@ -51,6 +53,7 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
     chart = charts or ChartService()
     overlay_store: OverlayStore = overlays or NoOverlays()
     bot_store: BotStore = bots or NoBots()
+    watcher = ChangeWatcher(cursors or NoCursors())
     app = FastAPI(title="asakantrading API", version="0.1.0")
     if settings.allowed_origins:
         app.add_middleware(CORSMiddleware, allow_origins=list(settings.allowed_origins),
@@ -309,6 +312,15 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
             return {"available": False, "decisions": [], "risk_events": [], "requests": [], "ai_month": []}
         return {"available": True, **control_items(*rows)}
 
+    @app.get("/api/v1/stream")
+    async def live_stream(request: Request, p: Principal = Depends(require(OperatorRole.VIEWER))) -> StreamingResponse:
+        """Change notices (SSE) for the web: hello, heartbeat, changed, ping, bye (m1-realtime-plan.md §3.1)."""
+        return StreamingResponse(event_stream(watcher, request.is_disconnected, stream_max_age, stream_ping_every),
+                                 media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    app.state.watcher = watcher
+
     @app.post("/api/v1/workers/{account}/requests")
     async def worker_request(account: str, body: OperatorRequest, request: Request,
                              p: Principal = Depends(require(OperatorRole.OPERATOR))) -> Any:
@@ -337,7 +349,7 @@ def app_from_env() -> FastAPI:   # uvicorn --factory api.main:app_from_env
     pool = AsyncConnectionPool(s.database_url, open=False, timeout=5)
     app = create_app(s, SupabaseJwtVerifier(s.supabase_url), PgRoleStore(pool), PgPortfolioStore(pool),
                      workers=PgWorkerStore(pool), drafts=PgDraftStore(pool), charts=ChartService(PgBarStore(pool)),
-                     overlays=PgOverlayStore(pool), bots=PgBotStore(pool))
+                     overlays=PgOverlayStore(pool), bots=PgBotStore(pool), cursors=PgCursorSource(pool))
     app.router.on_startup.append(pool.open)
     app.router.on_shutdown.append(pool.close)
     return app
