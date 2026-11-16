@@ -156,7 +156,7 @@ class ChangeWatcher:
                 for account, c in cursors.items():
                     kinds = [k for k in KINDS if prev.get(account, {}).get(k) != c[k]]
                     if kinds:
-                        self._broadcast(("changed", {"account": account, "kinds": kinds}))
+                        self._broadcast(("changed", {"account": account, "kinds": kinds, "cursors": {k: c[k] for k in kinds}}))
             await asyncio.sleep(self.poll_every)
 
     def _broadcast(self, ev: Event) -> None:

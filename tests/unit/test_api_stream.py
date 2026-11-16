@@ -57,7 +57,8 @@ def test_hello_then_only_what_changed():
         assert ev == "hello" and hello["cursors"]["DEFAULT"]["trades"] == "0/" and hello["heartbeats"][0]["quote_bid"] == "95000.1"
         src.rows = [row(trades="1/2026-11-16 11:00:01+00", requests="1/4/")]
         [(ev, data)] = await _drain(q, 1)
-        assert ev == "changed" and data == {"account": "DEFAULT", "kinds": ["trades", "requests"]}
+        assert ev == "changed" and data == {"account": "DEFAULT", "kinds": ["trades", "requests"],
+                                            "cursors": {"trades": "1/2026-11-16 11:00:01+00", "requests": "1/4/"}}
         src.rows = [row(updated=NOW + timedelta(seconds=10), bid="95010", trades="1/2026-11-16 11:00:01+00", requests="1/4/")]
         [(ev, data)] = await _drain(q, 1)
         assert ev == "heartbeat" and data["heartbeats"][0]["quote_bid"] == "95010"
