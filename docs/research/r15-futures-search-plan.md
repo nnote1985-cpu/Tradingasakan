@@ -91,3 +91,16 @@ Sharpe on a small return may not be what Note wants.
 Net, CAGR, Sharpe, max DD (daily closes) and worst intraday DD, per year, trades, days long/short/
 flat, fees, funding paid/received, liquidation, costs ×2, correlation of daily returns with R10a.
 Outputs: `/mnt/project-files/r15-results/`. A fail is recorded, not retuned.
+
+## Dev result (run once 2026-11-17 at the runner commit; `/mnt/project-files/r15-results/dev/`)
+
+2022-05-01 → 2026-01-01. R10a reproduced exactly (+244.8% / 1.00 / 26.0%); B&H +132.6% / 0.46 / 60.2%.
+
+| Run | Net | Sharpe | Max DD | Pass |
+| --- | --- | --- | --- | --- |
+| F1 gated L/S 1x / 2x / 3x | +266% / +463% / +361% | 0.74 / 0.51 / 0.30 | 38.9% / 65.5% / 84.0% | no (A) |
+| F2 carry | +12.5% (3.3%/yr) | 8.39 | 0.4% | yes |
+| F3 R10a + carry | +251.6% | 1.01 | 25.6% | yes (by a hair) |
+| F4 TSMOM 1x / 2x / 3x | +99% / +144% / +106% | 0.55 / 0.36 / 0.19 | 38.4% / 63.2% / 78.7% | no |
+
+No liquidation at any leverage on dev. C1 is run next for all eight, unchanged.
