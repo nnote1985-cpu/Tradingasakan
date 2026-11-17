@@ -36,3 +36,29 @@ dev 2022-05-01 → 2026-01-01; C1 2020-04-15 → 2022-01-01. C2 not used (its fi
 Quarterly table: P&L %, funding received, fees, and the rest (basis and rounding), losing quarters
 and why; annual yield; capital split (spot / perp margin / idle cash) and days on. If a variant passes,
 the report proposes which strategy to layer next and the same acceptance for that layer.
+
+## Result (run once 2026-11-17; `/mnt/project-files/r19-results/`)
+
+| Variant | dev net / per year | dev max DD (intraday) | dev quarters ≥ 0 | C1 net / per year | C1 max DD (intraday) | C1 quarters ≥ 0 |
+| --- | --- | --- | --- | --- | --- | --- |
+| K0 always on | +14.7% / 3.8% | 0.2% (2.1%) | 15/15 | +29.6% / 16.3% | 1.2% (10.4%) | 7/7 |
+| K1 funding filter | +12.5% / 3.3% | 0.4% (1.0%) | 14/15 | +23.7% / 13.2% | 1.2% (1.7%) | 7/7 |
+| K2 filter, 3x perp leg | +19.4% / 4.9% | 0.6% (1.5%) | 14/15 | +36.4% / 19.8% | 0.3% (1.6%) | 7/7 |
+
+**All three pass.** The only losing quarter is 2022 Q2 for K1/K2 (−0.2% / −0.3%): entry fees on a
+short stretch of funding. Funding was positive on average even through the 2022 bear, so K0 never had
+a losing quarter. No liquidation (K2's 3x leg is rebalanced on 20% drift). Positions still open at the
+window end are not charged exit costs (≈0.1% of equity).
+
+Limits: the base earns roughly a cash-like yield in calm years (3–5% a year on dev, below what USDT
+can earn in savings products); much more in the 2020–21 bull (13–20%). The worst intraday mark of K0 on
+C1 (10.4%) comes from assuming spot and perp hit their highs at the same moment, an upper bound.
+Basis was a small cost (single-digit USDT per quarter). Exchange risk (both legs on one exchange) is not
+modelled.
+
+## Next layer (proposal, not run)
+
+Layer 1 = R10a on top of the base: when R10a is in, hold spot without the short hedge; when it is out,
+run the carry (this is R15's F3). Acceptance for each new layer, on dev and C1: (1) combined net and
+Sharpe above the base alone; (2) the layer's own loss ≤ 5% of equity in any quarter (sized to fit);
+(3) combined ≥ 70% of quarters non-negative and max DD ≤ 15%. A layer that fails is dropped.
