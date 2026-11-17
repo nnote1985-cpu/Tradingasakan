@@ -68,3 +68,29 @@ crossed. Outputs `/mnt/project-files/r16-results/`.
 2022-05-01 → 2026-01-01. R10a +244.8% / 1.00 / 26.0%; B&H +132.6% / 0.46 / 60.2%. All six lose money:
 A-O −14.6% (146 trades), A-I −20.6%, B-O −40.9% (481), B-I −56.2% (700), C-O −93.5% (1,096),
 C-I −92.7% (1,199). C1 is run next for all six, unchanged.
+
+## C1 result (run once 2026-11-17; `/mnt/project-files/r16-results/c1/`)
+
+2020-04-15 → 2022-01-01. R10a +443.0% / 1.93 / 23.2%; B&H +572.1% / 1.54 / 53.1%. All six lose money:
+A-O −20.9% (54 trades), A-I −20.6%, B-O −59.0% (230), B-I −62.8% (352), C-O −83.0% (509), C-I −81.8% (571).
+
+## Per-day summary (base costs; mean daily return / % up days / % down days / % days with no position)
+
+| Run | dev | C1 |
+| --- | --- | --- |
+| A-O | −0.011% / 4 / 7 / 90 | −0.035% / 5 / 6 / 90 |
+| A-I | −0.016% / 3 / 6 / 91 | −0.035% / 3 / 4 / 92 |
+| B-O | −0.019% / 30 / 46 / 24 | −0.101% / 36 / 48 / 16 |
+| B-I | −0.050% / 18 / 31 / 52 | −0.137% / 23 / 30 / 46 |
+| C-O | −0.183% / 33 / 49 / 19 | −0.243% / 40 / 48 / 12 |
+| C-I | −0.182% / 23 / 37 / 40 | −0.248% / 28 / 38 / 34 |
+
+Trades per month: A ≈ 3, B 11–17, C ≈ 25–28. Intraday mode crossed only the 08:00/16:00 settlements.
+
+## Verdict
+
+**No R16 system passes; all six lose money on both windows.** Post-hoc diagnostic (not pre-declared;
+`gross_diagnostic.py`): with zero fees, slippage and funding, only A-O and B on dev are positive
+(+4%, +19 to +29% over 3.7 years, far below B&H), and every run is negative on C1 (−14% to −60%).
+So the hourly signals have no edge to lose to fees; costs only deepen the loss. Intraday-only
+was worse than overnight for every system on dev. C2 unused.
