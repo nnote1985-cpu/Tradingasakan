@@ -142,7 +142,7 @@ def targets(daily: pd.DataFrame, fd: pd.Series) -> tuple[dict[str, tuple[pd.Seri
     return out, feats
 
 
-def simulate(daily, spot, fd, ws, wp, start, end, costs: Costs):
+def simulate(daily, spot, fd, ws, wp, start, end, costs: Costs, daily_log: list | None = None):
     days = daily.index[(daily.index >= pd.Timestamp(start)) & (daily.index < pd.Timestamp(end))]
     tws = ws.shift(1).ffill().reindex(days).fillna(0.0)
     twp = wp.shift(1).ffill().reindex(days).fillna(0.0)
@@ -153,6 +153,7 @@ def simulate(daily, spot, fd, ws, wp, start, end, costs: Costs):
     st = {"fees": 0.0, "slippage": 0.0, "funding_paid": 0.0, "days_long": 0, "days_short": 0, "days_flat": 0,
           "days_carry_or_spot": 0, "liquidated": None, "perp_turnover": 0.0, "spot_turnover": 0.0}
     for d in days:
+        day_fee = day_fund = 0.0
         o, hi, lo, c = (daily.at[d, k] for k in ("open", "high", "low", "close"))
         so, sh, sl, sc = (spot.at[d, k] for k in ("open", "high", "low", "close"))
         t_s, t_p = float(tws.at[d]), float(twp.at[d])
@@ -183,6 +184,7 @@ def simulate(daily, spot, fd, ws, wp, start, end, costs: Costs):
                         sq += dq
                         st["spot_turnover"] += abs(dq) * px
                     st["fees"] += fee
+                    day_fee += fee
                     trades.append({"time": d, "leg": leg, "qty": dq, "price": px, "fee": fee, "target": tgt})
             prev_t = (t_s, t_p)
         if np.isfinite(sc):
@@ -206,6 +208,7 @@ def simulate(daily, spot, fd, ws, wp, start, end, costs: Costs):
                 pay = pq * c * float(fd.at[d])
                 cash -= pay
                 st["funding_paid"] += pay
+                day_fund += pay
         eqc = cash + sq * last_spot
         # worst intraday mark: both legs at the day's low, or both at the high (perp settled to close already)
         scen = []
@@ -214,6 +217,9 @@ def simulate(daily, spot, fd, ws, wp, start, end, costs: Costs):
                 scen.append(cash + pq * (pp - c) + sq * sp)
         worst_marks.append(min(scen + [eqc]))
         marks.append(eqc)
+        if daily_log is not None:
+            daily_log.append({"day": d, "fees": day_fee, "funding_paid": day_fund, "equity": eqc,
+                              "spot_qty": sq, "perp_qty": pq})
         if pq > 0:
             st["days_long"] += 1
         elif pq < 0 and sq == 0:
