@@ -46,3 +46,10 @@ SMA200 needs 200 days of warm-up, so no C1 bars are loaded for dev.
 2. R10a + sleeve vs R10a: Sharpe higher and max DD ≤ R10a's + 2 points, on both windows.
 Reported: short trades, notional per trade, SL vs liquidation distance, cap triggers, win rate, avg hold, exits by stop / TP / time / regime, fees, funding, per year.
 Few trades are expected (only 2022 is a real bear), so a pass is a direction, not proof.
+
+## Dev result (run once 2026-11-17; `/mnt/project-files/r17-results/dev/`)
+
+2022-08-01 → 2026-01-01: 16 short trades (37.5% win, 4 SL / 2 TP / 9 regime-or-time / 1 end), notional
+avg 0.16× equity, SL distance avg 6.6%, worst trade −1.02% of equity. Sleeve alone −2.3% of equity
+(funding received +0.20%, fees 0.26%). R10a + sleeve +236.9% / Sharpe 1.01 / DD 26.0% vs R10a
++244.8% / 1.03 / 26.0%. **Fails both criteria.** Daily cap and HALT never triggered. C1 next, unchanged.
