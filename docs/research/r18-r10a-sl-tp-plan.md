@@ -55,3 +55,10 @@ Each calendar part-year is labelled from BTC buy & hold in that period: **bull**
 Same as R15: A Sharpe > R10a's (spot) and max DD ≤ R10a's + 5 points; B net > 0 and (Sharpe > B&H's
 or max DD ≤ ½ B&H's); C B holds with costs ×2; no liquidation. Plus **D (every market):** in each
 bear or sideways year, loss no larger than R10a's in that year; in each bull year, net ≥ half of B&H's.
+
+## Dev result (run once 2026-11-17; `/mnt/project-files/r18-results/dev/`)
+
+Regimes: 2022 May–Dec bear, 2023 bull, 2024 bull, 2025 sideways. R10a spot +245% / 1.00 / 26%;
+B&H +133% / 0.46 / 60%. Best SL/TP run by Sharpe: E3 TP 3R with 2% risk, +22% / 0.81 / 6% DD. At 1x:
+E0 none +177% / 0.78 / 31%; E2 TP 2R +102% / 0.56; E3 TP 3R +92% / 0.54; E1 trail +24% / 0.21; E4
++24% / 0.22. No run passes A (Sharpe > R10a). No liquidation. C1 next, unchanged.
