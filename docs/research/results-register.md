@@ -216,3 +216,8 @@ costs only A-O/B are positive on dev and all are negative on C1: no gross edge.
 Short only below a falling SMA200 while R10a is in cash; sell-the-rally / 10-day breakdown; exchange-side SL 1.5×ATR / TP 2×ATR,
 1% risk sizing, 10-day time stop, daily 3% and total 10% caps. Dev 2022-08 → 2025: 16 trades, sleeve −2.3% of equity, R10a+sleeve
 Sharpe 1.01 vs 1.03. C1: no regime days, zero trades. **Fails.** Risk rules held losses to ≤ ~1% per trade.
+
+## R18 SL/TP on R10a long, perp (2026-11-17, docs/research/r18-r10a-sl-tp-plan.md) — dev + C1, C2 unused
+
+5 exits (none, trail, TP 2R, TP 3R, half 2R + trail; SL 3×ATR) × 1x / 2x / 2% risk. None beats R10a. Trailing worst; TP 3R
+≈ no-TP (dev 0.54 vs 0.78, C1 1.42 vs 1.24); 2x doubles DD; 2% risk → DD 4–7%, returns +9–31%. No liquidation.

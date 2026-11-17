@@ -62,3 +62,26 @@ Regimes: 2022 May–Dec bear, 2023 bull, 2024 bull, 2025 sideways. R10a spot +24
 B&H +133% / 0.46 / 60%. Best SL/TP run by Sharpe: E3 TP 3R with 2% risk, +22% / 0.81 / 6% DD. At 1x:
 E0 none +177% / 0.78 / 31%; E2 TP 2R +102% / 0.56; E3 TP 3R +92% / 0.54; E1 trail +24% / 0.21; E4
 +24% / 0.22. No run passes A (Sharpe > R10a). No liquidation. C1 next, unchanged.
+
+## C1 result (run once 2026-11-17; `/mnt/project-files/r18-results/c1/`)
+
+Regimes: 2020 Apr–Dec bull, 2021 bull. R10a +443% / 1.93 / 23%; B&H +572% / 1.54 / 53%.
+1x: E0 none +322% / 1.24 / 39%; E3 TP 3R +371% / 1.42 / 37%; E2 TP 2R +165% / 0.87; E1 trail +84% /
+0.69; E4 +95% / 0.80. Risk 2%: E3 +31% / 1.82 / 4%. 2x: DD 49–70%. No liquidation.
+
+## Verdict
+
+**No R18 run passes** (none beats R10a's Sharpe on either window; criterion D fails in bull years).
+- **Trailing stops hurt most** (E1/E4): 13–27 trail exits, shaken out of trends; 2024 turned negative.
+- **Fixed TP 3R is the best SL/TP style**, close to no-TP: dev 0.54 vs 0.78, C1 1.42 vs 1.24 (mixed).
+  TP 2R is worse on both.
+- **SL/TP helped in the bear part-year** (2022: −8% to −10% at 1x vs R10a −13%) but cost far more in
+  bull years.
+- **2x** roughly doubles drawdown (dev 44–58%) and lowers Sharpe; no liquidation since SL (≈10%) sits
+  far inside the 2x liquidation distance (≈49%).
+- **2% risk sizing** gives ~0.2× exposure: very small drawdowns (4–7%) but small returns (+9% to +31%).
+- E0 on the perp (1x) is below spot R10a mainly because longs pay funding.
+
+Policy implication (Note's idea, TP per strategy): for multi-day trend holding, use a wide SL as a
+catastrophe stop plus the strategy's own exit, no trailing; a fixed TP is optional and at least 3R.
+Short-term systems need TP as part of their logic, but none tested so far (R16) has an edge.
