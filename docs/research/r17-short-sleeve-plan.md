@@ -53,3 +53,15 @@ Few trades are expected (only 2022 is a real bear), so a pass is a direction, no
 avg 0.16× equity, SL distance avg 6.6%, worst trade −1.02% of equity. Sleeve alone −2.3% of equity
 (funding received +0.20%, fees 0.26%). R10a + sleeve +236.9% / Sharpe 1.01 / DD 26.0% vs R10a
 +244.8% / 1.03 / 26.0%. **Fails both criteria.** Daily cap and HALT never triggered. C1 next, unchanged.
+
+## C1 result (run once 2026-11-17; `/mnt/project-files/r17-results/c1/`)
+
+2020-08-01 → 2022-01-01: the regime (below a falling SMA200 while R10a is out) never occurred, so
+**zero trades**; R10a + sleeve = R10a (+329% / 2.01 / 23.2%). C1 says nothing about the short rules.
+
+## Verdict
+
+**R17 fails.** Dev: 13 shorts in 2022 lost −2.5% of equity in total, 3 in 2025 made +0.16%. The risk
+rules worked as designed: no loss larger than ~1% of equity, SL 6.6% away vs liquidation ≥ 99% away
+(1x isolated), no daily cap or HALT trigger. But the short rules themselves had no edge, even in
+2022's bear market. C2 unused.
