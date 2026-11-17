@@ -114,6 +114,14 @@ class ShadowLedger:
         return self._post(funding_id, at, "funding", [("cash", -pay), ("funding", pay)],
                           {"rate": str(D(rate)), "mark": str(D(mark)), "qty": str(self.position.qty), "paid": str(pay)})
 
+    def transfer(self, key: str, at, amount, memo: str = "") -> bool:
+        """Cash moved in (> 0) or out (< 0) of this wallet from another wallet of the same owner.
+        The other wallet posts the opposite amount, so ``transfers`` sums to zero across them."""
+        a = D(amount)
+        if a < 0 and -a > self.bal("cash"):
+            raise ValueError(f"transfer out {-a} exceeds cash {self.bal('cash')}")
+        return self._post(key, at, "transfer", [("cash", a), ("transfers", -a)], {"amount": str(a), "memo": memo})
+
     def operating_cost(self, cost_id: str, at, amount, memo: str = "") -> bool:
         a = D(amount)
         if a < 0:

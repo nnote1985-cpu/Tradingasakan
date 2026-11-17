@@ -86,3 +86,32 @@ def test_trading_mirror_copies_the_futures_r7_perp_journal(tmp_path):
     assert "'-" + str((Decimal(short["exposure"])).quantize(Decimal("1e-12"))) + "'" in r.stdout
     s = _run("supabase_sync_sql.py", "--root", str(tmp_path))
     assert s.returncode == 0 and "futures-r7 (trend_perp_book.v1) is not mirrored" in s.stderr
+
+
+def test_trading_mirror_copies_both_hedge_wallets_into_one_portfolio(tmp_path):
+    import importlib.util
+    from decimal import Decimal
+
+    import numpy as np
+    import pandas as pd
+
+    spec = importlib.util.spec_from_file_location("hedge_tests", ROOT / "tests/unit/test_hedge_book.py")
+    assert spec and spec.loader
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    prices = np.r_[np.full(5, 30000.0), np.linspace(30000, 33000, 10)]
+    spot, perp, sh, ph = m._market(prices)
+    book = m._run(m.HedgeBook(), spot, perp, sh, ph, pd.Series(0.0002, index=spot.index), [0.0] * 8 + [1.0] * 7)
+    state = json.loads(json.dumps(book.to_dict()))
+    assert {"transfer", "fill", "funding"} <= {e["kind"] for e in state["perp"]["entries"]}
+    r = _run("trading_sync_sql.py", "--root", _root(tmp_path, state), "--commit", "pathA-r10a-hedge=abc1234")
+    assert r.returncode == 0, r.stderr
+    n = len(state["spot"]["entries"]) + len(state["perp"]["entries"]) + len(state["buy_and_hold"]["entries"])
+    assert r.stdout.count("insert into trading.journal_entries") == n
+    assert "'pathA-r10a-hedge/paper:perp:" in r.stdout and "'pathA-r10a-hedge/paper:spot:open'" in r.stdout
+    assert "transfer" in r.stdout and "'pathA-r10a-hedge/buy_and_hold'" in r.stdout
+    total = sum(Decimal(x) for e in state["spot"]["entries"] + state["perp"]["entries"]
+                for a, x in e["lines"] if a == "transfers")
+    assert total == 0
+    s = _run("supabase_sync_sql.py", "--root", str(tmp_path))
+    assert s.returncode == 0 and "(hedge_book.v1) is not mirrored" in s.stderr

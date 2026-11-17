@@ -22,6 +22,9 @@ becomes a trading.agent_decisions row on the AI portfolio. The r2 proposal run (
 proposal_book.v1, docs/phase-5-r2-plan.md) becomes `pathA-p5-r2/code`, `/ai` and `/buy_and_hold`
 the same way; its proposals are not copied yet.
 
+pathA-r10a-hedge (format hedge_book.v1) has a spot and a perp ledger joined by transfer entries; both
+are copied into `pathA-r10a-hedge/paper` (see hedge_book_sql).
+
 futures-r7 (format trend_perp_book.v1, docs/futures-r7-book-plan.md) keeps a balanced perp
 journal (ShadowLedger: cash, realized_pnl, fees, funding); its entries are copied line for line
 into `futures-r7/paper` and `futures-r7/buy_and_hold`. The open position is not a journal
@@ -138,6 +141,8 @@ def _spot_book_sql(v: str, commit: str, state: dict, label: str, bh_label: str |
             memo = "starting cash" if e["kind"] == "open" else f"{dd.get('side')} {dd.get('qty')} BTC @ {dd.get('price')}"
             if e["kind"] == "operating_cost":
                 memo = dd.get("memo") or "operating cost"
+            elif e["kind"] == "transfer":
+                memo = f"transfer {dd.get('amount')} USDT ({dd.get('memo')})"
             elif e["kind"] == "funding":
                 memo = f"funding rate {dd.get('rate')} on {dd.get('qty')} BTC"
             out += _entry(f"{lab}:{e['key']}", lab, e["at"], memo, lines)
@@ -147,6 +152,8 @@ def _spot_book_sql(v: str, commit: str, state: dict, label: str, bh_label: str |
             ec = d(h["economic_equity"] if book == "paper" else h["buy_and_hold"])
             if book != "paper":
                 exposure = None
+            elif "net_exposure" in h:                             # hedge book: spot value + signed perp notional
+                exposure = d(h["net_exposure"])
             elif "side_held_at_close" in h:                       # perp: signed notional
                 exposure = d(Decimal(h["exposure"]) * h["side_held_at_close"])
             else:
@@ -187,6 +194,15 @@ def trend_perp_book_sql(state: dict, commit: str) -> list[str]:
     """futures-r7: the perp book and its buy & hold benchmark, same copy rules as pathA-v1.2."""
     v = state["rules_version"]
     return _spot_book_sql(v, commit, state, f"{v}/paper", f"{v}/buy_and_hold")
+
+
+def hedge_book_sql(state: dict, commit: str) -> list[str]:
+    """pathA-r10a-hedge (docs/r10a-hedge-book-plan.md): the spot and perp wallets are two ledgers whose
+    keys carry a spot:/perp: prefix; both are copied into one portfolio `<v>/paper`, where the
+    transfer lines net to zero, plus the buy & hold benchmark."""
+    v = state["rules_version"]
+    merged = {**state, "book": {"entries": state["spot"]["entries"] + state["perp"]["entries"]}}
+    return _spot_book_sql(v, commit, merged, f"{v}/paper", f"{v}/buy_and_hold")
 
 
 def _ms(a: str | None, b: str | None) -> int | None:
@@ -296,6 +312,8 @@ def main() -> None:
             raise SystemExit(f"no frozen commit known for {v}: pass --commit {v}=<sha>")
         if v == "spot-e1-v1":
             lines += e1_book_sql(s, commits[v], p.parent)
+        elif s.get("format") == "hedge_book.v1":
+            lines += hedge_book_sql(s, commits[v])
         elif s.get("format") == "trend_perp_book.v1":
             lines += trend_perp_book_sql(s, commits[v])
         elif s.get("format") == "paired_book.v1":
