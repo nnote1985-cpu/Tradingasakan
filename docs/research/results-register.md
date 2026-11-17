@@ -226,3 +226,9 @@ Sharpe 1.01 vs 1.03. C1: no regime days, zero trades. **Fails.** Risk rules held
 
 Long spot + short perp, same qty. K0 always on: dev +3.8%/yr, DD 0.2%, 15/15 quarters ≥ 0; C1 +16.3%/yr, 7/7. K1 filter and
 K2 (3x perp leg) also pass (14/15, 7/7). All pass the base acceptance (≥80% quarters ≥ 0, DD ≤ 10%). Yield is cash-like in calm years.
+
+## R20 layer 1 = R10a on carry base (2026-11-17, docs/research/r20-layer1-r10a-plan.md) — dev + C1, C2 unused
+
+s = 1.0 / 0.5 / 0.25 of R10a on top of K0 carry. Dev: +41% / 25% / 14% a year, DD 25.5% / 12.8% / 5.9%, 8–9 of 15 quarters ≥ 0.
+C1: +181% / 87% / 46% a year. **Fails as declared**: Sharpe-above-base criterion is unreachable for any directional layer (design
+error), and dev has 6–7 losing quarters. s = 0.25 keeps every layer quarter above −5%.
