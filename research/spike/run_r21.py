@@ -24,7 +24,7 @@ from trading.strategies.trend_regime_v2 import RegimeCosts
 
 SYM = "ETHUSDT"
 OUT = Path("/mnt/project-files/r21-results")
-WIN_F = {"range": ("2020-04-15", "2022-01-01"), "data": (date(2019, 12, 1), date(2021, 12, 31)),
+WIN_F = {"range": ("2020-04-15", "2022-01-01"), "data": (date(2020, 1, 1), date(2021, 12, 31)),
          "perp_dir": "data/eth_um_1", "spot_dir": "data/eth_spot_1", "years": []}
 R17_START = "2020-08-01"
 WIN_S = ("2018-04-11", "2022-01-01")

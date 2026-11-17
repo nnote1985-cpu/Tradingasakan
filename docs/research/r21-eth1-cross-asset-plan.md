@@ -12,7 +12,7 @@ the futures variants. Every rule was built on BTC; ETH has never been simulated 
 No ETH file after 2021-12-31 is downloaded here.
 
 ETHUSDT USDⓈ-M perp data (and funding) start 2019-11-27, so:
-- **ETH-1F (futures and mixed): 2020-04-15 → 2022-01-01** (perp from 2019-12-01, 100-day warm-up),
+- **ETH-1F (futures and mixed): 2020-04-15 → 2022-01-01** (perp archive files start 2020-01, 100-day warm-up; corrected from 2019-12 after the first launch failed on a missing file, before any simulation),
   the same dates as BTC C1. R17 needs SMA200: 2020-08-01 → 2022-01-01.
 - **ETH-1S (spot only, the full period): 2018-04-11 → 2022-01-01** on spot daily klines from
   2018-01; no funding data exists before late 2019, so R10a runs without its funding half-size there.
