@@ -62,3 +62,9 @@ Per day (UTC, equity at each day's end): mean and median daily return, std, % up
 no-position days, average daily P&L in USDT, best and worst day. Also net, CAGR, Sharpe, max DD,
 trades total and per month, win rate per trade, average hold, fees, funding paid and the settlements
 crossed. Outputs `/mnt/project-files/r16-results/`.
+
+## Dev result (run once 2026-11-17; `/mnt/project-files/r16-results/dev/`)
+
+2022-05-01 → 2026-01-01. R10a +244.8% / 1.00 / 26.0%; B&H +132.6% / 0.46 / 60.2%. All six lose money:
+A-O −14.6% (146 trades), A-I −20.6%, B-O −40.9% (481), B-I −56.2% (700), C-O −93.5% (1,096),
+C-I −92.7% (1,199). C1 is run next for all six, unchanged.
