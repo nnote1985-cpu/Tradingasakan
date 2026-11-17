@@ -104,3 +104,33 @@ Outputs: `/mnt/project-files/r15-results/`. A fail is recorded, not retuned.
 | F4 TSMOM 1x / 2x / 3x | +99% / +144% / +106% | 0.55 / 0.36 / 0.19 | 38.4% / 63.2% / 78.7% | no |
 
 No liquidation at any leverage on dev. C1 is run next for all eight, unchanged.
+
+## C1 result (run once 2026-11-17, `/mnt/project-files/r15-results/c1/`)
+
+2020-04-15 → 2022-01-01. R10a reproduced (+443.0% / 1.93 / 23.2%); B&H +572.1% / 1.54 / 53.1%.
+
+| Run | Net | Sharpe | Max DD | Pass |
+| --- | --- | --- | --- | --- |
+| F1 gated L/S 1x / 2x | +168% / +316% | 0.99 / 0.74 | 48.2% / 75.2% | no |
+| F1 gated L/S 3x | **liquidated 2021-07-26** (short squeeze) | – | 100% | no |
+| F2 carry | +23.7% (13.2%/yr) | 7.43 | 1.2% | yes |
+| F3 R10a + carry | +489.4% | 2.02 | 22.8% | yes |
+| F4 TSMOM 1x / 2x / 3x | +117% / +263% / +404% | 1.28 / 1.08 / 0.89 | 17.9% / 33.9% / 48.1% | no (A) |
+
+## Verdict
+
+- **Winners by the pre-declared rule: F2 and F3.** Neither is a directional futures strategy: both
+  use the perp only as a short hedge to collect funding.
+  - F2 alone earns little (3.3%/yr on dev, 13.2%/yr in the 2020–21 bull), roughly cash-like yield
+    with a very smooth curve. Its huge Sharpe is mostly because the return is small and steady.
+  - F3 beats R10a by a small margin: dev +251.6% vs +244.8% (Sharpe 1.01 vs 1.00), C1 +489% vs
+    +443% (2.02 vs 1.93). Gain = idle cash earning funding. Correlation with R10a 1.00.
+- **No directional perp strategy (long/short, any leverage) beats spot R10a** on either window. F1/F4
+  at 1x pay funding and lose Sharpe; 2x/3x only scale drawdown (dev DD 65–84%), and 3x F1 was
+  liquidated on C1.
+- Post-hoc diagnostic (not pre-declared, not a candidate): F1's signal with the short legs removed
+  (long-only perp 1x) gives dev 0.83 / 27.5% and C1 1.59 / 25.2%, versus long+short 0.74 / 38.9% and
+  0.99 / 48.2%. Shorting added raw return on dev but lowered Sharpe and raised DD on both windows;
+  long-only perp is still below spot R10a because of funding.
+- Eight runs on a seen dev window plus a spent C1: F3 is a candidate for a forward paper book, not
+  proof. C2 is unused.
