@@ -210,3 +210,9 @@ F4 TSMOM 1x 0.55 / 38.4%, 1.28 / 17.9%; **F2 carry passes** (+3.3%/yr dev, DD 0.
 A Trend Pullback, B Breakout (48h channel), C Adaptive (ADX regime: breakout / Bollinger MR); each overnight and intraday-only;
 perp 1x long+short, hourly signal check. **All six lose on both windows** (dev −15% to −94%, C1 −21% to −83%). Even with zero
 costs only A-O/B are positive on dev and all are negative on C1: no gross edge.
+
+## R17 short sleeve with risk rules (2026-11-17, docs/research/r17-short-sleeve-plan.md) — dev + C1, C2 unused
+
+Short only below a falling SMA200 while R10a is in cash; sell-the-rally / 10-day breakdown; exchange-side SL 1.5×ATR / TP 2×ATR,
+1% risk sizing, 10-day time stop, daily 3% and total 10% caps. Dev 2022-08 → 2025: 16 trades, sleeve −2.3% of equity, R10a+sleeve
+Sharpe 1.01 vs 1.03. C1: no regime days, zero trades. **Fails.** Risk rules held losses to ≤ ~1% per trade.
