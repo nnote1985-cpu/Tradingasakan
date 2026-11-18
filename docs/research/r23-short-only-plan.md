@@ -99,8 +99,9 @@ fade is small and mixed.
 management): +2.9% total, Sharpe 0.55, DD 0.7%, **6 trades in 7.75 years** (2018–2021 only, none since).
 That is far too few trades to show an edge; it passes on paper only.
 
-**1x vs 2x full notional:** with the 3% daily cap and 10% HALT on, every variant halts or ends ≤ 0 except
-none worth noting. Without HALT (diagnostic), most are negative with 30–90% drawdowns; 2x is worse than 1x
+**1x vs 2x full notional:** with the 3% daily cap and 10% HALT on, 51 of 66 (1x) and 59 of 66 (2x)
+end ≤ 0; nearly all of the rest made their gain in the 2018 bear and then hit HALT and stopped for good
+(e.g. S2 N55 1x: +28% in 2018, HALT 2019-09). Only S3 p25 hourly at 1x (+7%, DD 8.5%, 8 trades) never halted. Without HALT (diagnostic), most are negative with 30–90% drawdowns; 2x is worse than 1x
 in 60 of 66 variants because the 3% daily cap is hit twice as often (it acts as a tight stop). **Hourly
 management (H)** cuts DD under R1 (e.g. S1 SMA100: 7.6% → 3.5%) but also cuts profit; it does not create
 an edge. Per plan, ETH-1 is run once with S3_p25_k2.5_D.
