@@ -1,0 +1,189 @@
+{
+  "tf": "5min",
+  "htf": "1h",
+  "eval_start": "2026-11-05 00:00:00+00:00",
+  "eval_end": "2026-11-17 00:00:00+00:00",
+  "bot_A": {
+    "trades": 11,
+    "long": 0,
+    "short": 11,
+    "win_rate": 0.091,
+    "sum_R": -6.62,
+    "return_pct": -9.33,
+    "max_dd_pct": 9.33,
+    "exits": {
+      "EMA50": 7,
+      "SL": 3,
+      "TP": 1
+    }
+  },
+  "bot_B": {
+    "trades": 5,
+    "long": 0,
+    "short": 5,
+    "win_rate": 0.0,
+    "sum_R": -4.54,
+    "return_pct": -4.4,
+    "max_dd_pct": 4.4,
+    "exits": {
+      "EMA50": 4,
+      "SL": 1
+    }
+  },
+  "bot_B_obi_only": {
+    "trades": 8,
+    "long": 0,
+    "short": 8,
+    "win_rate": 0.125,
+    "sum_R": -3.78,
+    "return_pct": -5.97,
+    "max_dd_pct": 5.97,
+    "exits": {
+      "EMA50": 6,
+      "TP": 1,
+      "SL": 1
+    }
+  },
+  "bot_B_flow_only": {
+    "trades": 8,
+    "long": 0,
+    "short": 8,
+    "win_rate": 0.0,
+    "sum_R": -7.39,
+    "return_pct": -7.85,
+    "max_dd_pct": 7.85,
+    "exits": {
+      "EMA50": 5,
+      "SL": 3
+    }
+  },
+  "feature_check": {
+    "bars": 3455,
+    "obi_bars_missing": 0,
+    "spearman_next_bar_ret": {
+      "obi02": 0.0378,
+      "delta_ratio": -0.0251,
+      "bid_near_ratio": 0.0242,
+      "ask_near_ratio": -0.009
+    },
+    "obi02_vs_delta_ratio": -0.3452
+  },
+  "signals": {
+    "total": 14,
+    "pass_filter": 5,
+    "rows": [
+      {
+        "t": "2026-11-06 05:45:00+00:00",
+        "side": -1,
+        "obi02": -0.038,
+        "delta_ratio": 0.148,
+        "pass": false,
+        "next_bar_ret_pct": 0.07
+      },
+      {
+        "t": "2026-11-06 06:35:00+00:00",
+        "side": -1,
+        "obi02": -0.042,
+        "delta_ratio": 0.112,
+        "pass": false,
+        "next_bar_ret_pct": 0.188
+      },
+      {
+        "t": "2026-11-07 03:55:00+00:00",
+        "side": -1,
+        "obi02": -0.059,
+        "delta_ratio": -0.04,
+        "pass": true,
+        "next_bar_ret_pct": 0.064
+      },
+      {
+        "t": "2026-11-07 20:05:00+00:00",
+        "side": -1,
+        "obi02": -0.085,
+        "delta_ratio": 0.368,
+        "pass": false,
+        "next_bar_ret_pct": -0.018
+      },
+      {
+        "t": "2026-11-10 11:20:00+00:00",
+        "side": -1,
+        "obi02": -0.017,
+        "delta_ratio": -0.055,
+        "pass": true,
+        "next_bar_ret_pct": 0.036
+      },
+      {
+        "t": "2026-11-10 11:35:00+00:00",
+        "side": -1,
+        "obi02": 0.048,
+        "delta_ratio": -0.328,
+        "pass": false,
+        "next_bar_ret_pct": 0.075
+      },
+      {
+        "t": "2026-11-12 07:10:00+00:00",
+        "side": -1,
+        "obi02": -0.006,
+        "delta_ratio": -0.305,
+        "pass": true,
+        "next_bar_ret_pct": -0.045
+      },
+      {
+        "t": "2026-11-12 17:00:00+00:00",
+        "side": -1,
+        "obi02": -0.093,
+        "delta_ratio": -0.185,
+        "pass": true,
+        "next_bar_ret_pct": -0.033
+      },
+      {
+        "t": "2026-11-13 23:00:00+00:00",
+        "side": -1,
+        "obi02": -0.106,
+        "delta_ratio": -0.247,
+        "pass": true,
+        "next_bar_ret_pct": -0.339
+      },
+      {
+        "t": "2026-11-14 05:00:00+00:00",
+        "side": -1,
+        "obi02": -0.079,
+        "delta_ratio": 0.117,
+        "pass": false,
+        "next_bar_ret_pct": -0.091
+      },
+      {
+        "t": "2026-11-14 05:40:00+00:00",
+        "side": -1,
+        "obi02": 0.086,
+        "delta_ratio": -0.291,
+        "pass": false,
+        "next_bar_ret_pct": -0.098
+      },
+      {
+        "t": "2026-11-15 16:35:00+00:00",
+        "side": -1,
+        "obi02": 0.032,
+        "delta_ratio": 0.133,
+        "pass": false,
+        "next_bar_ret_pct": -0.201
+      },
+      {
+        "t": "2026-11-16 06:40:00+00:00",
+        "side": -1,
+        "obi02": 0.01,
+        "delta_ratio": -0.334,
+        "pass": false,
+        "next_bar_ret_pct": -0.006
+      },
+      {
+        "t": "2026-11-16 12:50:00+00:00",
+        "side": -1,
+        "obi02": 0.055,
+        "delta_ratio": -0.297,
+        "pass": false,
+        "next_bar_ret_pct": -0.134
+      }
+    ]
+  }
+}
