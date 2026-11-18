@@ -8,3 +8,4 @@
 20261019021143_risk_and_agent_decisions
 20261019024033_strategy_decisions
 20261115072939_bots
+20261118143243_futures_desk

@@ -64,7 +64,11 @@ def test_signed_testnet_url_passes():
 def test_rest_url_takes_a_venue_not_a_host():
     with pytest.raises(endpoints.EndpointRefused):
         endpoints.rest_url(endpoints.Venue.SPOT_TESTNET, "//api.binance.com/api/v3/order")
-    assert set(endpoints.REST_BASE.values()) == {"https://testnet.binance.vision"}
+    with pytest.raises(endpoints.EndpointRefused):
+        endpoints.rest_url(endpoints.Venue.FUTURES_DEMO, "//fapi.binance.com/fapi/v1/order")
+    # The only REST bases: Spot Testnet and the Futures Demo (futures-desk-plan.md §3). No Mainnet host.
+    assert set(endpoints.REST_BASE.values()) == {"https://testnet.binance.vision", "https://demo-fapi.binance.com"}
+    assert endpoints.SIGNED_HOSTS == {"testnet.binance.vision", "demo-fapi.binance.com"}
 
 
 @pytest.mark.parametrize("url,method,headers", [

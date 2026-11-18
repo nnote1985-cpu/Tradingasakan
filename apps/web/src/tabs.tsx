@@ -3,6 +3,7 @@ import { type ReactNode, useSyncExternalStore } from "react";
 export const TABS = [
   { key: "overview", label: "ภาพรวม" },
   { key: "bots", label: "บอตและพอร์ต" },
+  { key: "trade", label: "Futures" },
   { key: "research", label: "งานวิจัย" },
   { key: "system", label: "ระบบ" },
   { key: "settings", label: "ตั้งค่า" },

@@ -20,6 +20,8 @@ from api.auth import AuthError, Principal, RoleStore, TokenVerifier, authenticat
 from api.backtests import load_backtests
 from api.bots import BotEvent, BotNotFound, BotRefused, BotStore, BotsUnavailable, NoBots, PgBotStore, SaveBot, template_list
 from api.charts import BadRequest, ChartService, Loading, PgBarStore, utc
+from api.futures import FuturesStore, NoFutures, PgFuturesStore
+from api.futures import desk as futures_desk
 from api.overlays import NoOverlays, OverlayStore, PgOverlayStore, overlay_items
 from api.overlays import Unavailable as OverlaysUnavailable
 from api.paper_compare import CompareStore, NoCompare, PgCompareStore, compare_view
@@ -46,7 +48,7 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
                workers: WorkerStore | None = None, drafts: DraftStore | None = None,
                charts: ChartService | None = None, overlays: OverlayStore | None = None,
                bots: BotStore | None = None, cursors: CursorSource | None = None,
-               compare: CompareStore | None = None,
+               compare: CompareStore | None = None, futures: FuturesStore | None = None,
                stream_max_age: float = MAX_AGE, stream_ping_every: float = PING_EVERY) -> FastAPI:
     store: PortfolioStore = portfolios or NoPortfolios()
     worker_store: WorkerStore = workers or NoWorkers()
@@ -56,6 +58,7 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
     overlay_store: OverlayStore = overlays or NoOverlays()
     bot_store: BotStore = bots or NoBots()
     compare_store: CompareStore = compare or NoCompare()
+    futures_store: FuturesStore = futures or NoFutures()
     watcher = ChangeWatcher(cursors or NoCursors())
     app = FastAPI(title="asakantrading API", version="0.1.0")
     if settings.allowed_origins:
@@ -130,6 +133,11 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
             return {"available": True, "portfolios": risk_items(await store.risk_rows())}
         except Unavailable:
             return {"available": False, "portfolios": []}
+
+    @app.get("/api/v1/futures/desk")
+    async def futures_desk_view(account: str | None = None, p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        """Futures Demo account: positions, stops, liquidation, loss caps and per-trade P&L (futures-desk-plan.md §6)."""
+        return await futures_desk(futures_store, account)
 
     @app.get("/api/v1/backtests")
     async def backtests(market: str | None = None, p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
@@ -359,7 +367,7 @@ def app_from_env() -> FastAPI:   # uvicorn --factory api.main:app_from_env
     app = create_app(s, SupabaseJwtVerifier(s.supabase_url), PgRoleStore(pool), PgPortfolioStore(pool),
                      workers=PgWorkerStore(pool), drafts=PgDraftStore(pool), charts=ChartService(PgBarStore(pool)),
                      overlays=PgOverlayStore(pool), bots=PgBotStore(pool), cursors=PgCursorSource(pool),
-                     compare=PgCompareStore(pool))
+                     compare=PgCompareStore(pool), futures=PgFuturesStore(pool))
     app.router.on_startup.append(pool.open)
     app.router.on_shutdown.append(pool.close)
     return app
