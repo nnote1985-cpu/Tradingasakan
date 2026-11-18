@@ -46,6 +46,19 @@ take profit (where used) at entry − 2 × ATR on 1h low. If one 1h bar touches 
   close < EMA10. TP 2 × ATR, time stop 5 days. f ∈ {0.03%, 0.05%}, k ∈ {1.5, 2.5} → 4.
   (No trades before 2020: no funding data.)
 
+## Trade management: daily (D) vs hourly (H)
+
+Note added (2026-11-18, before any run) that holding a losing short until the next daily close may be
+the problem, so an open short should be checked every hour. Every variant above runs in both modes:
+
+- **D (daily):** exits only by the exchange SL/TP and the daily signal / time stop, as above.
+- **H (hourly):** same entries and the same SL/TP/daily exits, plus, at every 1h close while short:
+  (a) once the trade has been ≥ 1 × ATR in profit (1h low ≤ entry − ATR), the SL moves to the entry
+  price; (b) if the 1h close is above the highest 1h close of the previous 24 hours, the short is closed
+  at that close.
+
+So 33 × 2 = 66 variants. Selection below treats each (family, mode) pair as its own family for rule 5.
+
 ## Sizing (Note's 1x vs 2x) and risk rules
 
 - **R1 (standard rule):** notional = 1% of equity ÷ SL distance, so a stop loses about 1% of equity;
