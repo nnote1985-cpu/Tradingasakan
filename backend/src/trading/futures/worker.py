@@ -1,11 +1,14 @@
-"""The futures desk worker, stage 1: read-only sync of the Futures Demo account (futures-desk-plan.md §5).
+"""The futures desk worker: sync of the Futures Demo account (futures-desk-plan.md §5) and, with an
+:class:`~trading.futures.executor.Executor`, manual order requests from the web page (§7).
 
 Runs as its own process (systemd ``tradingasakan-futures``), apart from the spot
 workers, so starting, stopping or crashing it never touches the running bots.
 Every ``sync_every_s`` it reads balances, positions, open orders (regular and
 algo), new fills and new income, updates the high-water mark and day open, and
 writes it all in one transaction. It holds the writer lease for its account so
-two copies never write at once. It sends no orders.
+two copies never write at once. Without an executor it sends no orders. With one, it checks
+for queued requests every tick and syncs at once when there is one, so a ticket is acted on
+within a few seconds and on fresh data.
 
 It alerts (Telegram, when set) when a position has no stop-loss on the exchange,
 which breaks the desk rule, and when a loss cap is reached.
@@ -20,6 +23,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
 from trading.futures import rules
+from trading.futures.executor import Executor
 from trading.futures.rest import FuturesDemoRest
 from trading.futures.risk import caps
 from trading.futures.sync import RiskState, Snapshot, fill_row, income_row, mark_risk, markets, snapshot
@@ -39,6 +43,7 @@ class Store(Protocol):
     def last_income_at(self) -> datetime | None: ...
     def save(self, snap: Snapshot, risk: RiskState, body: dict[str, Any], fills: list[dict[str, Any]],
              income: list[dict[str, Any]]) -> tuple[int, int]: ...
+    def open_requests(self) -> list[dict[str, Any]]: ...
 
 
 @dataclass
@@ -67,9 +72,11 @@ class State:
 
 class FuturesWorker:
     def __init__(self, rest: FuturesDemoRest, store: Store, alerts: AlertQueue, cfg: Config, *,
+                 executor: Executor | None = None,
                  now: Callable[[], datetime] = lambda: datetime.now(UTC), monotonic: Callable[[], float] = time.monotonic,
                  log: Callable[[str], None] = print) -> None:
         self.rest, self.store, self.alerts, self.cfg = rest, store, alerts, cfg
+        self.executor = executor
         self.now, self.mono, self.log = now, monotonic, log
         self.state = State()
         self._info: Any = None
@@ -101,12 +108,16 @@ class FuturesWorker:
         if isinstance(mode, dict) and mode.get("dualSidePosition") is True:
             self.alerts.push(Severity.WARNING, "fut-mode", "บัญชี Futures Demo ตั้งเป็น Hedge mode หน้าเว็บอ่านได้แต่สรุปไม้จะผิด "
                              "ให้เปลี่ยนเป็น One-way mode ในหน้า Preferences ของ demo.binance.com")
-        self.alerts.push(Severity.INFO, "fut-start", "worker Futures Demo เริ่มทำงาน (อ่านอย่างเดียว ไม่ส่งคำสั่ง)")
+        self.alerts.push(Severity.INFO, "fut-start", "worker Futures Demo เริ่มทำงาน " + (
+            "(รับคำสั่งจากหน้าเว็บ)" if self.executor else "(อ่านอย่างเดียว ไม่ส่งคำสั่ง)"))
 
     def tick(self) -> None:
         self._lease()
-        if not self._due("sync", self.cfg.sync_every_s):
+        queued = self.executor is not None and bool(self.store.open_requests())
+        if not self._due("sync", self.cfg.sync_every_s) and not queued:
             return
+        if queued:
+            self.state._due["sync"] = self.mono() + self.cfg.sync_every_s
         try:
             self.sync()
             self.state.last_error = None
@@ -148,6 +159,8 @@ class FuturesWorker:
         self.state.fills_added += nf
         self.state.income_added += ni
         self._check_rules(snap)
+        if self.executor is not None:
+            self.executor.run(snap, self._risk, now)
 
     def _new_fills(self, now: datetime) -> list[dict[str, Any]]:
         last = self.store.last_fill_ids()
@@ -195,7 +208,7 @@ class FuturesWorker:
     def body(self) -> dict[str, Any]:
         s = self.state
         out: dict[str, Any] = {k: v for k, v in s.__dict__.items() if not k.startswith("_")}
-        out |= {"owner": self.cfg.owner, "host": self.cfg.host, "orders_enabled": False,
+        out |= {"owner": self.cfg.owner, "host": self.cfg.host, "orders_enabled": self.executor is not None,
                 "rules": {"risk_per_trade": str(rules.RISK_PER_TRADE), "day_loss_cap": str(rules.DAY_LOSS_CAP),
                           "total_loss_cap": str(rules.TOTAL_LOSS_CAP)}}
         return out

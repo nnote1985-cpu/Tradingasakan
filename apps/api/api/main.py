@@ -20,7 +20,19 @@ from api.auth import AuthError, Principal, RoleStore, TokenVerifier, authenticat
 from api.backtests import load_backtests
 from api.bots import BotEvent, BotNotFound, BotRefused, BotStore, BotsUnavailable, NoBots, PgBotStore, SaveBot, template_list
 from api.charts import BadRequest, ChartService, Loading, PgBarStore, utc
-from api.futures import FuturesStore, NoFutures, PgFuturesStore
+from api.futures import (
+    CloseTicket,
+    FuturesStore,
+    NoFutures,
+    OpenTicket,
+    PgFuturesStore,
+    Refused,
+    StopTicket,
+    preview,
+    submit_close,
+    submit_open,
+    submit_stop,
+)
 from api.futures import desk as futures_desk
 from api.overlays import NoOverlays, OverlayStore, PgOverlayStore, overlay_items
 from api.overlays import Unavailable as OverlaysUnavailable
@@ -137,7 +149,31 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
     @app.get("/api/v1/futures/desk")
     async def futures_desk_view(account: str | None = None, p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
         """Futures Demo account: positions, stops, liquidation, loss caps and per-trade P&L (futures-desk-plan.md §6)."""
-        return await futures_desk(futures_store, account)
+        return await futures_desk(futures_store, account, can_edit=p.at_least(OperatorRole.OPERATOR))
+
+    @app.exception_handler(Refused)
+    async def futures_refused(request: Request, exc: Refused) -> JSONResponse:
+        return JSONResponse(status_code=exc.status, content={
+            "code": exc.code, "request_id": getattr(request.state, "request_id", None), "retryable": False,
+            "message": exc.reasons[0] if exc.reasons else "ไม่ผ่านการตรวจ", "reasons": exc.reasons, "plan": exc.plan})
+
+    @app.post("/api/v1/futures/orders/preview")
+    async def futures_preview(body: OpenTicket, p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        """Size and checks for a ticket, without queuing anything."""
+        return await preview(futures_store, body)
+
+    @app.post("/api/v1/futures/orders")
+    async def futures_open(body: OpenTicket, p: Principal = Depends(require(OperatorRole.OPERATOR))) -> dict[str, Any]:
+        """Queue an OPEN ticket. The worker checks it again on fresh data and sends entry + exchange stop (§7)."""
+        return await submit_open(futures_store, body, f"web:{p.user_id}")
+
+    @app.post("/api/v1/futures/positions/{symbol}/close")
+    async def futures_close(symbol: str, body: CloseTicket, p: Principal = Depends(require(OperatorRole.OPERATOR))) -> dict[str, Any]:
+        return await submit_close(futures_store, symbol, body, f"web:{p.user_id}")
+
+    @app.post("/api/v1/futures/positions/{symbol}/stop")
+    async def futures_stop(symbol: str, body: StopTicket, p: Principal = Depends(require(OperatorRole.OPERATOR))) -> dict[str, Any]:
+        return await submit_stop(futures_store, symbol, body, f"web:{p.user_id}")
 
     @app.get("/api/v1/backtests")
     async def backtests(market: str | None = None, p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:

@@ -1,16 +1,23 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
-import type { FuturesDesk as Desk } from "../src/api";
+import type { FuturesDesk as Desk, FuturesPlan } from "../src/api";
 import { FuturesDesk, held } from "../src/futures/FuturesDesk";
 
 let reply: Desk;
+let postReply: (path: string, body: unknown) => unknown = () => ({});
 const calls: string[] = [];
-vi.mock("../src/api", () => ({ supabase: null, apiGet: async (path: string) => { calls.push(path); return reply; } }));
-afterEach(() => { cleanup(); calls.length = 0; });
+const posts: { path: string; body: Record<string, unknown> }[] = [];
+vi.mock("../src/api", () => ({
+  supabase: null,
+  apiGet: async (path: string) => { calls.push(path); return reply; },
+  apiPost: async (path: string, body: Record<string, unknown>) => { posts.push({ path, body }); return postReply(path, body); },
+}));
+afterEach(() => { cleanup(); calls.length = 0; posts.length = 0; });
 
 const cap = (level: "OK" | "NEAR" | "BLOCKED", loss: string, used: string) => ({ loss, cap: "0.03", used, level, room: "250" });
-const READY: Desk = {
+type Ready = Extract<Desk, { available: true }>;
+const READY: Ready = {
   available: true, accounts: ["FUT1"], account: "FUT1", venue: "BINANCE_USDM_DEMO", synced_at: "2026-11-18T01:00:00+00:00", stale: false,
   worker: { orders_enabled: false, last_error: null, started_at: null, host: "vm" },
   equity: "10050", wallet_balance: "10000", available_balance: "8600", unrealized_pnl: "50",
@@ -36,6 +43,7 @@ const READY: Desk = {
       entry_price: "81000", exit_price: "80000", exit_qty: "0.02", realized_pnl: "20", fees: "1", funding: "-0.5", net_pnl: "18.5", return_pct: "0.0018", fills: 2, order_ids: [1, 2] },
   ],
   summary: { count: 2, closed: 1, open: 1, wins: 1, losses: 0, win_rate: "1", net_pnl: "18.5", fees: "2.58", funding: "-0.5", today_net: "0", avg_win: "18.5", avg_loss: null },
+  requests: [], can_trade: false, max_leverage: 10,
 };
 
 function renderDesk() {
@@ -89,4 +97,56 @@ test("held formats minutes, hours and days", () => {
   const t = "2026-11-18T00:00:00Z";
   expect(held(t, "2026-11-18T00:45:00Z")).toBe("45 นาที");
   expect(held(t, "2026-11-19T03:00:00Z")).toBe("1 วัน 3 ชม.");
+});
+
+const PLAN: FuturesPlan = { ok: true, refusals: [], notes: [], qty: "0.125", ref_price: "80000", stop_price: "79200", take_profit: null, leverage: 3,
+  risk_usdt: "100", risk_pct: "0.01", risk_budget: "100.5", notional: "10000", margin: "3333.33", liq_estimate: "53733.33" };
+
+test("ticket: preview shows size and risk; sending needs can_trade and a confirmation", async () => {
+  reply = { ...READY, positions: [], unprotected: [], can_trade: true, markets: { BTCUSDT: { mark: "80000", funding_rate: "0", next_funding: null, tick_size: "0.1", step_size: "0.001", min_qty: "0.001", min_notional: "100" } } };
+  postReply = (path) => (path.endsWith("/preview") ? PLAN : { id: 7 });
+  renderDesk();
+  const ticket = await screen.findByTestId("order-ticket");
+  const send = screen.getByRole("button", { name: "ส่งคำสั่ง" }) as HTMLButtonElement;
+  expect(send.disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText("Stop-loss (บังคับ)"), { target: { value: "79200" } });
+  fireEvent.click(screen.getByRole("button", { name: "ตรวจขนาดไม้" }));
+  const plan = await screen.findByTestId("plan");
+  expect(posts[0]).toEqual({ path: "/api/v1/futures/orders/preview", body: { account: "FUT1", symbol: "BTCUSDT", side: "LONG", stop_price: "79200", leverage: 3 } });
+  expect(plan.textContent).toContain("0.125 BTC");
+  expect(plan.textContent).toContain("100.00 (1.00%)");
+  fireEvent.click(send);
+  fireEvent.click(await screen.findByRole("button", { name: "ยืนยันส่งคำสั่ง" }));
+  expect(await screen.findByText(/ส่งคำสั่ง #7 แล้ว/)).toBeTruthy();
+  expect(posts[1].path).toBe("/api/v1/futures/orders");
+  expect(typeof posts[1].body.request_id).toBe("string");
+  expect(ticket).toBeTruthy();
+});
+
+test("ticket: refusals are listed and sending stays off", async () => {
+  reply = { ...READY, can_trade: true };
+  postReply = () => ({ ...PLAN, ok: false, refusals: ["มี position ที่ไม่มี Stop-loss (ETHUSDT) ตั้ง SL หรือปิดก่อนเปิดไม้ใหม่"] });
+  renderDesk();
+  await screen.findByTestId("order-ticket");
+  fireEvent.change(screen.getByLabelText("Stop-loss (บังคับ)"), { target: { value: "79200" } });
+  fireEvent.click(screen.getByRole("button", { name: "ตรวจขนาดไม้" }));
+  expect((await screen.findByTestId("plan")).textContent).toContain("ETHUSDT");
+  expect((screen.getByRole("button", { name: "ส่งคำสั่ง" }) as HTMLButtonElement).disabled).toBe(true);
+});
+
+test("position buttons appear only when the page may trade; close asks first", async () => {
+  reply = READY;
+  renderDesk();
+  await screen.findAllByTestId("position");
+  expect(screen.queryByRole("button", { name: "ปิด position (Market)" })).toBeNull();
+  cleanup();
+  reply = { ...READY, can_trade: true, requests: [{ id: 3, kind: "OPEN", symbol: "BTCUSDT", side: "LONG", stop_price: "77000", take_profit: null,
+    leverage: 3, qty: "0.05", risk_usdt: "100", actor: "web:x", requested_at: "2026-11-18T00:49:00Z", status: "DONE", handled_at: null, outcome: "เปิด LONG 0.05 BTCUSDT" }] };
+  postReply = () => ({ id: 4 });
+  renderDesk();
+  expect((await screen.findByTestId("requests")).textContent).toContain("สำเร็จ");
+  fireEvent.click(screen.getAllByRole("button", { name: "ปิด position (Market)" })[0]);
+  fireEvent.click(await screen.findByRole("button", { name: "ยืนยัน" }));
+  expect(await screen.findByText("ส่งแล้ว รอ worker ไม่กี่วินาที")).toBeTruthy();
+  expect(posts[0].path).toBe("/api/v1/futures/positions/BTCUSDT/close");
 });
