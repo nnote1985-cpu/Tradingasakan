@@ -8,9 +8,9 @@ export const TABS = [
   { key: "settings", label: "ตั้งค่า" },
 ] as const;
 export type TabKey = (typeof TABS)[number]["key"];
-export type ViewKey = TabKey | "spot" | "asset" | "futures" | "ai" | "strategies" | "options" | "worker" | "bot-config";
+export type ViewKey = TabKey | "spot" | "asset" | "futures" | "ai" | "strategies" | "options" | "worker" | "bot-config" | "compare";
 export function sectionOf(view: ViewKey): TabKey {
-  if (["spot", "futures", "ai", "options"].includes(view)) return "research";
+  if (["spot", "futures", "ai", "options", "compare"].includes(view)) return "research";
   if (view === "strategies" || view === "bot-config") return "settings";
   if (view === "asset") return "bots";
   if (view === "worker") return "system";
@@ -19,7 +19,7 @@ export function sectionOf(view: ViewKey): TabKey {
 
 function fromHash(): ViewKey {
   const h = window.location.hash.slice(1);
-  return [...TABS.map((t) => t.key), "spot", "asset", "futures", "ai", "strategies", "options", "worker", "bot-config"].includes(h) ? (h as ViewKey) : "overview";
+  return [...TABS.map((t) => t.key), "spot", "asset", "futures", "ai", "strategies", "options", "worker", "bot-config", "compare"].includes(h) ? (h as ViewKey) : "overview";
 }
 
 const NAVIGATE = "tradingasakan:navigate";

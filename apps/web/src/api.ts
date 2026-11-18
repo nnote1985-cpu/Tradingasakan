@@ -36,6 +36,19 @@ export type EquitySeries = {
   points: EquityPoint[];
   max_drawdown: string;
 };
+export type ComparePoint = { day: string; equity: string; return: string; drawdown: string };
+export type CompareBook = {
+  label: string; version: string; arm: string; kind: "spot" | "perp" | "hedge"; benchmark: boolean;
+  opened_on: string; as_of: string; days: number; initial_equity: string; equity: string;
+  return: string | null;            // fraction since the common start day ("from")
+  return_since_open: string;        // fraction since the book opened
+  drawdown: string | null; max_drawdown: string;   // inside the window
+  fees: string; funding_received: string;           // totals since open; funding < 0 means paid
+  mark_price: string | null; spot_qty: string; perp_qty: string;
+  spot_share: string | null; perp_share: string | null;   // signed leg value / equity at the last close
+  points: ComparePoint[];
+};
+export type PaperCompare = { from: string | null; default_from: string | null; earliest: string | null; focus: string; books: CompareBook[] };
 export type Overview = { mode: string; live_enabled: boolean; portfolios: PortfolioRow[] };
 export type ApiError = { code: string; request_id: string | null; retryable: boolean; message: string };
 

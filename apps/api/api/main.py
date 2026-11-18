@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Awaitable, Callable
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, Query, Request
@@ -22,6 +22,7 @@ from api.bots import BotEvent, BotNotFound, BotRefused, BotStore, BotsUnavailabl
 from api.charts import BadRequest, ChartService, Loading, PgBarStore, utc
 from api.overlays import NoOverlays, OverlayStore, PgOverlayStore, overlay_items
 from api.overlays import Unavailable as OverlaysUnavailable
+from api.paper_compare import CompareStore, NoCompare, PgCompareStore, compare_view
 from api.portfolios import NoPortfolios, PortfolioStore, Unavailable, decision_items, equity_series, overview_items, risk_items
 from api.profile_drafts import DraftConflict, DraftStore, DraftsUnavailable, NoDrafts, PgDraftStore, SaveDraft
 from api.runs import backtest_run, run_list, shadow_run
@@ -45,6 +46,7 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
                workers: WorkerStore | None = None, drafts: DraftStore | None = None,
                charts: ChartService | None = None, overlays: OverlayStore | None = None,
                bots: BotStore | None = None, cursors: CursorSource | None = None,
+               compare: CompareStore | None = None,
                stream_max_age: float = MAX_AGE, stream_ping_every: float = PING_EVERY) -> FastAPI:
     store: PortfolioStore = portfolios or NoPortfolios()
     worker_store: WorkerStore = workers or NoWorkers()
@@ -53,6 +55,7 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
     chart = charts or ChartService()
     overlay_store: OverlayStore = overlays or NoOverlays()
     bot_store: BotStore = bots or NoBots()
+    compare_store: CompareStore = compare or NoCompare()
     watcher = ChangeWatcher(cursors or NoCursors())
     app = FastAPI(title="asakantrading API", version="0.1.0")
     if settings.allowed_origins:
@@ -114,6 +117,12 @@ def create_app(settings: Settings, verifier: TokenVerifier, roles: RoleStore,
         if row is None:
             raise AuthError("not_found", "ไม่พบพอร์ตนี้", status=404)
         return equity_series(row, await store.equity_rows(label))
+
+    @app.get("/api/v1/paper-compare")
+    async def paper_compare(start: date | None = Query(None, alias="from"),
+                            p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
+        return compare_view(await compare_store.snapshot_rows(), await compare_store.total_rows(),
+                            await compare_store.fill_rows(), start)
 
     @app.get("/api/v1/risk-status")
     async def risk_status(p: Principal = Depends(require(OperatorRole.VIEWER))) -> dict[str, Any]:
@@ -349,7 +358,8 @@ def app_from_env() -> FastAPI:   # uvicorn --factory api.main:app_from_env
     pool = AsyncConnectionPool(s.database_url, open=False, timeout=5)
     app = create_app(s, SupabaseJwtVerifier(s.supabase_url), PgRoleStore(pool), PgPortfolioStore(pool),
                      workers=PgWorkerStore(pool), drafts=PgDraftStore(pool), charts=ChartService(PgBarStore(pool)),
-                     overlays=PgOverlayStore(pool), bots=PgBotStore(pool), cursors=PgCursorSource(pool))
+                     overlays=PgOverlayStore(pool), bots=PgBotStore(pool), cursors=PgCursorSource(pool),
+                     compare=PgCompareStore(pool))
     app.router.on_startup.append(pool.open)
     app.router.on_shutdown.append(pool.close)
     return app
