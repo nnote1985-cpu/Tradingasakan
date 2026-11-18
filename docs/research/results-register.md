@@ -238,3 +238,8 @@ error), and dev has 6–7 losing quarters. s = 0.25 keeps every layer quarter ab
 BTC rules unchanged on ETH. 2020-04 → 2021 (per year / DD / Sharpe): R10a +220% / 55% / 1.54; 3a hedge +237% / 55% / 1.60; futures
 L/S +129% / 64% / 1.08; carry base +18% / 1% / 8.79 (7/7 quarters); B&H +525% / 57% / 1.89. 2018 → 2021 spot: R10a Sharpe 0.79 / DD 66%
 vs B&H 0.58 / 90%. Ranking matches BTC; ETH drawdowns much deeper.
+
+## R22 sharper hedge timing for 3a (2026-11-18, docs/research/r22-sharper-hedge-plan.md) — BTC dev + C1 only
+
+H1 asymmetric exit, H2 SMA50 band, H3 two-stage, H4 drawdown hedge vs H0 (current R10a band). All worse than H0 on dev; H2 better
+only on C1 (Sharpe 2.48 vs 2.02) with dev DD 29.3% vs 25.5% (overfitting pattern). H0 kept; ETH not run.

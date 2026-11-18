@@ -33,3 +33,18 @@ Chosen rule vs H0 on ETH-1F (2020-04-15 → 2022-01-01). "Better" = higher Sharp
 than H0 + 2 points on ETH-1F too. Reported: per year, quarters ≥ 0, number of hedge switches.
 Overfitting read: the gain must show on all three windows (BTC dev, BTC C1, ETH-1F); a gain on one
 BTC window only, or a gain that is gone on ETH, is reported as likely overfitting.
+
+## Result on BTC (run once 2026-11-18; `/mnt/project-files/r22-results/`)
+
+| Rule | dev per yr / DD / Sharpe | C1 per yr / DD / Sharpe | hedge switches dev / C1 |
+| --- | --- | --- | --- |
+| H0 current | +41% / 25.5% / 1.03 | +181% / 22.8% / 2.02 | 26 / 31 |
+| H1 asymmetric exit | +38% / 32.8% / 0.99 | +135% / 27.3% / 1.73 | 36 / 45 |
+| H2 SMA50 band | +36% / 29.3% / 0.94 | +224% / 19.2% / 2.48 | 42 / 35 |
+| H3 two-stage | +34% / 24.4% / 0.98 | +148% / 21.6% / 2.03 | 102 / 86 |
+| H4 drawdown hedge | +30% / 23.4% / 0.88 | +97% / 25.6% / 1.74 | 33 / 35 |
+
+**Verdict: H0 stays.** Every sharper rule is worse than H0 on dev. H2 has the best mean Sharpe only
+because of C1 (2.48), but its dev DD (29.3%) breaks the +2-point limit and its dev Sharpe is lower:
+a gain on one window only, the overfitting pattern this plan warned about. Per the plan, nothing was
+run on ETH, so **ETH-1F is still unused by any hedge-timing rule**. ETH-2, ETH 2026, BTC C2 untouched.
