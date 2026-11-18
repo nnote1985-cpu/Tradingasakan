@@ -105,3 +105,18 @@ end ≤ 0; nearly all of the rest made their gain in the 2018 bear and then hit 
 in 60 of 66 variants because the 3% daily cap is hit twice as often (it acts as a tight stop). **Hourly
 management (H)** cuts DD under R1 (e.g. S1 SMA100: 7.6% → 3.5%) but also cuts profit; it does not create
 an edge. Per plan, ETH-1 is run once with S3_p25_k2.5_D.
+
+## ETH-1 result (run once 2026-11-18; `/mnt/project-files/r23-results/eth1/`)
+
+S3_p25_k2.5_D unchanged, 2018-04 → 2021: R1 **−2.1%**, Sharpe −0.39, DD 3.4%, 16 trades (50% win; 6 SL /
+3 TP / 7 time). Cost ×2 −2.2%. N1 (1x): −9.4%, HALT 2018-12; N2 (2x): −7.0%, stopped by the daily cap
+on its first trade. Without HALT: 1x −16.4% / DD 22.4%, 2x −23.3% / DD 43.1%. **Fails.**
+
+## Verdict
+
+**R23 fails: no short-only rule shows an edge.** On BTC, the only passer had 6 trades and did not hold up
+on ETH-1. Lessons: (1) under the 1% risk rule ATR stops are 10–30% away, so trades are tiny (≈0.05×
+equity) and returns ≈ cash; (2) at full 1x/2x the 3% daily cap fires like a tight stop and 2x is worse
+than 1x in 62 of 66 variants; (3) hourly management lowers DD but does not add profit; (4) gains appear
+only in known bears (2018, 2022) and the rules give them back in bull years. ETH-2, ETH 2026 and BTC C2
+remain unused.

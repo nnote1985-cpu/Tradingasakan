@@ -243,3 +243,9 @@ vs B&H 0.58 / 90%. Ranking matches BTC; ETH drawdowns much deeper.
 
 H1 asymmetric exit, H2 SMA50 band, H3 two-stage, H4 drawdown hedge vs H0 (current R10a band). All worse than H0 on dev; H2 better
 only on C1 (Sharpe 2.48 vs 2.02) with dev DD 29.3% vs 25.5% (overfitting pattern). H0 kept; ETH not run.
+
+## R23 short-only perp, 1x vs 2x, daily vs hourly management (2026-11-18, docs/research/r23-short-only-plan.md) — BTC 2018–2025 + ETH-1
+
+66 variants (band short, Donchian breakdown, pump fade, crowded-long fade; daily or hourly management). Under 1% risk sizing all
+BTC variants ≈ cash (best +8.3% over 7.75 years). One passer (S3 pump fade p25, 6 trades, +2.9%) fails ETH-1 (−2.1%, 16 trades).
+Full 1x/2x notional: mostly negative or halted after the 2018 bear; 2x worse than 1x in 62/66. **Fails.** ETH-2, 2026, C2 unused.
