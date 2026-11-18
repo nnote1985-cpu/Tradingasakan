@@ -43,3 +43,24 @@ without Note's separate OK. BTC C2 and ETH 2026 not loaded.
 
 Net > 0 at base and 2× costs, max DD ≤ 10% with no HALT, Sharpe ≥ 0.5, no calendar year worse than −5%,
 and at least 3 of the 4 TP variants net > 0 at the same cap.
+
+## BTC result (run once 2026-11-18; `/mnt/project-files/r24-results/`)
+
+2,772 signal bars; regime true 27% of hours. All 8 runs (4 TP variants × 1x/2x cap) **hit the 10% HALT
+between 2019-01 and 2019-05**, net −3% to −8% at that point; zero-cost and TP-first runs also negative.
+**Fails.**
+
+Diagnostic without HALT (not part of the pass), 2018-04 → 2025, ~65 trades a year, SL ≈ 2.05% away,
+notional ≈ 0.62× (cap 1x binds on ~17% of trades, cap 2x almost never):
+
+| Variant | 1x net / DD | 2x net / DD | win rate | 1x zero-cost net |
+|---|---|---|---|---|
+| TP 1.5R | −43.9% / 49.9% | −47.0% / 53.6% | 39% | −10.6% |
+| TP 2R | −45.8% / 54.0% | −49.3% / 57.4% | 32% | −9.9% |
+| TP 3R | −42.5% / 58.5% | −47.3% / 62.3% | 23% | −16.6% |
+| TP 2R + regime exit | −44.2% / 50.1% | −47.8% / 53.8% | 32% | −8.7% |
+
+Win rates sit just under break-even (1.5R needs 40%, 2R 33%, 3R 25%) before costs, so there is no gross
+edge; costs (~0.09R a trade) turn it into a steady loss. Positive only in 2022 and 2024–2025 (TP 3R +15%
+and +13% in those years at 1x) and negative in 2019, 2020, 2021 and 2023. 2x ≈ 1x because the 1% risk rule
+sets the size, not the cap. ETH-2 not used.

@@ -249,3 +249,8 @@ only on C1 (Sharpe 2.48 vs 2.02) with dev DD 29.3% vs 25.5% (overfitting pattern
 66 variants (band short, Donchian breakdown, pump fade, crowded-long fade; daily or hourly management). Under 1% risk sizing all
 BTC variants ≈ cash (best +8.3% over 7.75 years). One passer (S3 pump fade p25, 6 trades, +2.9%) fails ETH-1 (−2.1%, 16 trades).
 Full 1x/2x notional: mostly negative or halted after the 2018 bear; 2x worse than 1x in 62/66. **Fails.** ETH-2, 2026, C2 unused.
+
+## R24 Note's 4H ADX/−DI regime + 1H EMA20 pullback short (2026-11-18, docs/research/r24-pullback-short-plan.md) — BTC only
+
+TP 1.5R / 2R / 3R / 2R + regime exit, 1% risk, cap 1x / 2x. All 8 hit the 10% HALT in early 2019. Without HALT: −42% to −49%
+over 2018–2025, ~65 trades a year; zero-cost still −9% to −21% (no gross edge). 2x ≈ 1x. **Fails.** ETH-2 unused.
