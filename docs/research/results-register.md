@@ -197,3 +197,10 @@ per trade, fee 0.10% + 2 bps, SL/TP on 1m bars. Only **E1 Donchian_Breakout (H4)
 (65 trades, costs ×2 +29.5%, profit mostly 2023; full 1× exposure +163.5% / 0.99 / 23.6%). E2 +9.0% / 0.26, E8 +5.5% / 0.24;
 E3–E7 lose (−16% to −88%), mostly from fees on H1 tight-stop trading. R10a in the same run +244.8% / 1.00 / 26.0%.
 Finalist E1 only; C2 unspent.
+
+## R15 futures search (2026-11-17, docs/research/r15-futures-search-plan.md) — dev + C1 (second screen), C2 unused
+
+Eight pre-declared daily-decision runs. dev 2022-05 → 2025 / C1 2020-04 → 2021 (Sharpe, max DD): R10a 1.00 / 26.0%, 1.93 / 23.2%;
+B&H 0.46 / 60.2%, 1.54 / 53.1%. F1 gated long/short 1x 0.74 / 38.9%, 0.99 / 48.2% (2x DD 65% / 75%, 3x liquidated on C1);
+F4 TSMOM 1x 0.55 / 38.4%, 1.28 / 17.9%; **F2 carry passes** (+3.3%/yr dev, DD 0.4%); **F3 R10a + carry on idle cash passes**
+(+251.6% / 1.01 / 25.6%, +489.4% / 2.02 / 22.8%), a small gain over R10a. No directional perp strategy beats R10a.
