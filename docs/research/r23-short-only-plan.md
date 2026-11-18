@@ -87,3 +87,20 @@ The passer with the highest Sharpe is the single R23 rule. If none pass, R23 fai
 The chosen rule in R1, N1 and N2. Pass = R1 net > 0 and max DD ≤ 10% with no HALT. N1 vs N2 is
 reported for the 1x vs 2x comparison. Reported everywhere: net, per-year, Sharpe, max DD, trades, win
 rate, exits by SL / TP / signal / time / cap, time in market, fees, funding, cap triggers.
+
+## BTC result (run once 2026-11-18; `/mnt/project-files/r23-results/btc/`)
+
+2018-04 → 2025, 66 variants. **Under the 1% risk rule every variant is close to zero**: best net +8.3% over
+7.75 years (S1 SMA100 k2 daily, Sharpe 0.26, DD 7.6%); notional per trade only ~0.03–0.10× equity because
+ATR stops are 10–30% away. S3 pump fade with p = 15% loses (−7 to −10%, hits the 10% HALT); S4 crowded-long
+fade is small and mixed.
+
+**Only one variant passes all five criteria: S3_p25_k2.5_D** (short after a > 25% 5-day pump, daily
+management): +2.9% total, Sharpe 0.55, DD 0.7%, **6 trades in 7.75 years** (2018–2021 only, none since).
+That is far too few trades to show an edge; it passes on paper only.
+
+**1x vs 2x full notional:** with the 3% daily cap and 10% HALT on, every variant halts or ends ≤ 0 except
+none worth noting. Without HALT (diagnostic), most are negative with 30–90% drawdowns; 2x is worse than 1x
+in 60 of 66 variants because the 3% daily cap is hit twice as often (it acts as a tight stop). **Hourly
+management (H)** cuts DD under R1 (e.g. S1 SMA100: 7.6% → 3.5%) but also cuts profit; it does not create
+an edge. Per plan, ETH-1 is run once with S3_p25_k2.5_D.
