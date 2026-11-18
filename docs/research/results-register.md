@@ -221,3 +221,8 @@ Sharpe 1.01 vs 1.03. C1: no regime days, zero trades. **Fails.** Risk rules held
 
 5 exits (none, trail, TP 2R, TP 3R, half 2R + trail; SL 3×ATR) × 1x / 2x / 2% risk. None beats R10a. Trailing worst; TP 3R
 ≈ no-TP (dev 0.54 vs 0.78, C1 1.42 vs 1.24); 2x doubles DD; 2% risk → DD 4–7%, returns +9–31%. No liquidation.
+
+## R19 carry base (2026-11-17, docs/research/r19-carry-base-plan.md) — dev + C1, C2 unused
+
+Long spot + short perp, same qty. K0 always on: dev +3.8%/yr, DD 0.2%, 15/15 quarters ≥ 0; C1 +16.3%/yr, 7/7. K1 filter and
+K2 (3x perp leg) also pass (14/15, 7/7). All pass the base acceptance (≥80% quarters ≥ 0, DD ≤ 10%). Yield is cash-like in calm years.
