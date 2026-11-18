@@ -1,0 +1,27 @@
+# Order book collector (docs/orderbook-collection.md). Public Binance REST only: no keys, no env file.
+# Data goes to /var/lib/tradingasakan-orderbook (StateDirectory, owned by trading).
+#   sudo cp /opt/tradingasakan/deploy/systemd/tradingasakan-orderbook.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now tradingasakan-orderbook
+# Uses the system python3 (standard library only), so it does not share the workers' uv environment.
+[Unit]
+Description=Tradingasakan order book collector (BTCUSDT spot + perp)
+After=network-online.target time-sync.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+User=trading
+WorkingDirectory=/opt/tradingasakan
+StateDirectory=tradingasakan-orderbook
+ExecStart=/usr/bin/python3 scripts/orderbook_collect.py --out /var/lib/tradingasakan-orderbook --interval 10 --levels 20
+Restart=always
+RestartSec=30
+TimeoutStopSec=10
+KillSignal=SIGTERM
+# Keep it light next to the workers.
+Nice=10
+MemoryMax=200M
+CPUQuota=20%
+
+[Install]
+WantedBy=multi-user.target
