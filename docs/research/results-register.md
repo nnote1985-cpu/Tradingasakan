@@ -232,3 +232,9 @@ K2 (3x perp leg) also pass (14/15, 7/7). All pass the base acceptance (≥80% qu
 s = 1.0 / 0.5 / 0.25 of R10a on top of K0 carry. Dev: +41% / 25% / 14% a year, DD 25.5% / 12.8% / 5.9%, 8–9 of 15 quarters ≥ 0.
 C1: +181% / 87% / 46% a year. **Fails as declared**: Sharpe-above-base criterion is unreachable for any directional layer (design
 error), and dev has 6–7 losing quarters. s = 0.25 keeps every layer quarter above −5%.
+
+## R21 ETH-1 cross-asset check (2026-11-17, docs/research/r21-eth1-cross-asset-plan.md) — ETH-2 and 2026 unused
+
+BTC rules unchanged on ETH. 2020-04 → 2021 (per year / DD / Sharpe): R10a +220% / 55% / 1.54; 3a hedge +237% / 55% / 1.60; futures
+L/S +129% / 64% / 1.08; carry base +18% / 1% / 8.79 (7/7 quarters); B&H +525% / 57% / 1.89. 2018 → 2021 spot: R10a Sharpe 0.79 / DD 66%
+vs B&H 0.58 / 90%. Ranking matches BTC; ETH drawdowns much deeper.

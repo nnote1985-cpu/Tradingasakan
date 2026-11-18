@@ -29,6 +29,7 @@ from trading.strategies.trend_breakout_v1 import regularize_h1
 from trading.strategies.trend_regime_v2 import RegimeCosts, daily_bars
 
 EQUITY = 10_000.0
+SYMBOL = "BTCUSDT"           # R21 sets this for ETH; default unchanged
 SPOT_BASE = "https://data.binance.vision/data/spot"
 WINDOWS = {
     "dev": {"range": ("2022-05-01", "2026-01-01"), "data": (date(2022, 1, 1), date(2025, 12, 31)),
@@ -63,12 +64,12 @@ def _naive(ix: pd.DatetimeIndex) -> pd.DatetimeIndex:
 def market(win: dict) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, dict]:
     a, b = win["data"]
     perp_dir, spot_dir = Path(win["perp_dir"]), Path(win["spot_dir"])
-    man = download("BTCUSDT", a, b, perp_dir, intervals=("1h",))
+    man = download(SYMBOL, a, b, perp_dir, intervals=("1h",))
     spot_dir.mkdir(parents=True, exist_ok=True)
     (spot_dir / "raw").mkdir(exist_ok=True)
     frames, sfiles = [], []
     for y, m in _months(a, b):
-        url = f"{SPOT_BASE}/monthly/klines/BTCUSDT/1d/BTCUSDT-1d-{y}-{m:02d}.zip"
+        url = f"{SPOT_BASE}/monthly/klines/{SYMBOL}/1d/{SYMBOL}-1d-{y}-{m:02d}.zip"
         inner, info = _download_zip(url, spot_dir / "raw")
         sfiles.append(info)
         if inner is not None:
@@ -77,7 +78,7 @@ def market(win: dict) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, dict]:
     bad = [f for f in files if f["status"] != "VERIFIED"]
     if bad:
         raise RuntimeError(f"unverified files: {bad[:3]}")
-    h1_raw = load(perp_dir, "BTCUSDT", "1h")
+    h1_raw = load(perp_dir, SYMBOL, "1h")
     d = daily_bars(h1_raw)
     h1 = regularize_h1(h1_raw)
     g = h1.groupby(h1.index.floor("1D"))
@@ -87,7 +88,7 @@ def market(win: dict) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, dict]:
     spot = pd.concat(frames).sort_index()
     spot = spot[~spot.index.duplicated()]
     spot.index = _naive(spot.index.floor("1D"))
-    f = load_funding(perp_dir, "BTCUSDT")
+    f = load_funding(perp_dir, SYMBOL)
     f.index = _naive(f.index)
     fd = f.groupby(f.index.floor("1D")).sum()
     for t in ("1h", "funding"):
