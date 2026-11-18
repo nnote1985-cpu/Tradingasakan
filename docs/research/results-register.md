@@ -204,3 +204,9 @@ Eight pre-declared daily-decision runs. dev 2022-05 → 2025 / C1 2020-04 → 20
 B&H 0.46 / 60.2%, 1.54 / 53.1%. F1 gated long/short 1x 0.74 / 38.9%, 0.99 / 48.2% (2x DD 65% / 75%, 3x liquidated on C1);
 F4 TSMOM 1x 0.55 / 38.4%, 1.28 / 17.9%; **F2 carry passes** (+3.3%/yr dev, DD 0.4%); **F3 R10a + carry on idle cash passes**
 (+251.6% / 1.01 / 25.6%, +489.4% / 2.02 / 22.8%), a small gain over R10a. No directional perp strategy beats R10a.
+
+## R16 hourly-signal futures systems (2026-11-17, docs/research/r16-hourly-signal-systems-plan.md) — dev + C1, C2 unused
+
+A Trend Pullback, B Breakout (48h channel), C Adaptive (ADX regime: breakout / Bollinger MR); each overnight and intraday-only;
+perp 1x long+short, hourly signal check. **All six lose on both windows** (dev −15% to −94%, C1 −21% to −83%). Even with zero
+costs only A-O/B are positive on dev and all are negative on C1: no gross edge.

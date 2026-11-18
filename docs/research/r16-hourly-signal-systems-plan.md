@@ -1,0 +1,96 @@
+# R16: three futures systems checked every hour (pre-declared)
+
+Written 2026-11-17, **before any R16 backtest was run**. Note asked (2026-11-17) to keep working on
+futures rather than pause, and to race three systems: A Trend Pullback, B Breakout, C Adaptive
+(trend or mean reversion by regime). Signals are **checked** every hour; a trade happens only when a
+signal fires, so entries must be selective. Each system runs in two modes: may hold overnight, and
+intraday only (flat before the UTC day ends). Results are summarised per day.
+
+Honest prior, declared now: R1/R2 (1h breakouts on perps) and the R13 H1 tight-stop EAs lost, mostly
+to fees. R16 uses one simple parameter set per system, textbook values, nothing tuned afterwards.
+
+## Common rules
+
+- BTCUSDT USDⓈ-M perp 1h bars (regularized; a missing hour gives no signal and no fill). Signal at
+  each hour's close; fill at the next hour's open. Long and short, **1x**: notional = equity at entry.
+  One position at a time. A signal for the other side reverses at the same open.
+- Costs: taker 0.05% + 2 bps slippage per side; costs ×2 also reported.
+- Stop: fixed at entry ± 2 × ATR14 (H1, Wilder) of the signal bar, checked on each bar's high/low;
+  filled at the stop (or the open if it gapped through) less slippage.
+- Funding: Binance settles at 00:00, 08:00, 16:00 UTC. A position held at that timestamp (i.e. open
+  before the bar that starts then) pays `qty × open price × rate` (short receives), with the real rate
+  of that settlement.
+- **Mode O (overnight allowed):** exits only by the rules below.
+- **Mode I (intraday):** no entries from signals at the 22:00 or 23:00 bar close; any position is
+  closed at the close of the 23:00 UTC bar (23:59:59). It never holds at 00:00, but can still cross
+  the **08:00 and 16:00** settlements.
+- 10,000 USDT, compounding, quantities not rounded.
+
+## Systems (one parameter set each)
+
+Higher timeframe = H4 bars built from H1, used only after the H4 bar has closed.
+
+- **A Trend Pullback.** Trend up if H4 close > H4 EMA50, down if below. Long when trend up and
+  RSI14 (H1) < 30; short when trend down and RSI14 > 70. Exit long when RSI14 > 55, or the H4 trend
+  turns down, or after 48 hours (short: RSI14 < 45, trend turns up, 48 h). Plus the 2×ATR stop.
+- **B Breakout.** Long when the H1 close > the highest high of the previous 48 bars (2 days); short
+  when the close < the lowest low of the previous 48. Exit long when the close < the lowest low of
+  the previous 24 bars (short: > the highest high of the previous 24). Plus the stop.
+- **C Adaptive.** Regime from H4 ADX14: trend if ADX > 25, range if ADX < 20, otherwise keep the
+  previous regime (start: range). Trend regime: B's entries. Range regime: Bollinger(20, 2) on H1,
+  long when the close < lower band, short when the close > upper band. A position keeps the exit
+  rules of the mode that opened it (B's channel exit, or the close crossing the 20-bar middle band).
+  Plus the stop.
+
+Six runs: A-O, A-I, B-O, B-I, C-O, C-I.
+
+## Windows
+
+1. dev 2022-05-01 → 2026-01-01 (perp data from 2022-01 for warm-up). Run all six, commit.
+2. C1 2020-04-15 → 2022-01-01, once, all six (second screen; C1 was spent on R10a/R11).
+   **C2 (2026) is not downloaded or used.**
+
+## Benchmarks and pass (same as R15)
+
+B&H spot and R10a (from R15's runs on the same windows). Per window, base costs:
+A: Sharpe > R10a's and max DD ≤ R10a's + 5 points; B: net > 0 and (Sharpe > B&H's or max DD ≤ ½
+B&H's); C: B still holds with costs ×2; no ruin. "Winner" = all on both windows.
+
+## Reported per run
+
+Per day (UTC, equity at each day's end): mean and median daily return, std, % up days / down days /
+no-position days, average daily P&L in USDT, best and worst day. Also net, CAGR, Sharpe, max DD,
+trades total and per month, win rate per trade, average hold, fees, funding paid and the settlements
+crossed. Outputs `/mnt/project-files/r16-results/`.
+
+## Dev result (run once 2026-11-17; `/mnt/project-files/r16-results/dev/`)
+
+2022-05-01 → 2026-01-01. R10a +244.8% / 1.00 / 26.0%; B&H +132.6% / 0.46 / 60.2%. All six lose money:
+A-O −14.6% (146 trades), A-I −20.6%, B-O −40.9% (481), B-I −56.2% (700), C-O −93.5% (1,096),
+C-I −92.7% (1,199). C1 is run next for all six, unchanged.
+
+## C1 result (run once 2026-11-17; `/mnt/project-files/r16-results/c1/`)
+
+2020-04-15 → 2022-01-01. R10a +443.0% / 1.93 / 23.2%; B&H +572.1% / 1.54 / 53.1%. All six lose money:
+A-O −20.9% (54 trades), A-I −20.6%, B-O −59.0% (230), B-I −62.8% (352), C-O −83.0% (509), C-I −81.8% (571).
+
+## Per-day summary (base costs; mean daily return / % up days / % down days / % days with no position)
+
+| Run | dev | C1 |
+| --- | --- | --- |
+| A-O | −0.011% / 4 / 7 / 90 | −0.035% / 5 / 6 / 90 |
+| A-I | −0.016% / 3 / 6 / 91 | −0.035% / 3 / 4 / 92 |
+| B-O | −0.019% / 30 / 46 / 24 | −0.101% / 36 / 48 / 16 |
+| B-I | −0.050% / 18 / 31 / 52 | −0.137% / 23 / 30 / 46 |
+| C-O | −0.183% / 33 / 49 / 19 | −0.243% / 40 / 48 / 12 |
+| C-I | −0.182% / 23 / 37 / 40 | −0.248% / 28 / 38 / 34 |
+
+Trades per month: A ≈ 3, B 11–17, C ≈ 25–28. Intraday mode crossed only the 08:00/16:00 settlements.
+
+## Verdict
+
+**No R16 system passes; all six lose money on both windows.** Post-hoc diagnostic (not pre-declared;
+`gross_diagnostic.py`): with zero fees, slippage and funding, only A-O and B on dev are positive
+(+4%, +19 to +29% over 3.7 years, far below B&H), and every run is negative on C1 (−14% to −60%).
+So the hourly signals have no edge to lose to fees; costs only deepen the loss. Intraday-only
+was worse than overnight for every system on dev. C2 unused.
