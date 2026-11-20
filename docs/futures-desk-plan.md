@@ -104,6 +104,10 @@ move stop. A list of the last 20 requests shows what the worker did with each.
   * CLOSE: reduce-only MARKET for the whole position, then cancel the symbol's regular and algo orders.
     Allowed even when a cap is reached.
   * MOVE_STOP: new stop first, then cancel the old ones. Only while risk at entry stays within 1.1%.
+    Binance allows one `closePosition` stop per direction (-4130), so the new stop is a reduce-only
+    STOP_MARKET for the position's quantity. If that is refused: cancel the old stop and place the new
+    one; if that fails put the old stop back; if even that fails close the position at market.
+  * A TP that hits -4130 next to the stop is sent the same reduce-only way.
 * The REST client refuses every order call unless built with `orders_enabled=True`.
 
 Turn on (after stage 1 runs read-only for a while): give the Demo key trade permission, add

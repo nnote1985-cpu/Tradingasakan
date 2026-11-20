@@ -19,7 +19,7 @@ from decimal import Decimal
 from typing import Any, Protocol
 
 from trading.futures.orders import Ticket, check_move_stop, plan_open, text
-from trading.futures.rest import FuturesDemoRest
+from trading.futures.rest import FuturesDemoRest, FuturesError
 from trading.futures.risk import caps
 from trading.futures.sync import RiskState, Snapshot
 from trading.runtime.alerts import AlertQueue, Severity
@@ -30,6 +30,9 @@ MAX_AGE = timedelta(seconds=60)   # a ticket older than this was priced on a mar
 class RequestStore(Protocol):
     def open_requests(self) -> list[dict[str, Any]]: ...
     def mark_request(self, rid: int, status: str, outcome: str | None = None, detail: dict[str, Any] | None = None) -> bool: ...
+
+
+CLOSE_POSITION_EXISTS = -4130     # a closePosition stop/TP already exists in that direction
 
 
 def _opposite(side: str) -> str:
@@ -104,11 +107,17 @@ class Executor:
         note = None
         if plan.take_profit is not None:
             try:
-                detail["take_profit"] = self.rest.conditional_close(sym, _opposite(side), "TAKE_PROFIT_MARKET",
-                                                                    text(plan.take_profit), f"fd{rid}t")
+                try:
+                    detail["take_profit"] = self.rest.conditional_close(sym, _opposite(side), "TAKE_PROFIT_MARKET",
+                                                                        text(plan.take_profit), f"fd{rid}t")
+                except FuturesError as e:
+                    if e.code != CLOSE_POSITION_EXISTS:
+                        raise
+                    detail["take_profit"] = self.rest.conditional_reduce(sym, _opposite(side), "TAKE_PROFIT_MARKET",
+                                                                         text(plan.take_profit), text(filled), f"fd{rid}t")
             except Exception as e:  # noqa: BLE001 - the stop is in place; a missing TP is only noted
                 note = f"ตั้ง Take-profit ไม่สำเร็จ ({type(e).__name__}) มี Stop-loss แล้ว"
-        avg = entry.get("avgPrice")
+        avg = self._avg_price(sym, entry)
         self.store.mark_request(rid, "DONE", note or f"เปิด {side} {text(filled)} {sym} ที่ {avg} SL {text(plan.stop_price)}", detail)
         self.alerts.push(Severity.INFO, f"fut-req-{rid}", f"เปิด {side} {text(filled)} {sym} ที่ {avg} SL {text(plan.stop_price)}"
                          f"{' TP ' + text(plan.take_profit) if plan.take_profit else ''} เสี่ยง {text(plan.risk_usdt.quantize(Decimal('0.01')))} USDT")
@@ -141,8 +150,52 @@ class Executor:
             return
         if not self.store.mark_request(rid, "SENT"):
             return
-        old = [o["id"] for o in snap.open_orders if o["symbol"] == sym and o["kind"] == "SL" and o["source"] == "algo"]
-        new = self.rest.conditional_close(sym, _opposite(pos["side"]), "STOP_MARKET", text(stop), f"fd{rid}s")
-        for algo_id in old:
-            self.rest.cancel_algo(algo_id)
-        self.store.mark_request(rid, "DONE", f"ย้าย Stop-loss {sym} ไปที่ {text(stop)}", {"stop": new, "cancelled": old})
+        old = [o for o in snap.open_orders if o["symbol"] == sym and o["kind"] == "SL" and o["source"] == "algo"]
+        side = _opposite(pos["side"])
+        try:
+            # A fixed-quantity reduce-only stop can sit next to the old closePosition stop (two closePosition stops
+            # in one direction are refused with -4130), so the position is never without a stop.
+            new = self.rest.conditional_reduce(sym, side, "STOP_MARKET", text(stop), pos["qty"], f"fd{rid}s")
+        except Exception as e:  # noqa: BLE001 - fall back to swapping the stop, guarded below
+            self.log(f"request {rid}: new stop next to the old one failed ({e}); swapping")
+            self._swap_stop(rid, sym, side, pos, stop, old)
+            return
+        for o in old:
+            self.rest.cancel_algo(o["id"])
+        self.store.mark_request(rid, "DONE", f"ย้าย Stop-loss {sym} ไปที่ {text(stop)}",
+                                {"stop": new, "cancelled": [o["id"] for o in old]})
+
+    def _swap_stop(self, rid: int, sym: str, side: str, pos: dict[str, Any], stop: Decimal, old: list[dict[str, Any]]) -> None:
+        """Cancel the old stop, then place the new one. If that fails, put the old stop back; if even that fails,
+        close the position at market, because a position must never be left without a stop."""
+        for o in old:
+            self.rest.cancel_algo(o["id"])
+        try:
+            new = self.rest.conditional_close(sym, side, "STOP_MARKET", text(stop), f"fd{rid}w")
+            self.store.mark_request(rid, "DONE", f"ย้าย Stop-loss {sym} ไปที่ {text(stop)}",
+                                    {"stop": new, "cancelled": [o["id"] for o in old], "swapped": True})
+            return
+        except Exception as e:  # noqa: BLE001
+            err = f"{type(e).__name__}: {e}"
+        try:
+            if not old:
+                raise RuntimeError("no old stop to restore")
+            back = self.rest.conditional_close(sym, side, "STOP_MARKET", str(old[0]["trigger_price"]), f"fd{rid}r")
+            self.store.mark_request(rid, "FAILED", f"ย้าย Stop-loss ไม่สำเร็จ คง Stop-loss เดิมไว้ ({err})"[:400], {"restored": back})
+            self.alerts.push(Severity.WARNING, f"fut-req-{rid}", f"ย้าย SL ของ {sym} ไม่สำเร็จ คง SL เดิม {old[0]['trigger_price']}")
+        except Exception as e2:  # noqa: BLE001 - no stop at all: close the position now
+            out = self.rest.market_order(sym, side, pos["qty"], f"fd{rid}x", reduce_only=True)
+            self.rest.cancel_all(sym)
+            self.store.mark_request(rid, "FAILED", f"ย้าย Stop-loss ไม่สำเร็จและตั้งคืนไม่ได้ จึงปิด position ทันที ({err}; {e2})"[:400],
+                                    {"emergency_close": out})
+            self.alerts.push(Severity.CRITICAL, f"fut-req-{rid}", f"ย้าย SL ของ {sym} ไม่สำเร็จ ปิด position ทันทีแล้ว ให้เช็กหน้า Futures")
+
+    def _avg_price(self, sym: str, entry: dict[str, Any]) -> str:
+        """The fill price for messages. Demo's MARKET reply carries no avgPrice, so ask for the order once."""
+        avg = entry.get("avgPrice")
+        if not avg or Decimal(str(avg)) <= 0:
+            try:
+                avg = self.rest.order(sym, entry.get("orderId")).get("avgPrice")
+            except Exception:  # noqa: BLE001 - only the message loses the price
+                avg = None
+        return text(Decimal(str(avg))) if avg and Decimal(str(avg)) > 0 else "ราคาตลาด"

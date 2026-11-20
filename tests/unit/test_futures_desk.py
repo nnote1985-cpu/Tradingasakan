@@ -393,3 +393,29 @@ def test_desk_endpoint_needs_sign_in_and_returns_view():
     assert c.get("/api/v1/futures/desk").status_code == 401
     r = c.get("/api/v1/futures/desk?account=FUT1", headers={"Authorization": f"Bearer {UUID(int=1)}"})
     assert r.status_code == 200 and r.json()["account"] == "FUT1" and r.json()["trades"][0]["open"] is True
+
+
+def test_worker_reads_leverage_again_after_handling_a_request():
+    class OneShot:
+        def __init__(self):
+            self.n = 1
+
+        def run(self, snap, risk, now):
+            n, self.n = self.n, 0
+            return n
+
+    class Store(FakeStore):
+        def open_requests(self):
+            return []
+
+    rest = FakeRest()
+    clock = [0.0]
+    w = FuturesWorker(rest, Store(), Alerts(), Config(owner="vm:1"), executor=OneShot(), now=lambda: T0,
+                      monotonic=lambda: clock[0], log=lambda m: None)
+    w.start()
+    w.tick()
+    clock[0] = 11
+    w.tick()      # a request was handled on the first sync, so symbolConfig is read again at once
+    clock[0] = 22
+    w.tick()      # nothing handled since: the cached config is reused
+    assert rest.calls.count("/fapi/v1/symbolConfig") == 2
