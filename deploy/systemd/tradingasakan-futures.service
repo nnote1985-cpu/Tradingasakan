@@ -1,0 +1,27 @@
+# Futures desk worker, stage 1: read-only sync of the Binance USDⓈ-M Futures Demo account
+# (docs/futures-desk-plan.md §5). Separate from the spot workers: starting or stopping it never touches them.
+#   sudo systemctl enable --now tradingasakan-futures
+# Keys go in /etc/tradingasakan/futures.env (mode 600, owner trading), never in the repo:
+#   DATABASE_URL=...
+#   FUTURES_DEMO_API_KEY=...                 (Demo Trading key from demo.binance.com, not testnet.binance.vision)
+#   FUTURES_DEMO_API_SECRET=...
+#   FUTURES_ACCOUNT=FUT1
+#   TELEGRAM_BOT_TOKEN=...  TELEGRAM_CHAT_ID=...
+[Unit]
+Description=Tradingasakan Futures Demo desk worker
+After=network-online.target time-sync.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+User=trading
+WorkingDirectory=/opt/tradingasakan
+EnvironmentFile=/etc/tradingasakan/futures.env
+ExecStart=/usr/local/bin/uv run python scripts/futures_worker.py
+Restart=always
+RestartSec=30
+TimeoutStopSec=20
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target

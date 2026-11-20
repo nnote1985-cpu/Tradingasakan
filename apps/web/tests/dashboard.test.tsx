@@ -191,10 +191,10 @@ test("the AI tab shows locked settings and the helped-or-missed scorecard, count
   expect(rows[3].textContent).toContain("รอผล");
 });
 
-test("five main sections separate operations, research and settings and preserve subview hashes", async () => {
+test("six main sections separate operations, research and settings and preserve subview hashes", async () => {
   window.location.hash = "";
   const { container } = render(<QueryClientProvider client={new QueryClient()}><Dashboard /></QueryClientProvider>);
-  expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["ภาพรวม", "บอตและพอร์ต", "งานวิจัย", "ระบบ", "ตั้งค่า"]);
+  expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["ภาพรวม", "บอตและพอร์ต", "Futures", "งานวิจัย", "ระบบ", "ตั้งค่า"]);
   await screen.findByText("ยังไม่มีบอตรายงานสถานะ");
   expect(container.querySelectorAll("[data-testid=arm-tile]")).toHaveLength(0);
   fireEvent.click(screen.getByRole("tab", { name: "งานวิจัย" }));

@@ -1,7 +1,9 @@
 """Endpoint guards (testnet-development-plan.md §3.2).
 
 Hosts are constants: callers pick a ``Venue``, never a base URL. Signed calls
-may only go to the Spot Testnet host, over https, with no port or user info.
+may only go to the Spot Testnet host or the USDⓈ-M Futures Demo host
+(futures-desk-plan.md §3), over https, with no port or user info. The Mainnet
+futures host ``fapi.binance.com`` stays public-read-only.
 Public reads go through a separate check that refuses API keys and
 signatures, so the Mainnet signal client has no signing path at all.
 Redirects are refused rather than followed, so a 30x cannot move a signed
@@ -20,12 +22,15 @@ from typing import Any, NoReturn
 
 class Venue(StrEnum):
     SPOT_TESTNET = "SPOT_TESTNET"
+    FUTURES_DEMO = "FUTURES_DEMO"
 
 
-REST_BASE: dict[Venue, str] = {Venue.SPOT_TESTNET: "https://testnet.binance.vision"}
-SIGNED_HOSTS = frozenset({"testnet.binance.vision"})
+REST_BASE: dict[Venue, str] = {Venue.SPOT_TESTNET: "https://testnet.binance.vision",
+                               Venue.FUTURES_DEMO: "https://demo-fapi.binance.com"}
+REST_PREFIX: dict[Venue, str] = {Venue.SPOT_TESTNET: "/api/", Venue.FUTURES_DEMO: "/fapi/"}
+SIGNED_HOSTS = frozenset({"testnet.binance.vision", "demo-fapi.binance.com"})
 # Read-only, unauthenticated hosts for the signal plane (§3.3) and the Testnet's own public routes.
-PUBLIC_HOSTS = frozenset({"testnet.binance.vision", "api.binance.com", "data-api.binance.vision", "fapi.binance.com",
+PUBLIC_HOSTS = frozenset({"testnet.binance.vision", "demo-fapi.binance.com", "api.binance.com", "data-api.binance.vision", "fapi.binance.com",
                           "data.binance.vision"})
 _SIGNING_PARAMS = frozenset({"signature", "timestamp", "recvwindow"})
 # Market data streams (unauthenticated) and the Testnet WebSocket API (logon with a Testnet key only).
@@ -56,16 +61,16 @@ def _parse(url: str, scheme: str = "https") -> urllib.parse.SplitResult:
 
 
 def rest_url(venue: Venue, path: str, query: str = "") -> str:
-    if not path.startswith("/api/"):
-        raise EndpointRefused(f"{path} is not a REST API path")
+    if not path.startswith(REST_PREFIX[venue]):
+        raise EndpointRefused(f"{path} is not a REST API path for {venue.value}")
     return REST_BASE[venue] + path + ("?" + query if query else "")
 
 
 def check_signed(url: str) -> None:
-    """Raise unless ``url`` is a Spot Testnet URL. Mainnet hosts are refused whatever the mode or keys."""
+    """Raise unless ``url`` is a Spot Testnet or Futures Demo URL. Mainnet hosts are refused whatever the mode or keys."""
     host = _parse(url).hostname or ""
     if host not in SIGNED_HOSTS:
-        raise EndpointRefused(f"signed or mutating calls may only go to the Spot Testnet, not {host}")
+        raise EndpointRefused(f"signed or mutating calls may only go to the Spot Testnet or Futures Demo, not {host}")
 
 
 def check_public(url: str, method: str, headers: dict[str, str] | None = None) -> None:

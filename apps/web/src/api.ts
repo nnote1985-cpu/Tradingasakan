@@ -354,3 +354,41 @@ export type WorkerControl = {
 };
 
 export type WorkersResponse = { available: boolean; workers: WorkerStatus[] };
+
+// Futures desk (GET /api/v1/futures/desk; docs/futures-desk-plan.md §6). Amounts are decimal strings.
+export type FuturesPosition = {
+  symbol: string; side: "LONG" | "SHORT"; qty: string; entry_price: string; break_even_price: string; mark_price: string;
+  liquidation_price: string | null; unrealized_pnl: string; notional: string; margin: string; margin_type: "ISOLATED" | "CROSS";
+  leverage: number | null; updated_at: string | null;
+  stop_price: string | null; take_profit: string | null; has_stop: boolean;
+  loss_at_stop?: string; loss_at_stop_pct?: string | null; initial_risk?: string; initial_risk_pct?: string | null; over_rule?: boolean;
+  liq_distance_pct?: string | null; stop_before_liq?: boolean;
+};
+export type FuturesOrder = {
+  source: "order" | "algo"; id: string; symbol: string; side: "BUY" | "SELL"; type: string;
+  kind: "SL" | "TP" | "ENTRY" | "CLOSE" | "TRAILING"; price: string; trigger_price: string | null; qty: string;
+  close_position: boolean; reduce_only: boolean; created_at: string | null;
+};
+export type FuturesTrade = {
+  symbol: string; side: "LONG" | "SHORT"; opened_at: string; closed_at: string | null; open: boolean; qty: string;
+  entry_price: string | null; exit_price: string | null; exit_qty: string; realized_pnl: string; fees: string; funding: string;
+  net_pnl: string; return_pct: string | null; fills: number; order_ids: number[];
+};
+export type FuturesCap = { loss: string; cap: string; used: string; level: "OK" | "NEAR" | "BLOCKED"; room: string };
+export type FuturesDesk =
+  | { available: false; reason: "no_tables" | "no_worker"; accounts: string[] }
+  | {
+      available: true; accounts: string[]; account: string; venue: string; synced_at: string; stale: boolean;
+      worker: { orders_enabled: boolean; last_error: string | null; started_at: string | null; host: string | null };
+      equity: string; wallet_balance: string; available_balance: string; unrealized_pnl: string;
+      rules: { risk_per_trade: string; day_loss_cap: string; total_loss_cap: string; symbols: string[] };
+      caps: null | { day: FuturesCap & { day_open: string; day: string }; total: FuturesCap & { hwm: string; hwm_at: string };
+        blocked: boolean; reasons: string[] };
+      start_equity: string; started_at: string | null;
+      positions: FuturesPosition[]; orders: FuturesOrder[]; unprotected: string[];
+      markets: Record<string, { mark: string; funding_rate: string; next_funding: string | null; tick_size: string; step_size: string;
+        min_qty: string; min_notional: string }>;
+      trades: FuturesTrade[];
+      summary: { count: number; closed: number; open: number; wins: number; losses: number; win_rate: string | null;
+        net_pnl: string; fees: string; funding: string; today_net: string; avg_win: string | null; avg_loss: string | null };
+    };
