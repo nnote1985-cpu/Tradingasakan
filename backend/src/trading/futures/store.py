@@ -75,3 +75,25 @@ class FuturesStore:
                     (a, i["tran_id"], i["kind"], i["symbol"], i["amount"], i["asset"], i["info"], i["trade_id"], i["at"]))
                 ni += cur.rowcount
         return nf, ni
+
+    # --- order requests (stage 2) ---------------------------------------------
+
+    def open_requests(self) -> list[dict[str, Any]]:
+        """PENDING and SENT rows, oldest first."""
+        cur = self.conn.execute(
+            "select id, kind, symbol, side, stop_price, take_profit, leverage, qty, ref_price, actor, requested_at, status "
+            "from trading.fut_order_requests where account = %s and status in ('PENDING', 'SENT') order by id", (self.account,))
+        keys = ("id", "kind", "symbol", "side", "stop_price", "take_profit", "leverage", "qty", "ref_price", "actor",
+                "requested_at", "status")
+        return [dict(zip(keys, r, strict=True)) for r in cur.fetchall()]
+
+    def mark_request(self, rid: int, status: str, outcome: str | None = None, detail: dict[str, Any] | None = None) -> bool:
+        """Move a request forward. SENT keeps it open; any other status closes it. False when it had already moved."""
+        final = status not in ("PENDING", "SENT")
+        cur = self.conn.execute(
+            "update trading.fut_order_requests set status = %s, outcome = %s, detail = detail || %s, "
+            "handled_at = case when %s then now() else null end "
+            "where id = %s and account = %s and status = any(%s)",
+            (status, outcome, Jsonb(detail or {}), final, rid, self.account,
+             ["PENDING"] if status == "SENT" else ["PENDING", "SENT"]))
+        return cur.rowcount == 1

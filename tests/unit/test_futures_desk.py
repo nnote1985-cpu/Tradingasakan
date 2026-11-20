@@ -376,6 +376,9 @@ class Store:
     async def history(self, account, since):
         return [F(1, "BUY", "0.05", "79000")], []
 
+    async def requests(self, account):
+        return []
+
 
 @pytest.mark.parametrize(("rows", "reason"), [(None, "no_tables"), ([], "no_worker")])
 def test_desk_endpoint_without_data(rows, reason):

@@ -391,4 +391,14 @@ export type FuturesDesk =
       trades: FuturesTrade[];
       summary: { count: number; closed: number; open: number; wins: number; losses: number; win_rate: string | null;
         net_pnl: string; fees: string; funding: string; today_net: string; avg_win: string | null; avg_loss: string | null };
+      requests: FuturesRequest[]; can_trade: boolean; max_leverage: number;
     };
+export type FuturesRequest = {
+  id: number; kind: "OPEN" | "CLOSE" | "MOVE_STOP"; symbol: string; side: "LONG" | "SHORT" | null; stop_price: string | null;
+  take_profit: string | null; leverage: number | null; qty: string | null; risk_usdt: string | null; actor: string;
+  requested_at: string; status: "PENDING" | "SENT" | "DONE" | "REFUSED" | "FAILED" | "EXPIRED"; handled_at: string | null; outcome: string | null;
+};
+export type FuturesPlan = {
+  ok: boolean; refusals: string[]; notes: string[]; qty: string; ref_price: string; stop_price: string; take_profit: string | null;
+  leverage: number; risk_usdt: string; risk_pct: string; risk_budget: string; notional: string; margin: string; liq_estimate: string | null;
+};

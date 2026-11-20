@@ -1,8 +1,9 @@
 """Binance USDⓈ-M Futures Demo REST client (futures-desk-plan.md §3).
 
 Every URL is built from :data:`Venue.FUTURES_DEMO` and passes the endpoint guards,
-so a signed call cannot reach the Mainnet ``fapi.binance.com``. Stage 1 only reads:
-there is no method here that places, changes or cancels an order.
+so a signed call cannot reach the Mainnet ``fapi.binance.com``. Order methods (stage 2)
+refuse to send unless the client was built with ``orders_enabled=True``, which the worker
+does only with FUTURES_ORDERS_ENABLED=true on the Host.
 
 Keys come from the Demo Trading site (demo.binance.com), not testnet.binance.vision,
 and live only in the Host environment:
@@ -60,12 +61,17 @@ def load_demo_credentials(env: Mapping[str, str] | None = None) -> TestnetCreden
     return TestnetCredentials(api_key=key, secret=secret, pem=pem)
 
 
+class OrdersDisabled(RuntimeError):
+    pass
+
+
 class FuturesDemoRest:
     """One request per call, never retried here. After 429/418 it refuses calls until Retry-After has passed."""
 
     def __init__(self, creds: TestnetCredentials | None, send: Send = endpoints.request_json,
-                 wall_ms: Callable[[], float] | None = None) -> None:
+                 wall_ms: Callable[[], float] | None = None, *, orders_enabled: bool = False) -> None:
         self.creds, self._send = creds, send
+        self.orders_enabled = orders_enabled
         self._wall_ms = wall_ms or (lambda: time.time() * 1000)
         self.offset_ms = 0.0
         self.blocked_until_ms = 0.0
@@ -96,6 +102,44 @@ class FuturesDemoRest:
 
     def get(self, path: str, params: dict[str, Any] | None = None, *, signed: bool = True) -> Any:
         return self._request("GET", path, params or {}, signed=signed)
+
+    def _write(self, method: str, path: str, params: dict[str, Any]) -> Any:
+        if not self.orders_enabled:
+            raise OrdersDisabled(f"{method} {path} refused: orders are not enabled on this worker")
+        return self._request(method, path, {k: v for k, v in params.items() if v is not None}, signed=True)
+
+    # --- orders (stage 2) -----------------------------------------------------
+
+    def set_margin_isolated(self, symbol: str) -> None:
+        try:
+            self._write("POST", "/fapi/v1/marginType", {"symbol": symbol, "marginType": "ISOLATED"})
+        except FuturesError as e:
+            if e.code != -4046:          # "No need to change margin type."
+                raise
+
+    def set_leverage(self, symbol: str, leverage: int) -> Any:
+        return self._write("POST", "/fapi/v1/leverage", {"symbol": symbol, "leverage": leverage})
+
+    def market_order(self, symbol: str, side: str, qty: str, client_id: str, *, reduce_only: bool = False) -> Any:
+        return self._write("POST", "/fapi/v1/order", {"symbol": symbol, "side": side, "type": "MARKET", "quantity": qty,
+                                                      "reduceOnly": "true" if reduce_only else None,
+                                                      "newClientOrderId": client_id, "newOrderRespType": "RESULT"})
+
+    def conditional_close(self, symbol: str, side: str, kind: str, trigger: str, client_id: str) -> Any:
+        """A STOP_MARKET or TAKE_PROFIT_MARKET that closes the whole position, triggered on the mark price."""
+        if kind not in ("STOP_MARKET", "TAKE_PROFIT_MARKET"):
+            raise ValueError(kind)
+        return self._write("POST", "/fapi/v1/algoOrder", {
+            "algoType": "CONDITIONAL", "symbol": symbol, "side": side, "type": kind, "triggerPrice": trigger,
+            "closePosition": "true", "workingType": "MARK_PRICE", "priceProtect": "true", "clientAlgoId": client_id})
+
+    def cancel_algo(self, algo_id: str) -> Any:
+        return self._write("DELETE", "/fapi/v1/algoOrder", {"algoId": algo_id})
+
+    def cancel_all(self, symbol: str) -> None:
+        """Cancel every open regular and algo order on ``symbol``."""
+        self._write("DELETE", "/fapi/v1/allOpenOrders", {"symbol": symbol})
+        self._write("DELETE", "/fapi/v1/algoOpenOrders", {"symbol": symbol})
 
     # --- reads used by the sync (stage 1) ------------------------------------
 

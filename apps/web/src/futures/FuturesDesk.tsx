@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { type ApiError, apiGet, type FuturesCap, type FuturesDesk as Desk, type FuturesOrder, type FuturesPosition, type FuturesTrade } from "../api";
 import { money, pct } from "../format";
+import { OrderTicket, PositionActions, RequestList } from "./OrderTicket";
 
 type Ready = Extract<Desk, { available: true }>;
 
@@ -57,7 +58,7 @@ function CapBar({ title, c, detail }: { title: string; c: FuturesCap; detail: st
   );
 }
 
-function Position({ p }: { p: FuturesPosition }) {
+function Position({ p, account, canTrade }: { p: FuturesPosition; account: string; canTrade: boolean }) {
   const long = p.side === "LONG";
   return (
     <div data-testid="position" className={`rounded-lg border p-3 ${p.has_stop ? "border-[var(--border)]" : "border-[var(--loss)]"}`}>
@@ -80,6 +81,7 @@ function Position({ p }: { p: FuturesPosition }) {
       {!p.has_stop && <p role="alert" className="mt-2 text-sm text-[var(--loss)]">ไม่มี Stop-loss บน exchange ผิดกฎ ให้ตั้ง SL หรือปิด position นี้</p>}
       {p.over_rule && <p className="mt-2 text-sm text-[var(--loss)]">ความเสี่ยงตอนเข้าเกิน 1% ของเงินในบัญชี</p>}
       {p.stop_before_liq === false && <p role="alert" className="mt-2 text-sm text-[var(--loss)]">ราคา Liquidation มาก่อน Stop-loss ให้ลด leverage หรือขยับ SL</p>}
+      <PositionActions account={account} p={p} canTrade={canTrade} />
     </div>
   );
 }
@@ -141,7 +143,7 @@ function DeskView({ d }: { d: Ready }) {
         <span className="rounded bg-[var(--warn-bg)] px-1.5 text-xs text-[var(--warn-fg)]">Binance Futures Demo · เงินทดลอง</span>
         <span>บัญชี {d.account}</span>
         <span className={d.stale ? "live-stale" : ""}>อัปเดต {bkk(d.synced_at)}{d.stale ? " · ข้อมูลเก่า worker อาจหยุด" : ""}</span>
-        <span>{d.worker.orders_enabled ? "ส่งคำสั่งได้" : "อ่านอย่างเดียว (ยังส่งคำสั่งจากหน้านี้ไม่ได้)"}</span>
+        <span>{d.worker.orders_enabled ? "worker รับคำสั่งจากหน้านี้" : "อ่านอย่างเดียว (worker ยังไม่เปิดรับคำสั่ง)"}</span>
       </div>
       {d.worker.last_error && <p role="alert" className="notice">อ่านบัญชีรอบล่าสุดไม่สำเร็จ: {d.worker.last_error}</p>}
       {d.unprotected.length > 0 && <p role="alert" className="notice">Position ที่ไม่มี Stop-loss: {d.unprotected.join(", ")}</p>}
@@ -165,12 +167,16 @@ function DeskView({ d }: { d: Ready }) {
 
       <section className="panel space-y-3">
         <h2 className="text-lg font-semibold">Position ที่เปิดอยู่ ({d.positions.length})</h2>
-        {d.positions.length ? d.positions.map((p) => <Position key={p.symbol} p={p} />) : <p className="text-sm text-[var(--text-muted)]">ไม่มี position เปิดอยู่</p>}
+        {d.positions.length ? d.positions.map((p) => <Position key={p.symbol} p={p} account={d.account} canTrade={d.can_trade} />) : <p className="text-sm text-[var(--text-muted)]">ไม่มี position เปิดอยู่</p>}
         <details>
           <summary className="cursor-pointer text-sm font-medium">คำสั่งค้าง ({d.orders.length})</summary>
           <div className="mt-2"><Orders orders={d.orders} /></div>
         </details>
       </section>
+
+      <OrderTicket account={d.account} symbols={d.rules.symbols} marks={Object.fromEntries(Object.entries(d.markets).map(([k, v]) => [k, v.mark]))}
+        canTrade={d.can_trade} maxLeverage={d.max_leverage} />
+      <RequestList requests={d.requests} when={bkk} />
 
       <section className="panel space-y-3">
         <h2 className="text-lg font-semibold">บันทึกรายไม้</h2>

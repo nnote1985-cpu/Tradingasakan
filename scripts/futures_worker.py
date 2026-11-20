@@ -1,5 +1,5 @@
-"""Run the futures desk worker, stage 1: read-only sync of the Binance Futures Demo account
-(docs/futures-desk-plan.md §5). It sends no orders.
+"""Run the futures desk worker: sync of the Binance Futures Demo account (docs/futures-desk-plan.md §5)
+and, with FUTURES_ORDERS_ENABLED=true, the manual order tickets queued from the web page (§7).
 
     uv run python scripts/futures_worker.py            # run until Ctrl+C / SIGTERM
     uv run python scripts/futures_worker.py --once     # start, one sync, stop (a setup check)
@@ -9,6 +9,8 @@ Environment (Host only; never in the repo or in chat):
     FUTURES_DEMO_API_KEY + FUTURES_DEMO_API_SECRET   a Demo Trading key from demo.binance.com (or
                          FUTURES_DEMO_PRIVATE_KEY_PATH for an Ed25519 key). Read permission is enough for stage 1.
     FUTURES_ACCOUNT                                  name shown on the page, default FUT1
+    FUTURES_ORDERS_ENABLED=true                      send queued tickets (default off: read-only). The key then
+                                                     needs trade permission on demo.binance.com.
     TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID             alerts (optional)
 Mainnet key variables (BINANCE_API_KEY, ...) must not be set: the worker refuses to start if they are.
 """
@@ -25,6 +27,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from trading.config import load_settings
+from trading.futures.executor import Executor
 from trading.futures.rest import FuturesDemoRest, load_demo_credentials
 from trading.futures.store import FuturesStore
 from trading.futures.worker import Config, FuturesWorker, LeaseLost
@@ -65,13 +68,16 @@ def main(argv: list[str] | None = None) -> int:
     token, chat = env.get("TELEGRAM_BOT_TOKEN", "").strip(), env.get("TELEGRAM_CHAT_ID", "").strip()
     alerts = AlertQueue(ROOT / "var" / f"futures-{account}" / "alerts.jsonl", TelegramSink(token, chat) if token and chat else None,
                         f"{host} (Futures {account})", lambda: datetime.now(UTC), log=_log)
+    orders = env.get("FUTURES_ORDERS_ENABLED", "false").strip().lower() == "true"
     conn = psycopg.connect(settings.database_url, autocommit=True, connect_timeout=10)
-    worker = FuturesWorker(FuturesDemoRest(creds), FuturesStore(conn, account), alerts,
-                           Config(owner=f"{host}:{os.getpid()}", host=host), log=_log)
+    rest = FuturesDemoRest(creds, orders_enabled=orders)
+    store = FuturesStore(conn, account)
+    worker = FuturesWorker(rest, store, alerts, Config(owner=f"{host}:{os.getpid()}", host=host),
+                           executor=Executor(rest, store, alerts, log=_log) if orders else None, log=_log)
     stopping: list[str] = []
     signal.signal(signal.SIGINT, lambda s, _f: stopping.append(signal.Signals(s).name))
     signal.signal(signal.SIGTERM, lambda s, _f: stopping.append(signal.Signals(s).name))
-    _log(f"futures worker {account}: read-only sync of the Futures Demo account, key {creds!r}")
+    _log(f"futures worker {account}: Futures Demo, key {creds!r}, orders {'ON' if orders else 'off (read-only)'}")
     try:
         if args.once:
             worker.start()
