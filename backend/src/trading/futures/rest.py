@@ -133,6 +133,19 @@ class FuturesDemoRest:
             "algoType": "CONDITIONAL", "symbol": symbol, "side": side, "type": kind, "triggerPrice": trigger,
             "closePosition": "true", "workingType": "MARK_PRICE", "priceProtect": "true", "clientAlgoId": client_id})
 
+    def conditional_reduce(self, symbol: str, side: str, kind: str, trigger: str, qty: str, client_id: str) -> Any:
+        """The same conditional order for a fixed reduce-only quantity. Binance allows only one closePosition stop
+        (or TP) per direction (-4130), so a replacement stop placed before the old one is cancelled uses this form."""
+        if kind not in ("STOP_MARKET", "TAKE_PROFIT_MARKET"):
+            raise ValueError(kind)
+        return self._write("POST", "/fapi/v1/algoOrder", {
+            "algoType": "CONDITIONAL", "symbol": symbol, "side": side, "type": kind, "triggerPrice": trigger,
+            "quantity": qty, "reduceOnly": "true", "workingType": "MARK_PRICE", "priceProtect": "true",
+            "clientAlgoId": client_id})
+
+    def order(self, symbol: str, order_id: Any) -> Any:
+        return self.get("/fapi/v1/order", {"symbol": symbol, "orderId": order_id})
+
     def cancel_algo(self, algo_id: str) -> Any:
         return self._write("DELETE", "/fapi/v1/algoOrder", {"algoId": algo_id})
 

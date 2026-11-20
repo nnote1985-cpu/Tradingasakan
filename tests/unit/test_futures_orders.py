@@ -134,8 +134,11 @@ def test_stop_order_goes_to_algo_endpoint_with_close_position_on_mark_price():
 # --- executor ---------------------------------------------------------------
 
 class Rest:
-    def __init__(self, fail_stop=False, fill="0.125"):
+    """Like Binance: only one closePosition stop/TP per direction (-4130) while ``close_exists`` is set."""
+
+    def __init__(self, fail_stop=False, fill="0.125", close_exists=False, fail_reduce=False, avg="80010"):
         self.calls, self.fail_stop, self.fill = [], fail_stop, fill
+        self.close_exists, self.fail_reduce, self.avg = close_exists, fail_reduce, avg
 
     def set_margin_isolated(self, symbol):
         self.calls.append(("margin", symbol))
@@ -145,16 +148,33 @@ class Rest:
 
     def market_order(self, symbol, side, qty, cid, reduce_only=False):
         self.calls.append(("market", symbol, side, qty, cid, reduce_only))
-        return {"orderId": 1, "status": "FILLED", "executedQty": self.fill if not reduce_only else qty, "avgPrice": "80010"}
+        out = {"orderId": 1, "status": "FILLED", "executedQty": self.fill if not reduce_only else qty}
+        return out | ({"avgPrice": self.avg} if self.avg else {})
+
+    def order(self, symbol, order_id):
+        self.calls.append(("get_order", symbol, order_id))
+        return {"avgPrice": "80012.5"}
 
     def conditional_close(self, symbol, side, kind, trigger, cid):
         self.calls.append(("cond", symbol, side, kind, trigger, cid))
         if self.fail_stop and kind == "STOP_MARKET":
             raise FuturesError("/fapi/v1/algoOrder", 400, {"code": -2021, "msg": "Order would immediately trigger."})
+        if self.close_exists:
+            raise FuturesError("/fapi/v1/algoOrder", 400, {"code": -4130, "msg": "An open stop or take profit order with GTE "
+                                                                                 "and closePosition in the direction is existing."})
+        if kind == "STOP_MARKET":
+            self.close_exists = True
         return {"algoId": 9}
+
+    def conditional_reduce(self, symbol, side, kind, trigger, qty, cid):
+        self.calls.append(("reduce", symbol, side, kind, trigger, qty, cid))
+        if self.fail_reduce:
+            raise FuturesError("/fapi/v1/algoOrder", 400, {"code": -1102, "msg": "x"})
+        return {"algoId": 10}
 
     def cancel_algo(self, algo_id):
         self.calls.append(("cancel_algo", algo_id))
+        self.close_exists = False
 
     def cancel_all(self, symbol):
         self.calls.append(("cancel_all", symbol))
@@ -198,7 +218,7 @@ def req(i=1, kind="OPEN", **kw):
 def test_open_sends_entry_then_stop_then_tp_and_records_done():
     rest, store, alerts = Rest(), Store([req()]), Alerts()
     assert Executor(rest, store, alerts, log=lambda m: None).run(snap(), RISK, T0 + timedelta(seconds=3)) == 1
-    assert [c[0] for c in rest.calls] == ["margin", "lev", "market", "cond", "cond"]
+    assert [c[0] for c in rest.calls] == ["margin", "lev", "market", "cond", "cond", "reduce"]
     assert rest.calls[2] == ("market", "BTCUSDT", "BUY", "0.125", "fd1e", False)
     assert rest.calls[3] == ("cond", "BTCUSDT", "SELL", "STOP_MARKET", "79200", "fd1s")
     assert rest.calls[4][3] == "TAKE_PROFIT_MARKET"
@@ -249,10 +269,49 @@ def test_close_with_nothing_is_refused_and_close_works_even_when_blocked():
     assert store.marks[-1][1] == "DONE"
 
 
-def test_move_stop_places_new_before_cancelling_old():
-    rest, store = Rest(), Store([req(kind="MOVE_STOP", stop_price=Decimal("79500"))])
+def test_open_stop_then_tp_falls_back_to_reduce_only_when_binance_allows_one_close_position():
+    rest, store, alerts = Rest(avg=None), Store([req()]), Alerts()
+    Executor(rest, store, alerts, log=lambda m: None).run(snap(), RISK, T0)
+    # the stop took the one closePosition slot, so the TP goes as a fixed reduce-only quantity
+    assert rest.calls[-3:] == [("cond", "BTCUSDT", "SELL", "TAKE_PROFIT_MARKET", "82000", "fd1t"),
+                               ("reduce", "BTCUSDT", "SELL", "TAKE_PROFIT_MARKET", "82000", "0.125", "fd1t"),
+                               ("get_order", "BTCUSDT", 1)]
+    assert store.marks[-1] == (1, "DONE", "เปิด LONG 0.125 BTCUSDT ที่ 80012.5 SL 79200")
+
+
+def test_move_stop_places_new_reduce_only_stop_before_cancelling_old():
+    rest, store = Rest(close_exists=True), Store([req(kind="MOVE_STOP", stop_price=Decimal("79500"))])
     Executor(rest, store, Alerts(), log=lambda m: None).run(snap([POS], [SL_ALGO]), RISK, T0)
-    assert rest.calls == [("cond", "BTCUSDT", "SELL", "STOP_MARKET", "79500", "fd1s"), ("cancel_algo", "7")]
+    assert rest.calls == [("reduce", "BTCUSDT", "SELL", "STOP_MARKET", "79500", "0.05", "fd1s"), ("cancel_algo", "7")]
+    assert store.marks[-1][1] == "DONE"
+
+
+def test_move_stop_falls_back_to_swap_then_restores_then_closes():
+    # reduce-only refused: cancel the old stop, place the new closePosition stop
+    rest, store = Rest(close_exists=True, fail_reduce=True), Store([req(kind="MOVE_STOP", stop_price=Decimal("79500"))])
+    Executor(rest, store, Alerts(), log=lambda m: None).run(snap([POS], [SL_ALGO]), RISK, T0)
+    assert [c[0] for c in rest.calls] == ["reduce", "cancel_algo", "cond"] and rest.calls[-1][4] == "79500"
+    assert store.marks[-1][1] == "DONE"
+    # the new stop is refused too: the old stop goes back
+    rest = Rest(close_exists=True, fail_reduce=True)
+    calls = {"n": 0}
+    orig = rest.conditional_close
+
+    def first_fails(*a):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise FuturesError("/fapi/v1/algoOrder", 400, {"code": -2021, "msg": "would trigger"})
+        return orig(*a)
+    rest.conditional_close = first_fails
+    store, alerts = Store([req(kind="MOVE_STOP", stop_price=Decimal("79500"))]), Alerts()
+    Executor(rest, store, alerts, log=lambda m: None).run(snap([POS], [SL_ALGO]), RISK, T0)
+    assert rest.calls[-1] == ("cond", "BTCUSDT", "SELL", "STOP_MARKET", SL_ALGO["trigger_price"], "fd1r")
+    assert store.marks[-1][1] == "FAILED" and "คง Stop-loss เดิม" in store.marks[-1][2] and alerts.items[-1][0] == "WARNING"
+    # nothing can be placed: close the position at once
+    rest, store, alerts = Rest(fail_stop=True, fail_reduce=True), Store([req(kind="MOVE_STOP", stop_price=Decimal("79500"))]), Alerts()
+    Executor(rest, store, alerts, log=lambda m: None).run(snap([POS], [SL_ALGO]), RISK, T0)
+    assert rest.calls[-2:] == [("market", "BTCUSDT", "SELL", "0.05", "fd1x", True), ("cancel_all", "BTCUSDT")]
+    assert store.marks[-1][1] == "FAILED" and "ปิด position ทันที" in store.marks[-1][2] and alerts.items[-1][0] == "CRITICAL"
 
 
 # --- API --------------------------------------------------------------------
@@ -360,3 +419,14 @@ def test_desk_says_who_can_trade():
     store = ApiStore(row())
     assert client(store).get("/api/v1/futures/desk", headers=h()).json()["can_trade"] is True
     assert client(store).get("/api/v1/futures/desk", headers=h(VIEWER)).json()["can_trade"] is False
+
+
+def test_reduce_only_stop_goes_to_algo_endpoint_with_quantity():
+    sent = []
+    rest = FuturesDemoRest(TestnetCredentials(api_key="k", secret="s"), orders_enabled=True,
+                           send=lambda m, u, h: sent.append((m, u)) or (200, {"algoId": 1}, {}))
+    rest.conditional_reduce("BTCUSDT", "SELL", "STOP_MARKET", "79500", "0.05", "fd2s")
+    m, url = sent[0]
+    assert m == "POST" and "/fapi/v1/algoOrder?" in url and "closePosition" not in url
+    for part in ("type=STOP_MARKET", "triggerPrice=79500", "quantity=0.05", "reduceOnly=true", "workingType=MARK_PRICE"):
+        assert part in url

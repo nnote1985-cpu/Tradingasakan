@@ -160,7 +160,8 @@ class FuturesWorker:
         self.state.income_added += ni
         self._check_rules(snap)
         if self.executor is not None:
-            self.executor.run(snap, self._risk, now)
+            if self.executor.run(snap, self._risk, now):
+                self.state._due["config"] = self.mono()   # leverage may have changed: read symbolConfig next sync
 
     def _new_fills(self, now: datetime) -> list[dict[str, Any]]:
         last = self.store.last_fill_ids()
