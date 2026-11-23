@@ -89,3 +89,10 @@ def test_build_renders_all_sections_and_state_round_trip(tmp_path):
 def test_main_refuses_without_env(monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     assert ps.main(["--dry-run"]) == 2
+
+
+def test_3a_is_named_and_listed_first():
+    rows = PAPER + [("pathA-r10a-hedge/paper", 10000, C22, 9993.7, 1)]
+    lines, _ = ps.paper_lines(rows, NOW)
+    assert lines[0].name == "3a (R10a + short hedge) · pathA-r10a-hedge"
+    assert lines[1].name == "R10a spot · pathA-r10a"

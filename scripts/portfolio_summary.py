@@ -37,14 +37,15 @@ BOOK_ACTIVE_DAYS = 7          # a Testnet book not marked for this long is not r
 WORKER_STALE = timedelta(hours=2)
 FUTURES_STALE = timedelta(minutes=30)
 
-# Short Thai hints so the message reads without opening the docs. Unknown books show their label only.
+# Short names shown first (the book label follows in brackets), in this order; other books follow by label.
 PAPER_HINT = {
+    "pathA-r10a-hedge": "3a (R10a + short hedge)",
     "pathA-r10a": "R10a spot",
-    "pathA-r10a-hedge": "3a: R10a + short hedge",
     "spot-e1-v1": "E1 Donchian H4",
     "futures-r7": "R7 perp",
     "futures-r11": "R11 perp + band",
 }
+_ORDER = {k: i for i, k in enumerate(PAPER_HINT)}
 
 PAPER_SQL = """
 with ranked as (
@@ -113,8 +114,9 @@ def paper_lines(rows: list[tuple], now: datetime) -> tuple[list[Line], str | Non
         warn = "" if at.date() >= expected else f"ข้อมูลถึง {at.strftime('%d/%m')}"
         closes.add(at.date())
         hint = PAPER_HINT.get(prefix)
-        name = f"{prefix} ({hint})" if hint and hint != prefix else prefix
+        name = f"{hint} · {prefix}" if hint else prefix
         lines.append(Line(f"paper:{prefix}", name, eq, day, eq - initial, initial, extra, warn))
+    lines.sort(key=lambda ln: (_ORDER.get(ln.key.removeprefix("paper:"), len(_ORDER)), ln.key))
     close = max(closes).strftime("%d/%m") if closes else None
     return lines, close
 
