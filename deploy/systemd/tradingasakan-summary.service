@@ -1,0 +1,17 @@
+# Daily Telegram summary of every port (scripts/portfolio_summary.py). Read-only on Supabase.
+# Started by tradingasakan-summary.timer; run by hand with: sudo systemctl start tradingasakan-summary
+# Uses DATABASE_URL + TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID from the DEFAULT worker's env file.
+# The last report's values (for the 1-day number of Testnet/Futures) live in /var/lib/tradingasakan-summary.
+[Unit]
+Description=Tradingasakan daily portfolio summary to Telegram
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=trading
+WorkingDirectory=/opt/tradingasakan
+EnvironmentFile=/etc/tradingasakan/worker.env
+StateDirectory=tradingasakan-summary
+ExecStart=/usr/local/bin/uv run python scripts/portfolio_summary.py --state /var/lib/tradingasakan-summary/state.json
+TimeoutStartSec=120
