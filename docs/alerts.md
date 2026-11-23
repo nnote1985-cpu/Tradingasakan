@@ -52,3 +52,19 @@ than skipping ahead. Loaders trim monthly files to the requested dates.
 State and journal: `/mnt/project-files/paper-trading/{state.json,journal.md}`.
 Opened on the 2026-10-13 close at 100% BTC, received 2026-10-15 06:39 UTC,
 first fill at the 2026-10-15 07:00 UTC open.
+
+## Daily portfolio summary (Telegram)
+
+`scripts/portfolio_summary.py` sends one message a day at 17:00 Bangkok (systemd timer
+`deploy/systemd/tradingasakan-summary.timer` on the VM) with, for every active port: value, 1-day P&L and P&L
+since start. It reads Supabase only (no exchange keys):
+
+| Port | Value | 1 day | Since start |
+|---|---|---|---|
+| Paper books (`trading.equity_snapshots`, `*/paper`) | last daily close | last close vs the close before | vs `initial_equity`, with the book's buy & hold beside it |
+| Spot Testnet bots (`trading.exec_book_risk`) | `last_equity` | vs the value at the last report | vs the book's allocation |
+| Futures Demo (`trading.fut_state`) | margin balance | vs the value at the last report | sum of `trading.fut_income` + unrealized P&L |
+
+Paper books with no close for 5 days and Testnet books not marked for 7 days are left out (ended books).
+A paper close older than yesterday, a worker not marked for 2 h, or a futures sync older than 30 min shows ⚠️.
+Preview without sending: `uv run python scripts/portfolio_summary.py --dry-run` (needs `DATABASE_URL`).

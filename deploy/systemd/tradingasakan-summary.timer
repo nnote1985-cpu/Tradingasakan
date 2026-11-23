@@ -1,0 +1,14 @@
+# Fires the daily portfolio summary at 17:00 Bangkok time, after the daily paper-book job (15:20) has synced.
+#   sudo cp /opt/tradingasakan/deploy/systemd/tradingasakan-summary.* /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now tradingasakan-summary.timer
+#   systemctl list-timers tradingasakan-summary.timer        # next run
+[Unit]
+Description=Daily portfolio summary to Telegram (17:00 Bangkok)
+
+[Timer]
+OnCalendar=*-*-* 17:00:00 Asia/Bangkok
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target
