@@ -9,6 +9,7 @@ import { FuturesDesk } from "./futures/FuturesDesk";
 import { groupBooks, isFutures } from "./books";
 import { Operations } from "./Operations";
 import { PaperCompare } from "./PaperCompare";
+import { HomeSummary } from "./HomeSummary";
 import { PerformanceOverview } from "./PerformanceOverview";
 import { PortfolioTable } from "./PortfolioTable";
 import { ShadowBanner } from "./ShadowBanner";
@@ -80,7 +81,7 @@ export function Dashboard() {
   const section = sectionOf(tab);
   const researchViews: { key: ViewKey; label: string }[] = [{ key: "compare", label: "เทียบ 3a กับ R10a" }, { key: "spot", label: "พอร์ตจำลอง Spot" }, { key: "futures", label: "Futures / Backtest" }, { key: "ai", label: "ผลทดลอง AI" }];
   const researchView = tab === "research" ? "spot" : tab;
-  const titles = { overview: ["ภาพรวมพอร์ต", "มูลค่าเงินลงทุน กำไรขาดทุน และผลของแต่ละพอร์ตในหน้าเดียว"], bots: ["บอตและพอร์ต", "บัญชีที่เชื่อมกับ Exchange และข้อมูลตลาดที่ใช้ติดตาม"], trade: ["Futures", "Position ที่เปิดอยู่ บันทึกกำไรขาดทุนรายไม้ และความเสี่ยงเทียบกฎ"], research: ["งานวิจัยและผลทดลอง", "แยกผลจำลองและผลย้อนหลังออกจากบัญชีที่กำลังซื้อขาย"], system: ["สถานะระบบ", "ตรวจการเชื่อมต่อ บันทึกข้อมูล และรายละเอียดเครื่องที่รันบอต"], settings: ["ตั้งค่าบอตและกลยุทธ์", "ดูชุดกลยุทธ์ใน Bot profiles และวิธีเทรดที่มีในคลัง"] };
+  const titles = { overview: ["ภาพรวม", "สถานะบอท กำไรขาดทุน และเรื่องที่ต้องดูในหน้าเดียว"], bots: ["บอตและพอร์ต", "บัญชีที่เชื่อมกับ Exchange และข้อมูลตลาดที่ใช้ติดตาม"], trade: ["Futures", "Position ที่เปิดอยู่ บันทึกกำไรขาดทุนรายไม้ และความเสี่ยงเทียบกฎ"], research: ["งานวิจัยและผลทดลอง", "แยกผลจำลองและผลย้อนหลังออกจากบัญชีที่กำลังซื้อขาย"], system: ["สถานะระบบ", "ตรวจการเชื่อมต่อ บันทึกข้อมูล และรายละเอียดเครื่องที่รันบอต"], settings: ["ตั้งค่าบอตและกลยุทธ์", "ดูชุดกลยุทธ์ใน Bot profiles และวิธีเทรดที่มีในคลัง"] };
   const needsOverview = (section === "research" && tab !== "options" && tab !== "compare") || tab === "asset";
   return (
     <section className="dashboard-shell">
@@ -105,7 +106,7 @@ export function Dashboard() {
       <div ref={contentRef} role="tabpanel" tabIndex={0} id={`panel-${section}`} aria-labelledby={`tab-${section}`} className="dashboard-content space-y-5">
         {section === "research" && <><div className="notice">พื้นที่ทดลอง · เงินสมมติและผลย้อนหลัง ไม่รวมอยู่ในยอดบัญชีของบอต</div><div className="flex flex-wrap gap-2" role="group" aria-label="หมวดงานวิจัย">{researchViews.map((v) => <button key={v.key} className={`filter-button ${researchView === v.key ? "filter-active" : ""}`} aria-pressed={researchView === v.key} onClick={() => setTab(v.key)}>{v.label}</button>)}</div></>}
         {section === "bots" && <div className="flex gap-2" role="group" aria-label="หมวดบอตและพอร์ต"><button className={`filter-button ${tab !== "asset" ? "filter-active" : ""}`} aria-pressed={tab !== "asset"} onClick={() => setTab("bots")}>บัญชีและบอต</button><button className={`filter-button ${tab === "asset" ? "filter-active" : ""}`} aria-pressed={tab === "asset"} onClick={() => setTab("asset")}>ตลาด BTC</button></div>}
-        {section === "settings" ? <StrategiesTab view={tab === "strategies" ? "library" : tab === "bot-config" ? "bots" : "profiles"} onSelect={(view) => setTab(view === "library" ? "strategies" : view === "bots" ? "bot-config" : "settings")} /> : section === "overview" ? <PerformanceOverview /> : section === "system" ? <WorkerTab /> : section === "trade" ? <FuturesDesk /> : section === "bots" && tab !== "asset" ? <Operations /> : tab === "compare" ? <PaperCompare /> : needsOverview && q.isPending ? (
+        {section === "settings" ? <StrategiesTab view={tab === "strategies" ? "library" : tab === "bot-config" ? "bots" : "profiles"} onSelect={(view) => setTab(view === "library" ? "strategies" : view === "bots" ? "bot-config" : "settings")} /> : section === "overview" ? <><HomeSummary /><section className="space-y-4 pt-4" aria-labelledby="overview-detail"><div><h2 id="overview-detail" className="text-lg font-semibold">รายละเอียดเงินในบัญชีและพอร์ตจำลอง</h2><p className="text-sm text-[var(--text-secondary)]">ยอดแยกตามประเภทเงิน · เงินจริง, Testnet หรือพอร์ตจำลอง</p></div><PerformanceOverview /></section></> : section === "system" ? <WorkerTab /> : section === "trade" ? <FuturesDesk /> : section === "bots" && tab !== "asset" ? <Operations /> : tab === "compare" ? <PaperCompare /> : needsOverview && q.isPending ? (
           <p>กำลังโหลด…</p>
         ) : needsOverview && q.isError ? (
           <div role="alert"><p>{q.error.message ?? "โหลดข้อมูลไม่สำเร็จ"}</p><button className="mt-2 rounded border px-3 py-1" onClick={() => void q.refetch()}>ลองใหม่</button>{["invalid_token", "missing_token"].includes(q.error.code) && <button className="ml-2 rounded border px-3 py-1" onClick={() => void supabase?.auth.signOut({ scope: "local" })}>เข้าสู่ระบบใหม่</button>}</div>
