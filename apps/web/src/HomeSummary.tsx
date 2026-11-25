@@ -17,7 +17,10 @@ export type Alert = { level: "critical" | "warn"; where: string; text: string; h
 /** Critical = money may be at risk or the bot cannot act; everything else from workerIssues is a warning. */
 export function workerAlerts(w: WorkerStatus): Alert[] {
   const critical = w.silent || CRITICAL_SAFETY.has(w.safety ?? "") || w.persist?.ok === false || !!w.execution?.unresolved.length || !!w.execution?.last_error;
-  const issues = workerIssues(w);
+  // The worker reconciles every few minutes, so a check under 15 minutes old is normal on the home page (the system page keeps the strict 1-minute rule).
+  const checked = w.reconcile?.checked_at ? Date.parse(w.reconcile.checked_at) : NaN;
+  const recent = Number.isFinite(checked) && Date.now() - checked <= 15 * 60_000;
+  const issues = workerIssues(w).filter((text) => !(recent && text.startsWith("ผลตรวจบัญชีเกิน 1 นาที")));
   return issues.map((text, i) => ({ level: critical && i === 0 ? "critical" : "warn", where: w.account, text, href: "#system" }));
 }
 
@@ -37,7 +40,7 @@ export function botName(book: string | null | undefined, bots: BotList | undefin
   if (!book) return "ไม่มีบอทกลยุทธ์";
   const web = bots?.bots.find((b) => b.book === book);
   if (web) return web.name;
-  const known: Record<string, string> = { "tn-r10a-v1.1": "R10a v1.1", "tn-r2-v1": "AI r2 (R10a + AI)", "tn-conformance-v1": "ทดสอบระบบส่งคำสั่ง" };
+  const known: Record<string, string> = { "tn-r10a-v1.1": "R10a v1.1", "tn-r10a-code-v1": "R10a v1.1", "tn-r2-v1": "AI r2 (R10a + AI)", "tn-conformance-v1": "ทดสอบระบบส่งคำสั่ง" };
   return known[book] ?? book;
 }
 

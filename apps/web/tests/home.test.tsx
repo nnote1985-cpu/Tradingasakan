@@ -28,6 +28,9 @@ test("silent or halted workers are critical, other issues are warnings", () => {
   expect(workerAlerts(worker("A", { silent: true }))[0].level).toBe("critical");
   expect(workerAlerts(worker("A", { safety: "HALTED" }))[0].level).toBe("critical");
   expect(workerAlerts(worker("A", { quote_age_ms: 9000 })).map((a) => a.level)).toEqual(["warn"]);
+  const reconcile = (minutes: number) => ({ verdict: "MATCH", checked_at: new Date(Date.now() - minutes * 60_000).toISOString(), differences: [], open_orders: 0 });
+  expect(workerAlerts(worker("A", { reconcile: reconcile(5) }))).toEqual([]);
+  expect(workerAlerts(worker("A", { reconcile: reconcile(20) })).map((a) => a.text)).toEqual(["ผลตรวจบัญชีเกิน 1 นาทีหรือยังยืนยันเวลาไม่ได้"]);
 });
 test("a futures position without a stop is critical", () => {
   const desk = { available: true, unprotected: ["BTCUSDT"], caps: null, stale: false, worker: { last_error: null } } as unknown as FuturesDesk;
